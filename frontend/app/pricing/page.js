@@ -6,9 +6,9 @@ import Badge from '@/components/common/Badge';
 import Button from '@/components/common/Button';
 
 export const metadata = {
-  title: 'Pricing — Profirmo',
+  title: 'Pricing — Pro Firmo',
   description:
-    'Profirmo uses a simple pay-per-minute model — no subscriptions, no hidden fees.',
+    'Pro Firmo uses a simple pay-per-minute model — no subscriptions, no hidden fees.',
 };
 
 const PLANS = [
@@ -55,7 +55,7 @@ const PLANS = [
     title: 'Legal & tax firms',
     price: 'Free',
     unit: ' to join',
-    description: 'Bring your whole team onto Profirmo under one firm profile.',
+    description: 'Bring your whole team onto Pro Firmo under one firm profile.',
     features: [
       'Free verified firm profile',
       'Add and manage multiple professionals',
@@ -75,11 +75,11 @@ const FAQS = [
   },
   {
     q: 'Are there any subscription fees?',
-    a: 'No. Profirmo is completely pay-as-you-go for clients. You only pay when you book a consultation — there are no monthly charges or hidden fees.',
+    a: 'No. Pro Firmo is completely pay-as-you-go for clients. You only pay when you book a consultation — there are no monthly charges or hidden fees.',
   },
   {
     q: 'How do professionals and firms get paid?',
-    a: 'Joining Profirmo is free for professionals and firms. We charge a small platform fee per completed consultation, and the rest is paid out to you automatically.',
+    a: 'Joining Pro Firmo is free for professionals and firms. We charge a small platform fee per completed consultation, and the rest is paid out to you automatically.',
   },
   {
     q: 'Can I see the price before booking?',
@@ -99,7 +99,7 @@ export default function PricingPage() {
               Simple, transparent pricing
             </h1>
             <p className="mt-4 max-w-2xl text-base text-slate-600 sm:text-lg">
-              Profirmo runs on a pay-per-minute model. No subscriptions, no
+              Pro Firmo runs on a pay-per-minute model. No subscriptions, no
               hidden fees — you only pay for the advice you receive.
             </p>
           </div>
@@ -115,7 +115,7 @@ export default function PricingPage() {
               Pay only for the minutes you use
             </h2>
             <p className="mt-3 text-base text-slate-600">
-              Every professional on Profirmo sets a clear per-minute rate.
+              Every professional on Pro Firmo sets a clear per-minute rate.
               Whether your consultation lasts five minutes or fifty, you are
               billed precisely for the time spent — nothing more.
             </p>

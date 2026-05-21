@@ -59,7 +59,7 @@ export default function AdminDashboardPage() {
     <DashboardLayout
       role={ROLES.PLATFORM_ADMIN}
       title="Platform admin"
-      subtitle="Operations overview for Profirmo"
+      subtitle="Operations overview for Pro Firmo"
     >
       <div className="space-y-8">
         {/* Stats */}

@@ -1,4 +1,4 @@
-// Profirmo shared constants — single source of truth for routes, taxonomy and enums.
+// Pro Firmo shared constants — single source of truth for routes, taxonomy and enums.
 
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
@@ -35,10 +35,11 @@ export const ROLES = {
 };
 
 export const SITE = {
-  name: 'Profirmo',
-  tagline: 'Expert legal & tax advice, one consultation away.',
+  name: 'Pro Firmo',
+  tagline:
+    'AI-powered legal and tax consultation, matched with the right professional in minutes.',
   description:
-    'Profirmo connects you with verified advocates, lawyers, legal firms and tax consultants for online consultations, secure bookings and end-to-end case management.',
+    'Pro Firmo lets you explain your case to AI first, then instantly matches you with the most suitable verified lawyer, advocate, tax expert or professional firm.',
 };
 
 export const NAV_LINKS = [

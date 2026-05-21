@@ -1,6 +1,6 @@
-# Profirmo — Online Professional Consultation & Case Management Platform
+# Pro Firmo — Online Professional Consultation & Case Management Platform
 
-Profirmo is a full-stack SaaS platform that connects clients with verified
+Pro Firmo is a full-stack SaaS platform that connects clients with verified
 professionals — advocates, lawyers, legal firms, tax consultants and advisory
 firms — for online per-minute consultations, secure bookings and end-to-end
 client/case management.

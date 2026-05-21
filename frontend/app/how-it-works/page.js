@@ -14,9 +14,9 @@ import Footer from '@/components/common/Footer';
 import Button from '@/components/common/Button';
 
 export const metadata = {
-  title: 'How it works — Profirmo',
+  title: 'How it works — Pro Firmo',
   description:
-    'Understand how Profirmo connects clients with verified legal and tax professionals.',
+    'Understand how Pro Firmo connects clients with verified legal and tax professionals.',
 };
 
 const CLIENT_STEPS = [
@@ -131,7 +131,7 @@ export default function HowItWorksPage() {
         <section className="border-b border-slate-200 bg-slate-50">
           <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8 lg:py-20">
             <h1 className="text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">
-              How Profirmo works
+              How Pro Firmo works
             </h1>
             <p className="mt-4 max-w-2xl text-base text-slate-600 sm:text-lg">
               A simple, transparent process — whether you are looking for advice
@@ -147,7 +147,7 @@ export default function HowItWorksPage() {
               <Track
                 badge="For clients"
                 title="Get expert advice in 4 steps"
-                description="From your first search to a finished consultation, Profirmo keeps every step clear and secure."
+                description="From your first search to a finished consultation, Pro Firmo keeps every step clear and secure."
                 steps={CLIENT_STEPS}
                 accent="text-blue-600"
               />
@@ -169,7 +169,7 @@ export default function HowItWorksPage() {
               Ready to get started?
             </h2>
             <p className="mt-3 text-base text-slate-600">
-              Find the right professional today, or join Profirmo to grow your
+              Find the right professional today, or join Pro Firmo to grow your
               practice.
             </p>
             <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">

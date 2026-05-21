@@ -34,7 +34,7 @@ export const professionals = [
   {
     id: 'pro-1',
     name: 'Aarav Mehta',
-    email: 'aarav.mehta@profirmo.in',
+    email: 'aarav.mehta@consultaipro.in',
     phone: '9820011223',
     professionType: 'Divorce Lawyer',
     specialization: 'Family & Divorce',
@@ -67,7 +67,7 @@ export const professionals = [
   {
     id: 'pro-2',
     name: 'Priya Sharma',
-    email: 'priya.sharma@profirmo.in',
+    email: 'priya.sharma@consultaipro.in',
     phone: '9810022334',
     professionType: 'Family Lawyer',
     specialization: 'Family & Divorce',
@@ -94,7 +94,7 @@ export const professionals = [
   {
     id: 'pro-3',
     name: 'Rohan Iyer',
-    email: 'rohan.iyer@profirmo.in',
+    email: 'rohan.iyer@consultaipro.in',
     phone: '9900033445',
     professionType: 'Criminal Lawyer',
     specialization: 'Criminal Defence',
@@ -127,7 +127,7 @@ export const professionals = [
   {
     id: 'pro-4',
     name: 'Sneha Patil',
-    email: 'sneha.patil@profirmo.in',
+    email: 'sneha.patil@consultaipro.in',
     phone: '9730044556',
     professionType: 'Civil Lawyer',
     specialization: 'Civil Litigation',
@@ -154,7 +154,7 @@ export const professionals = [
   {
     id: 'pro-5',
     name: 'Vikram Nair',
-    email: 'vikram.nair@profirmo.in',
+    email: 'vikram.nair@consultaipro.in',
     phone: '9846055667',
     professionType: 'Property Lawyer',
     specialization: 'Property & Real Estate',
@@ -187,7 +187,7 @@ export const professionals = [
   {
     id: 'pro-6',
     name: 'Ananya Reddy',
-    email: 'ananya.reddy@profirmo.in',
+    email: 'ananya.reddy@consultaipro.in',
     phone: '9966066778',
     professionType: 'Corporate Lawyer',
     specialization: 'Corporate & Commercial',
@@ -220,7 +220,7 @@ export const professionals = [
   {
     id: 'pro-7',
     name: 'Karan Malhotra',
-    email: 'karan.malhotra@profirmo.in',
+    email: 'karan.malhotra@consultaipro.in',
     phone: '9818077889',
     professionType: 'Advocate',
     specialization: 'Civil Litigation',
@@ -247,7 +247,7 @@ export const professionals = [
   {
     id: 'pro-8',
     name: 'Meera Joshi',
-    email: 'meera.joshi@profirmo.in',
+    email: 'meera.joshi@consultaipro.in',
     phone: '9920088990',
     professionType: 'Tax Consultant',
     specialization: 'Direct Taxation',
@@ -279,7 +279,7 @@ export const professionals = [
   {
     id: 'pro-9',
     name: 'Arjun Desai',
-    email: 'arjun.desai@profirmo.in',
+    email: 'arjun.desai@consultaipro.in',
     phone: '9712099001',
     professionType: 'GST Consultant',
     specialization: 'Indirect Taxation (GST)',
@@ -312,7 +312,7 @@ export const professionals = [
   {
     id: 'pro-10',
     name: 'Divya Krishnan',
-    email: 'divya.krishnan@profirmo.in',
+    email: 'divya.krishnan@consultaipro.in',
     phone: '9943011002',
     professionType: 'Income Tax Consultant',
     specialization: 'Income Tax Filing',
@@ -339,7 +339,7 @@ export const professionals = [
   {
     id: 'pro-11',
     name: 'Sahil Verma',
-    email: 'sahil.verma@profirmo.in',
+    email: 'sahil.verma@consultaipro.in',
     phone: '9811022003',
     professionType: 'Company Registration Consultant',
     specialization: 'Company Incorporation',
@@ -370,7 +370,7 @@ export const professionals = [
   {
     id: 'pro-12',
     name: 'Neha Banerjee',
-    email: 'neha.banerjee@profirmo.in',
+    email: 'neha.banerjee@consultaipro.in',
     phone: '9831033004',
     professionType: 'Corporate Lawyer',
     specialization: 'Contracts & Drafting',

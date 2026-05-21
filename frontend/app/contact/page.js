@@ -84,7 +84,7 @@ export default function ContactPage() {
               Contact us
             </h1>
             <p className="mt-4 max-w-2xl text-base text-slate-600 sm:text-lg">
-              Have a question about Profirmo? We would love to hear from you —
+              Have a question about Pro Firmo? We would love to hear from you —
               send us a message and our team will get back to you.
             </p>
           </div>

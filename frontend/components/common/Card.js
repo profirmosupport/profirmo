@@ -11,7 +11,7 @@ export default function Card({
 }) {
   const base = 'bg-white border border-slate-200 rounded-xl';
   const hoverClasses = hover
-    ? 'transition-shadow hover:shadow-md'
+    ? 'transition-all duration-300 hover:-translate-y-1 hover:border-teal-300 hover:shadow-glow-cyan'
     : '';
   const padClasses = padding ? 'p-5' : '';
 

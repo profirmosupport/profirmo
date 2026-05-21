@@ -1,4 +1,4 @@
-// Form validation helpers and ready-made rule sets for Profirmo auth forms.
+// Form validation helpers and ready-made rule sets for Pro Firmo auth forms.
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^[6-9]\d{9}$/; // Indian 10-digit mobile numbers.

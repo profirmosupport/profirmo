@@ -1,15 +1,80 @@
 import './globals.css';
+import { Inter } from 'next/font/google';
+import { LanguageProvider } from '@/components/LanguageProvider';
+
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-inter',
+  display: 'swap',
+});
+
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+
+const TITLE = 'Pro Firmo — AI-Powered Legal & Tax Consultation';
+const DESCRIPTION =
+  'Pro Firmo lets you explain your case to AI first, then instantly matches you with the most suitable verified lawyer, advocate, tax expert or professional firm.';
 
 export const metadata = {
-  title: 'Profirmo — Online Professional Consultations',
-  description:
-    'Profirmo connects you with verified advocates, lawyers, legal firms and tax consultants for online consultations, secure bookings and end-to-end case management.',
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: TITLE,
+    template: '%s | Pro Firmo',
+  },
+  description: DESCRIPTION,
+  applicationName: 'Pro Firmo',
+  keywords: [
+    'Pro Firmo',
+    'legal consultation',
+    'tax consultation',
+    'online lawyer',
+    'advocate',
+    'tax consultant',
+    'GST consultant',
+    'income tax consultant',
+    'legal advice online',
+    'AI lawyer matching',
+    'professional consultation',
+    'company registration',
+    'legal firm',
+    'tax advisory firm',
+  ],
+  authors: [{ name: 'Pro Firmo' }],
+  creator: 'Pro Firmo',
+  publisher: 'Pro Firmo',
+  category: 'Legal & Tax Services',
+  alternates: { canonical: '/' },
+  openGraph: {
+    type: 'website',
+    siteName: 'Pro Firmo',
+    title: TITLE,
+    description: DESCRIPTION,
+    url: SITE_URL,
+    locale: 'en_IN',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: TITLE,
+    description: DESCRIPTION,
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true },
+  },
+};
+
+export const viewport = {
+  themeColor: '#d97706',
+  width: 'device-width',
+  initialScale: 1,
 };
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en" className={inter.variable}>
+      <body className="font-sans">
+        <LanguageProvider>{children}</LanguageProvider>
+      </body>
     </html>
   );
 }

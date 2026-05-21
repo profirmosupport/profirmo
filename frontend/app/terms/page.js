@@ -2,16 +2,16 @@ import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
 
 export const metadata = {
-  title: 'Terms & Conditions — Profirmo',
+  title: 'Terms & Conditions — Pro Firmo',
   description:
-    'The terms and conditions governing the use of the Profirmo platform.',
+    'The terms and conditions governing the use of the Pro Firmo platform.',
 };
 
 const SECTIONS = [
   {
     title: 'Acceptance of terms',
     body: [
-      'By accessing or using Profirmo (the "Platform"), you agree to be bound by these Terms & Conditions and our Privacy Policy. If you do not agree with any part of these terms, you should not use the Platform.',
+      'By accessing or using Pro Firmo (the "Platform"), you agree to be bound by these Terms & Conditions and our Privacy Policy. If you do not agree with any part of these terms, you should not use the Platform.',
       'These terms apply to all users of the Platform, including clients seeking consultations and professionals or firms offering them.',
     ],
   },
@@ -25,7 +25,7 @@ const SECTIONS = [
   {
     title: 'Consultations and payments',
     body: [
-      'Profirmo enables clients to book online consultations with professionals on a pay-per-minute basis. The applicable rate is displayed on each professional profile before booking.',
+      'Pro Firmo enables clients to book online consultations with professionals on a pay-per-minute basis. The applicable rate is displayed on each professional profile before booking.',
       'Clients are billed for the actual duration of each consultation. Estimated costs shown at booking are indicative and the final amount is calculated on the consultation length. All payments are processed through our supported payment partners.',
     ],
   },
@@ -33,7 +33,7 @@ const SECTIONS = [
     title: 'Professional responsibilities',
     body: [
       'Professionals and firms are solely responsible for the advice and services they provide. They must hold and maintain all qualifications, registrations and licences required to practise.',
-      'Profirmo is a technology platform that facilitates connections between clients and professionals. It does not provide legal or tax advice and is not a party to the professional relationship formed between a client and a professional.',
+      'Pro Firmo is a technology platform that facilitates connections between clients and professionals. It does not provide legal or tax advice and is not a party to the professional relationship formed between a client and a professional.',
     ],
   },
   {
@@ -54,26 +54,26 @@ const SECTIONS = [
     title: 'Acceptable use',
     body: [
       'You agree not to misuse the Platform, including by attempting to gain unauthorised access, disrupting its operation, transmitting harmful code, or using it for any unlawful purpose.',
-      'You may not circumvent the Platform to arrange or take payment for consultations outside of Profirmo.',
+      'You may not circumvent the Platform to arrange or take payment for consultations outside of Pro Firmo.',
     ],
   },
   {
     title: 'Limitation of liability',
     body: [
-      'The Platform is provided on an "as is" and "as available" basis. To the maximum extent permitted by law, Profirmo disclaims all warranties and is not liable for any indirect, incidental or consequential damages arising from your use of the Platform.',
-      'Profirmo is not responsible for the accuracy, quality or outcome of any advice provided by professionals through the Platform.',
+      'The Platform is provided on an "as is" and "as available" basis. To the maximum extent permitted by law, Pro Firmo disclaims all warranties and is not liable for any indirect, incidental or consequential damages arising from your use of the Platform.',
+      'Pro Firmo is not responsible for the accuracy, quality or outcome of any advice provided by professionals through the Platform.',
     ],
   },
   {
     title: 'Intellectual property',
     body: [
-      'All content, trademarks, logos and software on the Platform are the property of Profirmo or its licensors and are protected by applicable intellectual property laws. You may not copy, reproduce or distribute them without prior written permission.',
+      'All content, trademarks, logos and software on the Platform are the property of Pro Firmo or its licensors and are protected by applicable intellectual property laws. You may not copy, reproduce or distribute them without prior written permission.',
     ],
   },
   {
     title: 'Changes to these terms',
     body: [
-      'We may update these Terms & Conditions from time to time. Material changes will be communicated through the Platform. Your continued use of Profirmo after changes take effect constitutes acceptance of the revised terms.',
+      'We may update these Terms & Conditions from time to time. Material changes will be communicated through the Platform. Your continued use of Pro Firmo after changes take effect constitutes acceptance of the revised terms.',
     ],
   },
   {
@@ -96,7 +96,7 @@ export default function TermsPage() {
               Terms &amp; Conditions
             </h1>
             <p className="mt-4 max-w-2xl text-base text-slate-600 sm:text-lg">
-              Please read these terms carefully before using the Profirmo
+              Please read these terms carefully before using the Pro Firmo
               platform.
             </p>
             <p className="mt-4 text-sm text-slate-500">
@@ -109,8 +109,8 @@ export default function TermsPage() {
           <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
             <p className="text-base text-slate-600">
               These Terms &amp; Conditions govern your access to and use of
-              Profirmo. They form a legally binding agreement between you and
-              Profirmo. The text below is provided as a placeholder for
+              Pro Firmo. They form a legally binding agreement between you and
+              Pro Firmo. The text below is provided as a placeholder for
               demonstration purposes.
             </p>
             <div className="mt-10 space-y-10">

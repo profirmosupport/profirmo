@@ -49,7 +49,7 @@ const NAV_BY_ROLE = {
 };
 
 /**
- * Sidebar — Profirmo logo + role-specific navigation.
+ * Sidebar — Pro Firmo logo + role-specific navigation.
  * Props: { role, active }
  */
 export default function Sidebar({ role }) {

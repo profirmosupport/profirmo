@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  scroll-behavior: smooth;
+}
+
 html,
 body {
   margin: 0;
@@ -11,8 +15,8 @@ body {
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f8fafc; /* slate-50 */
-  color: #1e293b; /* slate-800 */
+  background-color: #fafaf9; /* warm off-white */
+  color: #111827; /* text main */
 }
 
 * {
@@ -22,4 +26,63 @@ body {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+::selection {
+  background-color: rgba(217, 119, 6, 0.16); /* primary */
+}
+
+@layer components {
+  /* Light glassmorphism surface — use on light sections */
+  .glass {
+    background-color: rgba(255, 255, 255, 0.72);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+  }
+
+  /* Dark glassmorphism surface — use on dark sections */
+  .glass-dark {
+    background-color: rgba(255, 255, 255, 0.055);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+}
+
+@layer utilities {
+  /* Gradient text for headline accent words — smooth warm amber */
+  .text-gradient {
+    background-image: linear-gradient(110deg, #b45309, #d97706, #f59e0b);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .text-gradient-light {
+    background-image: linear-gradient(110deg, #ffffff, #fed7aa, #fdba74);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Subtle grid backgrounds */
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, rgba(17, 24, 39, 0.04) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(17, 24, 39, 0.04) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+
+  .bg-grid-dark {
+    background-image:
+      linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+
+  /* Pause a running animation on hover (used by marquees) */
+  .pause-on-hover:hover {
+    animation-play-state: paused;
+  }
 }

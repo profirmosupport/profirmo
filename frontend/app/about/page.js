@@ -13,9 +13,9 @@ import Footer from '@/components/common/Footer';
 import Card from '@/components/common/Card';
 
 export const metadata = {
-  title: 'About — Profirmo',
+  title: 'About — Pro Firmo',
   description:
-    'Learn about Profirmo, the platform connecting clients with verified legal and tax professionals.',
+    'Learn about Pro Firmo, the platform connecting clients with verified legal and tax professionals.',
 };
 
 const VALUES = [
@@ -23,7 +23,7 @@ const VALUES = [
     icon: ShieldCheck,
     title: 'Trust & verification',
     description:
-      'Every professional and firm on Profirmo is verified before they can offer consultations.',
+      'Every professional and firm on Pro Firmo is verified before they can offer consultations.',
   },
   {
     icon: Eye,
@@ -61,7 +61,7 @@ export default function AboutPage() {
         <section className="border-b border-slate-200 bg-slate-50">
           <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8 lg:py-20">
             <h1 className="text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">
-              About Profirmo
+              About Pro Firmo
             </h1>
             <p className="mt-4 max-w-2xl text-base text-slate-600 sm:text-lg">
               We are on a mission to make trusted legal and tax advice
@@ -84,7 +84,7 @@ export default function AboutPage() {
                 <p className="mt-4 text-base text-slate-600">
                   Finding the right advocate or tax consultant has always been
                   hard — relying on word of mouth, unclear pricing and long
-                  waits for an appointment. Profirmo changes that.
+                  waits for an appointment. Pro Firmo changes that.
                 </p>
                 <p className="mt-4 text-base text-slate-600">
                   We bring verified professionals and firms online, so anyone
@@ -100,7 +100,7 @@ export default function AboutPage() {
                   Built by people who needed it
                 </h2>
                 <p className="mt-4 text-base text-slate-600">
-                  Profirmo started with a simple frustration: getting reliable
+                  Pro Firmo started with a simple frustration: getting reliable
                   legal and tax help should not depend on who you happen to
                   know. We saw skilled professionals struggling to reach
                   clients, and clients struggling to find them.

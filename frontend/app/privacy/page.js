@@ -2,17 +2,17 @@ import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
 
 export const metadata = {
-  title: 'Privacy Policy — Profirmo',
+  title: 'Privacy Policy — Pro Firmo',
   description:
-    'How Profirmo collects, uses and protects your personal information.',
+    'How Pro Firmo collects, uses and protects your personal information.',
 };
 
 const SECTIONS = [
   {
     title: 'Introduction',
     body: [
-      'This Privacy Policy explains how Profirmo ("we", "us") collects, uses, shares and protects your personal information when you use our platform. We are committed to handling your data responsibly and transparently.',
-      'By using Profirmo, you consent to the practices described in this policy.',
+      'This Privacy Policy explains how Pro Firmo ("we", "us") collects, uses, shares and protects your personal information when you use our platform. We are committed to handling your data responsibly and transparently.',
+      'By using Pro Firmo, you consent to the practices described in this policy.',
     ],
   },
   {
@@ -106,7 +106,7 @@ export default function PrivacyPage() {
         <section className="bg-white py-16 lg:py-20">
           <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
             <p className="text-base text-slate-600">
-              At Profirmo, we are committed to protecting your personal
+              At Pro Firmo, we are committed to protecting your personal
               information. The text below is provided as a placeholder for
               demonstration purposes.
             </p>
