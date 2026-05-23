@@ -63,6 +63,12 @@ const User = sequelize.define(
     emailVerificationExpiresAt: { type: DataTypes.DATE, allowNull: true },
     // When the most recent verification email was queued.
     emailVerificationSentAt: { type: DataTypes.DATE, allowNull: true },
+
+    // --- Phase-10: client unification — fields previously on the clients ---
+    //     table now live on the user. Both are optional and only meaningful
+    //     for users with role='client' (other roles ignore them).
+    city: { type: DataTypes.STRING, allowNull: true },
+    userType: { type: DataTypes.STRING, allowNull: true, defaultValue: 'individual' },
   },
   {
     tableName: 'users',

@@ -1,47 +1,52 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { CalendarClock, CheckCircle2, Wallet, Star } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Briefcase, CheckCircle2, Users, Star } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import StatsCard from '@/components/dashboard/StatsCard';
 import AvailabilityManager from '@/components/dashboard/AvailabilityManager';
 import Card from '@/components/common/Card';
 import { useLanguage } from '@/components/LanguageProvider';
 import { useAuth } from '@/hooks/useAuth';
-import { useDashboard } from '@/hooks/useDashboard';
 import reviewService from '@/services/reviewService';
+import caseService from '@/services/caseService';
 import { ROLES } from '@/utils/constants';
-import { formatCurrency } from '@/utils/formatters';
 import { professionals } from '@/data/mockData';
 
 export default function ProfessionalDashboardPage() {
   const { t } = useLanguage();
   const { user } = useAuth();
   const linkedId = user ? user.linkedId || user.firmId : undefined;
-  const dashboard = useDashboard(ROLES.PROFESSIONAL, linkedId);
 
-  const stats = dashboard.stats || {};
-
-  // Real reviews for this professional, fetched from the API — used purely
-  // to derive the public "Average rating" stat.
+  // Live data: reviews (for rating stat) and assigned cases (for the rest).
   const [myReviews, setMyReviews] = useState([]);
+  const [myCases, setMyCases] = useState([]);
 
-  const loadMyReviews = useCallback(async () => {
-    try {
-      const data = await reviewService.getMine();
-      setMyReviews(Array.isArray(data) ? data : []);
-    } catch {
-      setMyReviews([]);
-    }
+  const loadStats = useCallback(async () => {
+    const [reviewsRes, casesRes] = await Promise.allSettled([
+      reviewService.getMine(),
+      caseService.getMyCases(),
+    ]);
+    setMyReviews(
+      reviewsRes.status === 'fulfilled' && Array.isArray(reviewsRes.value)
+        ? reviewsRes.value
+        : []
+    );
+    setMyCases(
+      casesRes.status === 'fulfilled' && Array.isArray(casesRes.value)
+        ? casesRes.value
+        : []
+    );
   }, []);
 
   useEffect(() => {
-    loadMyReviews();
-  }, [loadMyReviews]);
+    loadStats();
+  }, [loadStats]);
 
   // Public rating / count derived from real, published reviews.
-  const publishedReviews = myReviews.filter(
-    (r) => r.status !== 'UNDER_APPEAL'
+  const publishedReviews = useMemo(
+    () => myReviews.filter((r) => r.status !== 'UNDER_APPEAL'),
+    [myReviews]
   );
   const realReviewCount = publishedReviews.length;
   const realAvgRating =
@@ -51,6 +56,13 @@ export default function ProfessionalDashboardPage() {
           0
         ) / realReviewCount
       : 0;
+
+  // Case-derived stats.
+  const activeCases = myCases.filter((c) => c.status !== 'closed').length;
+  const closedCases = myCases.filter((c) => c.status === 'closed').length;
+  const uniqueClientCount = new Set(
+    myCases.map((c) => c.clientId).filter(Boolean)
+  ).size;
 
   const professional =
     professionals.find((p) => p.id === linkedId) || professionals[0];
@@ -116,23 +128,24 @@ export default function ProfessionalDashboardPage() {
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatsCard
-              label={t('dashPro.stat.totalEarnings')}
-              value={formatCurrency(stats.totalEarnings || 0)}
-              icon={<Wallet size={20} />}
-              variant="green"
-              hint={t('dash.common.fromCompletedBookings')}
-            />
-            <StatsCard
-              label={t('dashPro.stat.completedConsultations')}
-              value={stats.completedConsultations || 0}
-              icon={<CheckCircle2 size={20} />}
+              label="Active cases"
+              value={activeCases}
+              icon={<Briefcase size={20} />}
               variant="blue"
+              hint={`${myCases.length} total assigned`}
             />
             <StatsCard
-              label={t('dashPro.stat.pendingBookings')}
-              value={stats.pendingBookings || 0}
-              icon={<CalendarClock size={20} />}
+              label="Closed cases"
+              value={closedCases}
+              icon={<CheckCircle2 size={20} />}
+              variant="green"
+            />
+            <StatsCard
+              label="Clients"
+              value={uniqueClientCount}
+              icon={<Users size={20} />}
               variant="amber"
+              hint="Unique clients across your cases"
             />
             <StatsCard
               label={t('dashPro.stat.averageRating')}

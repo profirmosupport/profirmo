@@ -1,6 +1,10 @@
 // Sequelize model: Review
-//   id, userId, clientId, clientName, professionalId, firmId, rating,
+//   id, userId, clientId, clientName, professionalId, rating,
 //   comment, date, status + timestamps
+//
+// Reviews are always against a professional. A firm's reviews are simply the
+// collective reviews of every member professional under it — there is no
+// firm-level review record.
 //
 // status: 'PUBLISHED'    — visible everywhere (default)
 //         'UNDER_APPEAL' — the professional has appealed; hidden from public
@@ -30,7 +34,6 @@ const Review = sequelize.define(
       defaultValue: '',
     },
     professionalId: { type: DataTypes.STRING(64), allowNull: true },
-    firmId: { type: DataTypes.STRING(64), allowNull: true },
     rating: { type: DataTypes.FLOAT, allowNull: false, defaultValue: 0 },
     comment: { type: DataTypes.TEXT, allowNull: true },
     date: { type: DataTypes.STRING, allowNull: false, defaultValue: '' },
@@ -47,7 +50,6 @@ const Review = sequelize.define(
       { fields: ['userId'] },
       { fields: ['clientId'] },
       { fields: ['professionalId'] },
-      { fields: ['firmId'] },
       { fields: ['status'] },
     ],
   }

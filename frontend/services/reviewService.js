@@ -46,4 +46,20 @@ export async function appeal(reviewId, reason) {
   return unwrap(res);
 }
 
-export default { getByProfessional, getByFirm, create, getMine, appeal };
+/**
+ * Appeal a review on behalf of a firm member. The caller must be the firm
+ * owner or a co-owner. Returns the persisted appeal record.
+ */
+export async function appealOnBehalf(reviewId, reason) {
+  const res = await post(`${BASE}/${reviewId}/appeal-on-behalf`, { reason });
+  return unwrap(res);
+}
+
+export default {
+  getByProfessional,
+  getByFirm,
+  create,
+  getMine,
+  appeal,
+  appealOnBehalf,
+};

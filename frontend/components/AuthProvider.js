@@ -152,6 +152,16 @@ export function AuthProvider({ children }) {
     [applyAuth]
   );
 
+  // Claim a client account: backend issues a session on success, so adopt it
+  // the same way verifyEmail does.
+  const claimAccount = useCallback(
+    async (payload) => {
+      const data = await authService.claimAccount(payload);
+      return applyAuth(data);
+    },
+    [applyAuth]
+  );
+
   const logout = useCallback(async () => {
     try {
       await authService.logout();
@@ -212,6 +222,7 @@ export function AuthProvider({ children }) {
     login,
     signup,
     verifyEmail,
+    claimAccount,
     logout,
     refreshUser,
     registerClient,
@@ -239,6 +250,7 @@ export function useAuth() {
     login: noop,
     signup: noop,
     verifyEmail: noop,
+    claimAccount: noop,
     logout: noop,
     refreshUser: noop,
     registerClient: noop,

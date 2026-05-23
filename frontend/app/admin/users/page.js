@@ -34,6 +34,7 @@ import EmptyState from '@/components/common/EmptyState';
 import { useAuth } from '@/components/AuthProvider';
 import { ROLES } from '@/utils/constants';
 import { formatDate, getInitials } from '@/utils/formatters';
+import Avatar from '@/components/common/Avatar';
 import {
   listUsers,
   updateUserStatus,
@@ -700,9 +701,11 @@ export default function AdminUsersPage() {
                       <tr key={row.id} className="hover:bg-slate-50">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
-                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500 text-xs font-semibold text-white">
-                              {getInitials(name)}
-                            </span>
+                            <Avatar
+                              src={row.profilePhoto}
+                              name={name}
+                              size="sm"
+                            />
                             <p className="truncate font-medium text-slate-800">
                               {name}
                             </p>
@@ -712,9 +715,31 @@ export default function AdminUsersPage() {
                           {row.email || '—'}
                         </td>
                         <td className="px-4 py-3">
-                          <Badge variant="gray">
-                            {ROLE_LABELS[row.role] || row.role || '—'}
-                          </Badge>
+                          <div className="flex flex-col items-start gap-1">
+                            <Badge variant="gray">
+                              {ROLE_LABELS[row.role] || row.role || '—'}
+                            </Badge>
+                            {row.role === 'professional' &&
+                              row.approvalStatus && (
+                                <Badge
+                                  variant={
+                                    row.approvalStatus === 'APPROVED'
+                                      ? 'green'
+                                      : row.approvalStatus === 'REJECTED'
+                                        ? 'red'
+                                        : 'amber'
+                                  }
+                                >
+                                  {row.approvalStatus === 'APPROVED'
+                                    ? 'Approved'
+                                    : row.approvalStatus === 'REJECTED'
+                                      ? 'Rejected'
+                                      : row.approvalStatus === 'INFO_REQUESTED'
+                                        ? 'Info requested'
+                                        : 'Pending approval'}
+                                </Badge>
+                              )}
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <Badge variant={badge.variant}>{badge.label}</Badge>
@@ -943,9 +968,11 @@ export default function AdminUsersPage() {
         {viewUser && (
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500 text-sm font-semibold text-white">
-                {getInitials(userName(viewUser))}
-              </span>
+              <Avatar
+                src={viewUser.profilePhoto}
+                name={userName(viewUser)}
+                size="lg"
+              />
               <div className="min-w-0">
                 <p className="truncate font-medium text-slate-800">
                   {userName(viewUser)}

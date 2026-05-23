@@ -14,7 +14,6 @@ fs.mkdirSync(env.uploadsDir, { recursive: true });
 // Session is created right after User (its parent table).
 const SYNC_ORDER = [
   db.Firm,
-  db.Client,
   db.Professional,
   db.User,
   // Phase-5 audit log — no FK dependency, placed right after User.
@@ -27,6 +26,9 @@ const SYNC_ORDER = [
   db.Review,
   // ReviewAppeal references reviews — created right after Review.
   db.ReviewAppeal,
+  // Case notes + log reference cases.
+  db.CaseNote,
+  db.CaseLog,
   db.File,
   // --- Phase-2 profile / firm tables, parents-first --------------------
   db.Address,
@@ -54,6 +56,8 @@ const SYNC_ORDER = [
   // --- Password-reset OTP table --------------------------------------
   // No FK dependency — userId / email are plain indexed columns.
   db.PasswordResetOtp,
+  // Link table between professionals and client-users (many-to-many).
+  db.ProfessionalClient,
 ];
 
 // Boot the Profirmo HTTP server.

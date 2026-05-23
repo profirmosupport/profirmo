@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(curl -s -o /dev/null -w \"/auth/claim → %{http_code}\\\\n\" http://localhost:3000/auth/claim)",
+      "Bash(curl -s -o /dev/null -w \"/auth/claim?token=test → %{http_code}\\\\n\" \"http://localhost:3000/auth/claim?token=test\")",
+      "Bash(grep -E \"\\\\.\\(js|ts\\)$\")",
+      "Bash(node -e \"require\\('./src/services/firmService'\\); console.log\\('OK'\\);\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5001/api/firms)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d['data'][:1] if d.get\\('data'\\) else d, indent=2\\)[:800]\\)\")",
+      "Bash(curl -s http://localhost:5001/api/firms/firm-1)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); k=d.get\\('data',{}\\); print\\('keys:', sorted\\(k.keys\\(\\)\\)\\); print\\('socialLinks:', k.get\\('socialLinks'\\)\\); print\\('reg#:', k.get\\('registrationNumber'\\), 'employees:', k.get\\('totalEmployees'\\), 'practiceAreas:', k.get\\('practiceAreas'\\)\\)\")",
+      "Bash(curl -s -o /dev/null -w \"/dashboard/professional/firm → %{http_code}\\\\n\" http://localhost:3000/dashboard/professional/firm)",
+      "Bash(curl -s -o /dev/null -w \"/firm → %{http_code}\\\\n\" http://localhost:3000/firm)",
+      "Bash(curl -s -o /dev/null -w \"/firms → %{http_code}\\\\n\" http://localhost:3000/firms)",
+      "Bash(curl -s -o /dev/null -w \"/firms/firm-1 → %{http_code}\\\\n\" http://localhost:3000/firms/firm-1)",
+      "Bash(curl -s http://localhost:5001/api/firms)",
+      "Bash(python3 -c ' *)"
+    ]
+  }
+}

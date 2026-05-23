@@ -13,6 +13,7 @@ import {
   Star,
   Flag,
   Briefcase,
+  CalendarClock,
   FolderKanban,
   UserPlus,
   ArrowLeft,
@@ -40,6 +41,11 @@ const PROFESSIONAL_NAV = [
     icon: FolderKanban,
   },
   {
+    labelKey: 'dash.nav.bookings',
+    href: '/dashboard/professional/bookings',
+    icon: CalendarClock,
+  },
+  {
     labelKey: 'dash.nav.myReviews',
     href: '/dashboard/professional/reviews',
     icon: Star,
@@ -62,6 +68,16 @@ const NAV_BY_ROLE = {
       labelKey: 'dash.nav.overview',
       href: '/dashboard/client',
       icon: LayoutDashboard,
+    },
+    {
+      labelKey: 'dash.nav.myCases',
+      href: '/dashboard/client/cases',
+      icon: Briefcase,
+    },
+    {
+      labelKey: 'dash.nav.myBookings',
+      href: '/dashboard/client/bookings',
+      icon: CalendarClock,
     },
     {
       labelKey: 'dash.nav.findProfessionals',

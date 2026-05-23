@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -10,6 +10,7 @@ import {
   User,
   Briefcase,
   CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react';
 import Card from '@/components/common/Card';
 import Badge from '@/components/common/Badge';
@@ -19,16 +20,8 @@ import RecordingStatus from '@/components/consultation/RecordingStatus';
 import TranscriptPanel from '@/components/consultation/TranscriptPanel';
 import ConsultationNotes from '@/components/consultation/ConsultationNotes';
 import { useLanguage } from '@/components/LanguageProvider';
-import {
-  consultations,
-  clients,
-  getProfessionalById,
-} from '@/data/mockData';
-import {
-  formatCurrency,
-  formatDuration,
-  getInitials,
-} from '@/utils/formatters';
+import consultationService from '@/services/consultationService';
+import { formatCurrency, formatDuration, getInitials } from '@/utils/formatters';
 import { SITE } from '@/utils/constants';
 
 function formatElapsed(totalSeconds) {
@@ -40,48 +33,193 @@ function formatElapsed(totalSeconds) {
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
+function secondsBetween(start, end) {
+  if (!start) return 0;
+  const a = new Date(start).getTime();
+  const b = end ? new Date(end).getTime() : Date.now();
+  return Math.max(Math.floor((b - a) / 1000), 0);
+}
+
 export default function ConsultationPage() {
   const { t } = useLanguage();
   const { consultationId } = useParams();
 
-  const consultation =
-    consultations.find((c) => c.id === consultationId) || consultations[0];
-  const professional =
-    getProfessionalById(consultation.professionalId) ||
-    getProfessionalById('pro-1');
-  const client =
-    clients.find((c) => c.id === consultation.clientId) || clients[0];
-
-  const rate = professional ? Number(professional.perMinuteRate) || 0 : 0;
-
+  const [consultation, setConsultation] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [elapsed, setElapsed] = useState(0);
-  const [callEnded, setCallEnded] = useState(false);
-  const [notes, setNotes] = useState(consultation.notes || '');
-  const intervalRef = useRef(null);
+  const [notes, setNotes] = useState('');
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [notesStatus, setNotesStatus] = useState('');
+  const [endingCall, setEndingCall] = useState(false);
+  const tickRef = useRef(null);
 
+  // Initial load + auto-start when status is "scheduled".
   useEffect(() => {
-    if (callEnded) return undefined;
-    intervalRef.current = setInterval(() => {
-      setElapsed((prev) => prev + 1);
-    }, 1000);
+    if (!consultationId) return undefined;
+    let active = true;
+    setLoading(true);
+    setError('');
+    (async () => {
+      try {
+        let c = await consultationService.getById(consultationId);
+        if (!c) {
+          if (active) setError('Consultation not found.');
+          return;
+        }
+        if (c.callStatus === 'scheduled') {
+          // Auto-start so elapsed time is anchored on the server.
+          try {
+            c = await consultationService.start(consultationId);
+          } catch (err) {
+            // If start fails (e.g., already ended), surface but keep going.
+            if (active) setError(err.message || 'Failed to start consultation.');
+          }
+        }
+        if (!active) return;
+        setConsultation(c);
+        setNotes(c.notes || '');
+      } catch (err) {
+        if (active) setError(err.message || 'Failed to load consultation.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
+      active = false;
+    };
+  }, [consultationId]);
+
+  // Tick elapsed time from the authoritative server timestamps.
+  useEffect(() => {
+    if (!consultation) return undefined;
+    const compute = () => {
+      const status = consultation.callStatus;
+      if (status === 'ongoing') {
+        setElapsed(secondsBetween(consultation.startedAt, null));
+      } else if (status === 'ended') {
+        setElapsed(
+          consultation.durationMinutes
+            ? Number(consultation.durationMinutes) * 60
+            : secondsBetween(consultation.startedAt, consultation.endedAt)
+        );
+      } else {
+        setElapsed(0);
       }
     };
-  }, [callEnded]);
+    compute();
+    if (consultation.callStatus !== 'ongoing') return undefined;
+    tickRef.current = setInterval(compute, 1000);
+    return () => {
+      if (tickRef.current) {
+        clearInterval(tickRef.current);
+        tickRef.current = null;
+      }
+    };
+  }, [consultation]);
 
-  function handleEndCall() {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
+  const handleEndCall = useCallback(async () => {
+    if (!consultationId || endingCall) return;
+    setEndingCall(true);
+    try {
+      const c = await consultationService.end(consultationId);
+      setConsultation(c);
+    } catch (err) {
+      setError(err.message || 'Failed to end consultation.');
+    } finally {
+      setEndingCall(false);
     }
-    setCallEnded(true);
+  }, [consultationId, endingCall]);
+
+  const handleSaveNotes = useCallback(async () => {
+    if (!consultationId) return;
+    setSavingNotes(true);
+    setNotesStatus('');
+    try {
+      const c = await consultationService.addNotes(consultationId, notes);
+      setConsultation(c);
+      setNotesStatus('saved');
+    } catch (err) {
+      setNotesStatus(err.message || 'Failed to save notes.');
+    } finally {
+      setSavingNotes(false);
+    }
+  }, [consultationId, notes]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen flex-col bg-slate-100">
+        <header className="border-b border-slate-200 bg-white">
+          <div className="mx-auto flex h-16 max-w-7xl items-center px-4 sm:px-6 lg:px-8">
+            <Link href="/" className="flex items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white">
+                <Scale size={20} />
+              </span>
+              <span className="text-lg font-bold tracking-tight text-slate-800">
+                {SITE.name}
+              </span>
+            </Link>
+          </div>
+        </header>
+        <main className="flex-1">
+          <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+              <div className="h-96 animate-pulse rounded-xl border border-slate-200 bg-slate-100 lg:col-span-2" />
+              <div className="h-96 animate-pulse rounded-xl border border-slate-200 bg-slate-100" />
+            </div>
+          </div>
+        </main>
+      </div>
+    );
   }
 
-  const billedMinutes = Math.ceil(elapsed / 60);
-  const runningCost = billedMinutes * rate;
+  if (error && !consultation) {
+    return (
+      <div className="flex min-h-screen flex-col bg-slate-100">
+        <header className="border-b border-slate-200 bg-white">
+          <div className="mx-auto flex h-16 max-w-7xl items-center px-4 sm:px-6 lg:px-8">
+            <Link href="/" className="flex items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white">
+                <Scale size={20} />
+              </span>
+              <span className="text-lg font-bold tracking-tight text-slate-800">
+                {SITE.name}
+              </span>
+            </Link>
+          </div>
+        </header>
+        <main className="flex-1">
+          <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6 lg:px-8">
+            <Card className="text-center">
+              <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-red-600">
+                <AlertTriangle size={22} />
+              </span>
+              <h2 className="mt-3 text-lg font-semibold text-slate-900">
+                Something went wrong
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">{error}</p>
+              <div className="mt-5">
+                <Button href="/dashboard/client/bookings" variant="primary">
+                  Back to my bookings
+                </Button>
+              </div>
+            </Card>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  const professional = consultation.professional || {};
+  const client = consultation.client || {};
+  const rate = Number(professional.perMinuteRate) || 0;
+  const callEnded = consultation.callStatus === 'ended';
+  const billedMinutes = callEnded
+    ? Number(consultation.durationMinutes) || Math.ceil(elapsed / 60)
+    : Math.ceil(elapsed / 60);
+  const runningCost = callEnded
+    ? Number(consultation.cost) || billedMinutes * rate
+    : billedMinutes * rate;
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-100">
@@ -128,7 +266,7 @@ export default function ConsultationPage() {
                   </h2>
                   <p className="mt-1 text-sm text-slate-500">
                     {t('consultPage.summaryIntro', {
-                      name: professional.name,
+                      name: professional.name || '—',
                     })}
                   </p>
 
@@ -164,6 +302,11 @@ export default function ConsultationPage() {
                     client={client}
                     onEndCall={handleEndCall}
                   />
+                  {endingCall && (
+                    <p className="mt-3 text-center text-xs text-slate-500">
+                      Ending call…
+                    </p>
+                  )}
                 </Card>
               )}
 
@@ -214,14 +357,14 @@ export default function ConsultationPage() {
                 </h3>
                 <div className="mt-3 flex items-center gap-3">
                   <span className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-700">
-                    {getInitials(client.name)}
+                    {getInitials(client.name || '?')}
                   </span>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-slate-800">
-                      {client.name}
+                      {client.name || '—'}
                     </p>
                     <p className="truncate text-xs text-slate-500">
-                      {client.city}
+                      {client.city || ''}
                     </p>
                   </div>
                 </div>
@@ -231,7 +374,7 @@ export default function ConsultationPage() {
                       {t('consultPage.email')}
                     </dt>
                     <dd className="truncate font-medium text-slate-700">
-                      {client.email}
+                      {client.email || '—'}
                     </dd>
                   </div>
                   <div className="flex justify-between gap-3">
@@ -239,7 +382,7 @@ export default function ConsultationPage() {
                       {t('consultPage.phone')}
                     </dt>
                     <dd className="font-medium text-slate-700">
-                      {client.phone}
+                      {client.phone || '—'}
                     </dd>
                   </div>
                 </dl>
@@ -252,14 +395,14 @@ export default function ConsultationPage() {
                 </h3>
                 <div className="mt-3 flex items-center gap-3">
                   <span className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-100 text-sm font-semibold text-blue-700">
-                    {getInitials(professional.name)}
+                    {getInitials(professional.name || '?')}
                   </span>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-slate-800">
-                      {professional.name}
+                      {professional.name || '—'}
                     </p>
                     <p className="truncate text-xs text-slate-500">
-                      {professional.professionType}
+                      {professional.professionType || ''}
                     </p>
                   </div>
                 </div>
@@ -270,7 +413,7 @@ export default function ConsultationPage() {
                       {t('consultPage.specialization')}
                     </dt>
                     <dd className="truncate font-medium text-slate-700">
-                      {professional.specialization}
+                      {professional.specialization || '—'}
                     </dd>
                   </div>
                   <div className="flex justify-between gap-3">
@@ -279,7 +422,7 @@ export default function ConsultationPage() {
                       {t('consultPage.city')}
                     </dt>
                     <dd className="font-medium text-slate-700">
-                      {professional.city}
+                      {professional.city || '—'}
                     </dd>
                   </div>
                   <div className="flex justify-between gap-3">
@@ -298,8 +441,17 @@ export default function ConsultationPage() {
               <ConsultationNotes
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                onSave={() => {}}
+                onSave={handleSaveNotes}
               />
+              {savingNotes && (
+                <p className="text-xs text-slate-500">Saving…</p>
+              )}
+              {notesStatus === 'saved' && !savingNotes && (
+                <p className="text-xs text-emerald-600">Notes saved.</p>
+              )}
+              {notesStatus && notesStatus !== 'saved' && !savingNotes && (
+                <p className="text-xs text-red-600">{notesStatus}</p>
+              )}
             </div>
           </div>
         </div>

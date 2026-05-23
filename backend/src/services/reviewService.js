@@ -5,9 +5,33 @@ const {
   Professional,
   ProfessionalDetail,
   User,
+  LawFirm,
+  FirmMember,
 } = require('../models');
 const { paginate } = require('./professionalService');
 const firmService = require('./firmService');
+const notificationService = require('./notificationService');
+
+// Fire-and-forget notification — failures never break the request.
+const notify = async (params) => {
+  try {
+    await notificationService.createNotification(params);
+  } catch (err) {
+    console.warn(`[reviewNotify] failed: ${err.message}`);
+  }
+};
+
+// Resolve the public professional id (user.linkedId || detail.id) → userId.
+const resolveProfessionalUserId = async (publicProfId) => {
+  if (!publicProfId) return null;
+  const byLinked = await User.findOne({
+    where: { linkedId: publicProfId },
+    raw: true,
+  });
+  if (byLinked) return byLinked.id;
+  const detail = await ProfessionalDetail.findByPk(publicProfId, { raw: true });
+  return detail ? detail.userId : null;
+};
 
 const PUBLISHED = 'PUBLISHED';
 const UNDER_APPEAL = 'UNDER_APPEAL';
@@ -108,17 +132,33 @@ const create = async ({ user, professionalId, rating, comment }) => {
     };
   }
 
+  // Reviews are always against a professional; a firm has no review record
+  // of its own (firm reviews = the collective reviews of its professionals).
+  // The client column is now `users.id` directly.
   const review = await Review.create({
     userId: user.id,
-    clientId: user.role === 'client' ? user.linkedId || null : null,
+    clientId: user.role === 'client' ? user.id : null,
     clientName: displayName(user) || 'Client',
     professionalId,
-    firmId: null,
     rating: safeRating,
     comment: String(comment || '').trim(),
     date: today(),
     status: PUBLISHED,
   });
+
+  // Notify the reviewed professional.
+  const reviewedUserId = await resolveProfessionalUserId(professionalId);
+  if (reviewedUserId && reviewedUserId !== user.id) {
+    await notify({
+      userId: reviewedUserId,
+      type: 'review_received',
+      title: 'New client review',
+      message: `${displayName(user) || 'A client'} left you a ${safeRating}-star review.`,
+      link: '/dashboard/professional/reviews',
+      metadata: { reviewId: review.id, rating: safeRating },
+    });
+  }
+
   return review.get({ plain: true });
 };
 
@@ -221,6 +261,110 @@ const createAppeal = async ({ user, reviewId, reason }) => {
   });
   // Hide the review from public pages until an admin resolves the appeal.
   await review.update({ status: UNDER_APPEAL });
+  return appeal.get({ plain: true });
+};
+
+/**
+ * Firm owner / co-owner appeals a review of one of their member professionals.
+ * Mirrors createAppeal but the actor is acting on behalf of a member.
+ */
+const createAppealOnBehalf = async ({ user, reviewId, reason }) => {
+  if (!user || !user.id) {
+    throw { statusCode: 401, message: 'Authentication required.' };
+  }
+  if (!reason || !String(reason).trim()) {
+    throw {
+      statusCode: 422,
+      message: 'Please describe why this review is wrong.',
+    };
+  }
+  const review = await Review.findByPk(reviewId);
+  if (!review) {
+    throw { statusCode: 404, message: 'Review not found.' };
+  }
+
+  // Resolve the reviewed professional to a ProfessionalDetail id so we can
+  // find their FirmMember row.
+  let memberProfDetail = null;
+  const userByLinkedId = await User.findOne({
+    where: { linkedId: review.professionalId },
+    raw: true,
+  });
+  if (userByLinkedId) {
+    memberProfDetail = await ProfessionalDetail.findOne({
+      where: { userId: userByLinkedId.id },
+      raw: true,
+    });
+  } else {
+    memberProfDetail = await ProfessionalDetail.findByPk(review.professionalId, {
+      raw: true,
+    });
+  }
+  if (!memberProfDetail) {
+    throw {
+      statusCode: 404,
+      message: 'Reviewed professional not found.',
+    };
+  }
+
+  const memberRow = await FirmMember.findOne({
+    where: { professionalId: memberProfDetail.id, status: 'active' },
+    raw: true,
+  });
+  if (!memberRow) {
+    throw {
+      statusCode: 409,
+      message: 'The reviewed professional is not a member of any firm.',
+    };
+  }
+
+  // Caller must be the firm's owner or a co-owner.
+  const firm = await LawFirm.findByPk(memberRow.firmId, { raw: true });
+  const isOwner = firm && firm.ownerUserId === user.id;
+  let isCoOwner = false;
+  if (!isOwner) {
+    const callerDetail = await ProfessionalDetail.findOne({
+      where: { userId: user.id },
+      raw: true,
+    });
+    if (callerDetail) {
+      const coOwnerRow = await FirmMember.findOne({
+        where: {
+          firmId: memberRow.firmId,
+          professionalId: callerDetail.id,
+          role: 'co-owner',
+          status: 'active',
+        },
+        raw: true,
+      });
+      isCoOwner = Boolean(coOwnerRow);
+    }
+  }
+  if (!isOwner && !isCoOwner) {
+    throw {
+      statusCode: 403,
+      message:
+        'Only the firm owner or a co-owner can appeal on behalf of a member.',
+    };
+  }
+
+  const pending = await ReviewAppeal.findOne({
+    where: { reviewId, status: 'PENDING' },
+  });
+  if (pending) {
+    throw {
+      statusCode: 409,
+      message: 'An appeal for this review is already being reviewed.',
+    };
+  }
+  const appeal = await ReviewAppeal.create({
+    reviewId,
+    professionalId: review.professionalId,
+    appealedByUserId: user.id,
+    reason: String(reason).trim(),
+    status: 'PENDING',
+  });
+  await Review.update({ status: UNDER_APPEAL }, { where: { id: reviewId } });
   return appeal.get({ plain: true });
 };
 
@@ -340,6 +484,27 @@ const resolveAppeal = async (
     resolvedByUserId: adminUserId || null,
     resolvedAt: new Date(),
   });
+
+  // Notify the user who filed the appeal.
+  if (appeal.appealedByUserId) {
+    await notify({
+      userId: appeal.appealedByUserId,
+      type: 'review_appeal_resolved',
+      title:
+        d === 'accept' ? 'Appeal accepted' : 'Appeal rejected',
+      message:
+        d === 'accept'
+          ? 'Your appeal was accepted — the review was removed.'
+          : 'Your appeal was reviewed and the review will remain public.',
+      link: '/dashboard/professional/reviews',
+      metadata: {
+        appealId: appeal.id,
+        reviewId: appeal.reviewId,
+        decision: d === 'accept' ? 'ACCEPTED' : 'REJECTED',
+      },
+    });
+  }
+
   return appeal.get({ plain: true });
 };
 
@@ -349,6 +514,7 @@ module.exports = {
   getByFirm,
   getMineForProfessional,
   createAppeal,
+  createAppealOnBehalf,
   listAll,
   adminUpdate,
   adminDelete,

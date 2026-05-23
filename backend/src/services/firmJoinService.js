@@ -11,6 +11,16 @@ const {
   FirmJoinRequest,
   ProfessionalDetail,
 } = require('../models');
+const notificationService = require('./notificationService');
+
+// Fire-and-forget notification — never breaks the calling request.
+const notify = async (params) => {
+  try {
+    await notificationService.createNotification(params);
+  } catch (err) {
+    console.warn(`[notify] failed: ${err.message}`);
+  }
+};
 
 const plain = (r) =>
   r && typeof r.get === 'function' ? r.get({ plain: true }) : r || null;
@@ -160,12 +170,30 @@ const requestJoin = async (userId, firmId, message) => {
 
   const detail = await ensureProfessionalDetail(userId);
   const request = await FirmJoinRequest.create({
-    firmId,
+    firmId: firm.id,
     userId,
     professionalId: detail.id,
     message: String(message || '').trim(),
     status: 'PENDING',
   });
+
+  // Notify the firm owner so they can act on the request.
+  if (firm.ownerUserId) {
+    const requester = await User.findByPk(userId, { raw: true });
+    const requesterName =
+      (requester && displayName(requester)) || 'A professional';
+    await notify({
+      userId: firm.ownerUserId,
+      type: 'firm_join_request',
+      title: 'New firm join request',
+      message: `${requesterName} has requested to join ${
+        firm.firmName || 'your firm'
+      }.`,
+      link: '/dashboard/firm/join-requests',
+      metadata: { requestId: request.id, firmId: firm.id, userId },
+    });
+  }
+
   return plain(request);
 };
 
@@ -300,6 +328,29 @@ const decideRequest = async (userId, requestId, decision) => {
       decidedAt: new Date(),
     });
   }
+
+  // Notify the requester that their join request was decided.
+  const firmInfo = await LawFirm.findByPk(request.firmId, { raw: true });
+  const firmName = (firmInfo && firmInfo.firmName) || 'the firm';
+  await notify({
+    userId: request.userId,
+    type: 'firm_join_decision',
+    title:
+      d === 'approve'
+        ? 'Firm join request approved'
+        : 'Firm join request rejected',
+    message:
+      d === 'approve'
+        ? `You are now a member of ${firmName}.`
+        : `Your request to join ${firmName} was not approved.`,
+    link: '/dashboard/professional/firm',
+    metadata: {
+      requestId: request.id,
+      firmId: request.firmId,
+      decision: d === 'approve' ? 'APPROVED' : 'REJECTED',
+    },
+  });
+
   return plain(request);
 };
 

@@ -11,12 +11,14 @@ const User = require('./User');
 const Session = require('./Session');
 const Professional = require('./Professional');
 const Firm = require('./Firm');
-const Client = require('./Client');
+const ProfessionalClient = require('./ProfessionalClient');
 const Case = require('./Case');
 const Booking = require('./Booking');
 const Consultation = require('./Consultation');
 const Review = require('./Review');
 const ReviewAppeal = require('./ReviewAppeal');
+const CaseNote = require('./CaseNote');
+const CaseLog = require('./CaseLog');
 const File = require('./File');
 const Upload = require('./Upload');
 
@@ -70,21 +72,24 @@ Professional.belongsTo(Firm, fkSetNull('firmId'));
 Firm.hasMany(Case, fkSetNull('firmId'));
 Case.belongsTo(Firm, fkSetNull('firmId'));
 
-Firm.hasMany(Review, fkSetNull('firmId'));
-Review.belongsTo(Firm, fkSetNull('firmId'));
+// Reviews are always against a professional; a firm's reviews are simply the
+// collective reviews of its member professionals. No Firm <-> Review FK.
 
 // --- Client relationships --------------------------------------------------
-Client.hasMany(Case, fkCascade('clientId'));
-Case.belongsTo(Client, fkCascade('clientId'));
+// Clients are first-class users (role='client') — there is no separate
+// `clients` table. The `clientId` column on Case / Booking / Consultation /
+// Review now references `users.id`. We do not declare a Sequelize association
+// for it (the column is a plain string FK at the application layer, and
+// historical rows pre-unification may still carry legacy ids).
 
-Client.hasMany(Booking, fkCascade('clientId'));
-Booking.belongsTo(Client, fkCascade('clientId'));
-
-Client.hasMany(Consultation, fkCascade('clientId'));
-Consultation.belongsTo(Client, fkCascade('clientId'));
-
-Client.hasMany(Review, fkCascade('clientId'));
-Review.belongsTo(Client, fkCascade('clientId'));
+// A professional <-> client-user link (many-to-many): one client-user can be
+// linked to multiple professionals.
+User.hasMany(ProfessionalClient, fkCascade('clientUserId'));
+ProfessionalClient.belongsTo(User, {
+  foreignKey: 'clientUserId',
+  onDelete: 'CASCADE',
+  onUpdate: 'CASCADE',
+});
 
 // --- Professional relationships -------------------------------------------
 Professional.hasMany(Case, fkCascade('professionalId'));
@@ -103,6 +108,13 @@ Review.belongsTo(Professional, fkSetNull('professionalId'));
 // A review can be appealed; removing the review removes its appeal records.
 Review.hasMany(ReviewAppeal, fkCascade('reviewId'));
 ReviewAppeal.belongsTo(Review, fkCascade('reviewId'));
+
+// --- Case notes + log ------------------------------------------------------
+// Both cascade-delete with the case they belong to.
+Case.hasMany(CaseNote, fkCascade('caseId'));
+CaseNote.belongsTo(Case, fkCascade('caseId'));
+Case.hasMany(CaseLog, fkCascade('caseId'));
+CaseLog.belongsTo(Case, fkCascade('caseId'));
 
 // --- Booking <-> Consultation ---------------------------------------------
 Booking.hasOne(Consultation, fkSetNull('bookingId'));
@@ -263,12 +275,14 @@ module.exports = {
   Session,
   Professional,
   Firm,
-  Client,
+  ProfessionalClient,
   Case,
   Booking,
   Consultation,
   Review,
   ReviewAppeal,
+  CaseNote,
+  CaseLog,
   File,
   Upload,
   Address,

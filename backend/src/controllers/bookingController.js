@@ -30,8 +30,20 @@ const getBooking = asyncHandler(async (req, res) => {
 
 // POST /api/bookings
 const createBooking = asyncHandler(async (req, res) => {
-  const booking = await bookingService.create(req.body);
+  const booking = await bookingService.create(req.body, req.user);
   return successResponse(res, 201, 'Booking created', booking);
+});
+
+// GET /api/bookings/mine — bookings made by the calling client.
+const getMyBookings = asyncHandler(async (req, res) => {
+  const bookings = await bookingService.listMineAsClient(req.user);
+  return successResponse(res, 200, 'Your bookings fetched', bookings);
+});
+
+// GET /api/bookings/mine-as-professional — bookings assigned to the caller.
+const getMyAssignedBookings = asyncHandler(async (req, res) => {
+  const bookings = await bookingService.listMineAsProfessional(req.user);
+  return successResponse(res, 200, 'Your assigned bookings fetched', bookings);
 });
 
 // PATCH /api/bookings/:id/status
@@ -62,6 +74,8 @@ module.exports = {
   listBookings,
   getBooking,
   createBooking,
+  getMyBookings,
+  getMyAssignedBookings,
   updateBookingStatus,
   getBookingsByClient,
   getBookingsByProfessional,

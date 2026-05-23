@@ -9,7 +9,6 @@ const {
   User,
   Professional,
   Firm,
-  Client,
   Case,
   Booking,
   Consultation,
@@ -48,12 +47,32 @@ async function seedDatabase() {
     });
   });
 
-  // FK-safe insert order: Firms -> Professionals -> Clients -> Users ->
-  // Cases -> Files -> Bookings -> Consultations -> Reviews.
+  // Clients are users now. Convert the mock clients into user rows so a
+  // fresh seed produces them with role='client'. Bookings / cases / reviews
+  // already reference these ids on their clientId column.
+  const clientUsers = (mockData.clients || []).map((c) => ({
+    id: c.id,
+    email:
+      (c.email && c.email.toLowerCase()) ||
+      `pf-client-${c.id}@profirmo.local`,
+    password: '',
+    role: 'client',
+    name: c.name || '',
+    fullName: c.name || '',
+    mobileNumber: c.phone || null,
+    city: c.city || '',
+    userType: c.userType || 'individual',
+    status: 'active',
+    accountVerified: true,
+    emailVerified: true,
+    memberSince: new Date(),
+  }));
+
+  // FK-safe insert order: Firms -> Professionals -> Users -> Cases -> Files
+  // -> Bookings -> Consultations -> Reviews.
   await Firm.bulkCreate(mockData.firms);
   await Professional.bulkCreate(mockData.professionals);
-  await Client.bulkCreate(mockData.clients);
-  await User.bulkCreate(mockData.users);
+  await User.bulkCreate([...mockData.users, ...clientUsers]);
   await Case.bulkCreate(cases);
   await File.bulkCreate(files);
   await Booking.bulkCreate(mockData.bookings);
@@ -64,8 +83,8 @@ async function seedDatabase() {
     '[Seed] Done. Inserted: ' +
       `${mockData.firms.length} firms, ` +
       `${mockData.professionals.length} professionals, ` +
-      `${mockData.clients.length} clients, ` +
-      `${mockData.users.length} users, ` +
+      `${mockData.users.length + clientUsers.length} users ` +
+      `(${clientUsers.length} clients), ` +
       `${cases.length} cases, ` +
       `${files.length} files, ` +
       `${mockData.bookings.length} bookings, ` +

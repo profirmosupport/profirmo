@@ -28,6 +28,20 @@ const getConsultation = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'Consultation fetched', consultation);
 });
 
+// GET /api/consultations/by-booking/:bookingId
+const getConsultationByBooking = asyncHandler(async (req, res) => {
+  const consultation = await consultationService.getByBooking(
+    req.params.bookingId
+  );
+  if (!consultation) {
+    throw {
+      statusCode: 404,
+      message: `Consultation not found for booking: ${req.params.bookingId}`,
+    };
+  }
+  return successResponse(res, 200, 'Consultation fetched', consultation);
+});
+
 // POST /api/consultations/:id/start
 const startConsultation = asyncHandler(async (req, res) => {
   const consultation = await consultationService.start(req.params.id);
@@ -74,6 +88,7 @@ const addNotes = asyncHandler(async (req, res) => {
 module.exports = {
   listConsultations,
   getConsultation,
+  getConsultationByBooking,
   startConsultation,
   endConsultation,
   getRecording,

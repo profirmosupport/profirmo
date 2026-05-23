@@ -415,14 +415,15 @@ export default function AdminProfessionalReviewPage() {
 
   // ----- Data --------------------------------------------------------------
 
-  const {
-    approval = {},
-    user: applicant = {},
-    address = {},
-    professionalDetail = {},
-    lawyerDetail = null,
-    taxConsultantDetail = null,
-  } = review;
+  // The API can return `null` for sub-objects that don't exist (e.g. a
+  // firm-owner user with no professional details). Destructure defaults only
+  // kick in for `undefined`, so coerce explicitly to avoid crashes.
+  const approval = review.approval || {};
+  const applicant = review.user || {};
+  const address = review.address || {};
+  const professionalDetail = review.professionalDetail || {};
+  const lawyerDetail = review.lawyerDetail || null;
+  const taxConsultantDetail = review.taxConsultantDetail || null;
 
   const name = userName(applicant);
   const badge = statusBadge(approval.status);

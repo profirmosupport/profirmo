@@ -3,7 +3,6 @@ const {
   User,
   Professional,
   Firm,
-  Client,
   Case,
   Booking,
   Consultation,
@@ -49,7 +48,7 @@ const getStats = async () => {
     User.count(),
     Professional.count(),
     Firm.count(),
-    Client.count(),
+    User.count({ where: { role: 'client' } }),
     Case.count(),
     Booking.count(),
     Consultation.count(),
@@ -142,8 +141,32 @@ const listUsers = async ({
     offset: (safePage - 1) * safeLimit,
   });
 
+  // Attach the latest approval status to professional users.
+  const profUserIds = rows
+    .filter((u) => u.role === 'professional')
+    .map((u) => u.id);
+  let approvalByUser = new Map();
+  if (profUserIds.length) {
+    const approvals = await ProfessionalApproval.findAll({
+      where: { userId: { [Op.in]: profUserIds } },
+      order: [['createdAt', 'DESC']],
+      raw: true,
+    });
+    for (const a of approvals) {
+      if (!approvalByUser.has(a.userId)) {
+        approvalByUser.set(a.userId, a.status);
+      }
+    }
+  }
+
   return {
-    rows: rows.map(sanitizeUser),
+    rows: rows.map((u) => {
+      const safe = sanitizeUser(u);
+      if (safe.role === 'professional') {
+        safe.approvalStatus = approvalByUser.get(safe.id) || null;
+      }
+      return safe;
+    }),
     page: safePage,
     limit: safeLimit,
     total: count,

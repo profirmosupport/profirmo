@@ -1,12 +1,19 @@
 const express = require('express');
 const bookingController = require('../controllers/bookingController');
+const { authenticate } = require('../middleware/authMiddleware');
 const { validateBody } = require('../middleware/validateRequest');
 
 const router = express.Router();
 
+// All booking routes require an authenticated user.
+router.use(authenticate);
+
 router.get('/', bookingController.listBookings);
 
-// NOTE: /client and /professional sub-routes are declared before /:id.
+// Caller-scoped routes — must come before /:id.
+router.get('/mine', bookingController.getMyBookings);
+router.get('/mine-as-professional', bookingController.getMyAssignedBookings);
+
 router.get('/client/:clientId', bookingController.getBookingsByClient);
 router.get(
   '/professional/:professionalId',
@@ -16,7 +23,6 @@ router.get(
 router.post(
   '/',
   validateBody({
-    clientId: 'required',
     professionalId: 'required',
     duration: 'required|number',
   }),

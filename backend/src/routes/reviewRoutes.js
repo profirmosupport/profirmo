@@ -32,4 +32,12 @@ router.post(
   reviewController.appealReview
 );
 
+// --- Firm owner / co-owner: appeal a review on behalf of a member ---------
+router.post(
+  '/:id/appeal-on-behalf',
+  authenticate,
+  validateBody({ reason: 'required' }),
+  reviewController.appealOnBehalf
+);
+
 module.exports = router;

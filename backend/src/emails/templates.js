@@ -122,6 +122,55 @@ const TEMPLATES = {
   },
 
   /**
+   * Invitation sent when a professional adds a new client to their book.
+   * The client clicks the claim link, sets a password, and gets logged in.
+   * vars: { name, professionalName, claimUrl, expiryHours }
+   */
+  clientInvitation(vars = {}) {
+    const name = vars.name || 'there';
+    const professionalName = vars.professionalName || 'A professional';
+    const claimUrl = vars.claimUrl || '#';
+    const expiryHours = vars.expiryHours || 168; // 7 days default
+
+    const subject = 'You have been invited to Profirmo';
+
+    const html = layout(
+      subject,
+      `
+      <h1 style="margin:0 0 16px;font-size:20px;color:#111827;">Welcome to Profirmo</h1>
+      <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">
+        Hi ${esc(name)},
+      </p>
+      <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">
+        ${esc(professionalName)} has added you as a client on Profirmo. Claim
+        your account to view your cases, bookings, and consultation notes.
+      </p>
+      ${button('Claim your account', claimUrl)}
+      <p style="margin:0 0 12px;font-size:13px;line-height:1.6;color:#6b7280;">
+        This link expires in ${esc(expiryHours)} hours. If the button above
+        does not work, copy and paste this URL into your browser:
+      </p>
+      <p style="margin:0;font-size:13px;line-height:1.6;word-break:break-all;">
+        <a href="${esc(claimUrl)}" style="color:#1d4ed8;">${esc(claimUrl)}</a>
+      </p>`
+    );
+
+    const text = [
+      `Hi ${name},`,
+      '',
+      `${professionalName} has added you as a client on Profirmo.`,
+      'Claim your account and set a password:',
+      '',
+      claimUrl,
+      '',
+      `This link expires in ${expiryHours} hours.`,
+      'If you were not expecting this invitation, you can ignore this email.',
+    ].join('\n');
+
+    return { subject, html, text };
+  },
+
+  /**
    * Professional-approval message sent when an admin approves an application.
    * vars: { professionalName, professionalType, email, approvalDate,
    *         loginUrl, organizationName }

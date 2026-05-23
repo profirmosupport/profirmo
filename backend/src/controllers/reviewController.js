@@ -43,10 +43,21 @@ const appealReview = asyncHandler(async (req, res) => {
   return successResponse(res, 201, 'Appeal submitted', appeal);
 });
 
+// POST /api/reviews/:id/appeal-on-behalf  (firm owner / co-owner)
+const appealOnBehalf = asyncHandler(async (req, res) => {
+  const appeal = await reviewService.createAppealOnBehalf({
+    user: req.user,
+    reviewId: req.params.id,
+    reason: req.body.reason,
+  });
+  return successResponse(res, 201, 'Appeal submitted on behalf of member', appeal);
+});
+
 module.exports = {
   createReview,
   getReviewsByProfessional,
   getReviewsByFirm,
   getMyReviews,
   appealReview,
+  appealOnBehalf,
 };

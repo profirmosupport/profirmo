@@ -32,6 +32,7 @@ export default function FirmProfileHeader({ firm }) {
     rating,
     reviewsCount,
     professionalCount,
+    owner,
   } = firm;
 
   return (
@@ -53,6 +54,20 @@ export default function FirmProfileHeader({ firm }) {
                 </Badge>
               )}
             </div>
+
+            {owner && owner.name && (
+              <div className="mt-2 flex items-center gap-2">
+                <Avatar
+                  src={owner.profilePhoto}
+                  name={owner.name}
+                  size="sm"
+                />
+                <span className="text-sm font-medium text-slate-700">
+                  {owner.name}
+                </span>
+                <Badge variant="green">Owner</Badge>
+              </div>
+            )}
 
             <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-slate-600">
               {city && (

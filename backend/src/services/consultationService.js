@@ -1,5 +1,77 @@
-const { Consultation, Professional, Booking } = require('../models');
+const {
+  Consultation,
+  Professional,
+  ProfessionalDetail,
+  Booking,
+  User,
+} = require('../models');
 const { paginate } = require('./professionalService');
+
+const displayName = (u) => {
+  if (!u) return '';
+  return (
+    u.fullName ||
+    [u.firstName, u.lastName].filter(Boolean).join(' ').trim() ||
+    u.name ||
+    ''
+  );
+};
+
+// Resolve a public professional id (legacy prof-N OR new pdetail-...) into
+// a flat shape the consultation room needs.
+const resolveProfessionalView = async (publicProfId) => {
+  if (!publicProfId) return null;
+  const legacy = await Professional.findByPk(publicProfId, { raw: true });
+  if (legacy) {
+    return {
+      id: legacy.id,
+      name: legacy.name || '',
+      professionType: legacy.professionType || legacy.professionalType || '',
+      specialization: legacy.specialization || '',
+      city: legacy.city || '',
+      profilePhoto: legacy.profilePhoto || null,
+      perMinuteRate: Number(legacy.perMinuteRate) || 0,
+    };
+  }
+  const detail = await ProfessionalDetail.findByPk(publicProfId, { raw: true });
+  if (!detail) return null;
+  const owner = detail.userId
+    ? await User.findByPk(detail.userId, { raw: true })
+    : null;
+  return {
+    id: detail.id,
+    name: displayName(owner),
+    professionType: detail.professionalType || '',
+    specialization: detail.specialization || '',
+    city: (owner && owner.city) || '',
+    profilePhoto: (owner && owner.profilePhoto) || null,
+    perMinuteRate: Number(detail.consultationFee) || 0,
+  };
+};
+
+// Resolve a clientId (users.id with role='client') into a flat shape.
+const resolveClientView = async (clientId) => {
+  if (!clientId) return null;
+  const user = await User.findByPk(clientId, { raw: true });
+  if (!user) return null;
+  return {
+    id: user.id,
+    name: displayName(user),
+    email: user.email || '',
+    phone: user.mobileNumber || '',
+    city: user.city || '',
+  };
+};
+
+// Attach client + professional payloads to a consultation record.
+const decorate = async (consultation) => {
+  if (!consultation) return null;
+  const [client, professional] = await Promise.all([
+    resolveClientView(consultation.clientId),
+    resolveProfessionalView(consultation.professionalId),
+  ]);
+  return { ...consultation, client, professional };
+};
 
 /**
  * List consultations with optional filters and pagination.
@@ -25,10 +97,24 @@ const list = async ({ filters = {}, page, limit } = {}) => {
   return { items: rows, page: p, limit: l, total: count };
 };
 
-/** Find a consultation by id, or null when not found. */
+/** Find a consultation by id, decorated with client/professional info. */
 const getById = async (id) => {
   const consultation = await Consultation.findByPk(id, { raw: true });
-  return consultation || null;
+  if (!consultation) return null;
+  return decorate(consultation);
+};
+
+/**
+ * Find the consultation for a booking — bookings always auto-create one on
+ * create, but we still fall back gracefully when missing.
+ */
+const getByBooking = async (bookingId) => {
+  const consultation = await Consultation.findOne({
+    where: { bookingId },
+    raw: true,
+  });
+  if (!consultation) return null;
+  return decorate(consultation);
 };
 
 /** Start a consultation call. Returns null when the consultation is missing. */
@@ -42,12 +128,12 @@ const start = async (id) => {
     callStatus: 'ongoing',
     startedAt: consultation.startedAt || new Date(),
   });
-  return consultation.get({ plain: true });
+  return decorate(consultation.get({ plain: true }));
 };
 
 /**
  * End a consultation call. Computes durationMinutes from start/end times
- * and cost from the professional's per-minute rate.
+ * and cost from the professional's per-minute rate (legacy or new-model).
  * Returns null when the consultation is missing.
  */
 const end = async (id) => {
@@ -70,10 +156,8 @@ const end = async (id) => {
     0
   );
 
-  const professional = await Professional.findByPk(
-    consultation.professionalId
-  );
-  const rate = professional ? professional.perMinuteRate : 0;
+  const pro = await resolveProfessionalView(consultation.professionalId);
+  const rate = pro ? pro.perMinuteRate : 0;
 
   await consultation.update({
     callStatus: 'ended',
@@ -90,7 +174,7 @@ const end = async (id) => {
     }
   }
 
-  return consultation.get({ plain: true });
+  return decorate(consultation.get({ plain: true }));
 };
 
 /** Get the recording URL for a consultation. Returns null if missing. */
@@ -120,12 +204,13 @@ const addNotes = async (id, notes) => {
   const consultation = await Consultation.findByPk(id);
   if (!consultation) return null;
   await consultation.update({ notes: notes || '' });
-  return consultation.get({ plain: true });
+  return decorate(consultation.get({ plain: true }));
 };
 
 module.exports = {
   list,
   getById,
+  getByBooking,
   start,
   end,
   getRecording,

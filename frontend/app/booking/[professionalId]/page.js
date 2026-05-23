@@ -26,17 +26,17 @@ import ConsultationSummary from '@/components/booking/ConsultationSummary';
 import PaymentPlaceholder from '@/components/booking/PaymentPlaceholder';
 import { useLanguage } from '@/components/LanguageProvider';
 import professionalService from '@/services/professionalService';
+import bookingService from '@/services/bookingService';
+import { useAuth } from '@/components/AuthProvider';
 import { BOOKING_TYPES } from '@/utils/constants';
 import { formatCurrency, formatDate, formatTime } from '@/utils/formatters';
 
 const DURATIONS = [15, 30, 45, 60];
 
-// The consultation room is a placeholder flow until booking persistence lands.
-const PLACEHOLDER_CONSULTATION_ID = 'con-1';
-
 export default function BookingPage() {
   const { t } = useLanguage();
   const { professionalId } = useParams();
+  const { user, isAuthenticated } = useAuth();
 
   const [professional, setProfessional] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -48,6 +48,8 @@ export default function BookingPage() {
   const [duration, setDuration] = useState(30);
   const [processing, setProcessing] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [bookingError, setBookingError] = useState('');
+  const [createdBooking, setCreatedBooking] = useState(null);
 
   // Load the professional from the database via the API.
   useEffect(() => {
@@ -106,13 +108,33 @@ export default function BookingPage() {
     setSelectedSlot(null);
   }
 
-  function handlePay() {
+  async function handlePay() {
     if (!canConfirm) return;
+    if (!isAuthenticated) {
+      setBookingError('Please sign in as a client to book a consultation.');
+      return;
+    }
+    if (user && user.role && user.role !== 'client') {
+      setBookingError('Only clients can book a consultation.');
+      return;
+    }
     setProcessing(true);
-    setTimeout(() => {
-      setProcessing(false);
+    setBookingError('');
+    try {
+      const booking = await bookingService.createBooking({
+        professionalId,
+        date: isInstant ? null : selectedDate,
+        time: isInstant ? null : selectedSlot,
+        duration,
+        type: isInstant ? BOOKING_TYPES.INSTANT : BOOKING_TYPES.SCHEDULED,
+      });
+      setCreatedBooking(booking);
       setConfirmed(true);
-    }, 900);
+    } catch (err) {
+      setBookingError(err.message || 'Failed to create booking.');
+    } finally {
+      setProcessing(false);
+    }
   }
 
   if (loading) {
@@ -399,6 +421,11 @@ export default function BookingPage() {
                     {t('bookingPage.selectDateTimeWarning')}
                   </p>
                 )}
+                {bookingError && (
+                  <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+                    {bookingError}
+                  </p>
+                )}
 
                 <PaymentPlaceholder
                   amount={estimatedCost}
@@ -423,7 +450,13 @@ export default function BookingPage() {
             <Button variant="ghost" onClick={() => setConfirmed(false)}>
               {t('bookingPage.close')}
             </Button>
-            <Button href={`/consultation/${PLACEHOLDER_CONSULTATION_ID}`}>
+            <Button
+              href={
+                createdBooking && createdBooking.consultationId
+                  ? `/consultation/${createdBooking.consultationId}`
+                  : '/dashboard/client/bookings'
+              }
+            >
               {t('bookingPage.joinRoom')}
             </Button>
           </>

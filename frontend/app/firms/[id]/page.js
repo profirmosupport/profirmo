@@ -8,6 +8,7 @@ import Footer from '@/components/common/Footer';
 import Button from '@/components/common/Button';
 import EmptyState from '@/components/common/EmptyState';
 import FirmProfileHeader from '@/components/firms/FirmProfileHeader';
+import FirmAboutDetails from '@/components/firms/FirmAboutDetails';
 import FirmServices from '@/components/firms/FirmServices';
 import FirmProfessionalsList from '@/components/firms/FirmProfessionalsList';
 import FirmReviews from '@/components/firms/FirmReviews';
@@ -122,6 +123,7 @@ export default function FirmProfilePage() {
       <main className="flex-1 bg-slate-50">
         <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
           <FirmProfileHeader firm={firm} />
+          <FirmAboutDetails firm={firm} />
           <FirmServices firm={firm} />
           <FirmProfessionalsList firm={firm} />
           <FirmReviews firmId={firm.id} />

@@ -286,6 +286,33 @@ const getMe = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'Current user fetched', { user });
 });
 
+// --- Client invitation / claim --------------------------------------------
+
+// GET /api/auth/claim-info?token=...
+// Returns the email + display name attached to an invite token so the claim
+// page can pre-fill the form. Returns 400 on expired / invalid tokens.
+const getClaimInfo = asyncHandler(async (req, res) => {
+  const info = await authService.getClaimInfo(req.query.token);
+  return successResponse(res, 200, 'Claim info fetched', info);
+});
+
+// POST /api/auth/claim-account
+// Accept a valid invite token + new password (+ optional fullName), set the
+// password, mark the account active, issue an access token + refresh cookie.
+const claimAccount = asyncHandler(async (req, res) => {
+  const result = await authService.claimClientAccount(req.body, reqMeta(req));
+  await logAudit({
+    req,
+    userId: result.user && result.user.id,
+    action: 'auth.client_claimed',
+    entity: 'user',
+    entityId: result.user && result.user.id,
+    status: 'success',
+    metadata: { email: result.user && result.user.email },
+  });
+  return sendAuth(res, 200, 'Account claimed successfully', result);
+});
+
 // --- Password reset (forgot-password + email OTP) --------------------------
 
 // Basic email-format check, matching the project's validation rules.
@@ -417,6 +444,8 @@ module.exports = {
   verifyEmail,
   resendVerification,
   getMe,
+  getClaimInfo,
+  claimAccount,
   forgotPassword,
   resendOtp,
   verifyPasswordOtp,

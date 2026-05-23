@@ -86,12 +86,27 @@ export async function updateLawFirm(data) {
 }
 
 /**
- * Add a member to the firm.
+ * Add a member to the firm (deprecated — superseded by invitations).
  * @param {{email:string, role:string}} payload
  * @returns {Promise<Object>}
  */
 export async function addFirmMember({ email, role }) {
   const res = await post('/api/law-firm/mine/members', { email, role });
+  return unwrap(res);
+}
+
+/**
+ * Send a firm invitation to a professional. The invitee must register as a
+ * professional first; once they accept, they join the firm as a member.
+ * @param {{email:string, role?:string, message?:string}} payload
+ * @returns {Promise<Object>}
+ */
+export async function createFirmInvitation({ email, role, message }) {
+  const res = await post('/api/law-firm/mine/invitations', {
+    email,
+    role: role || 'member',
+    message,
+  });
   return unwrap(res);
 }
 
@@ -127,6 +142,7 @@ export default {
   createLawFirm,
   updateLawFirm,
   addFirmMember,
+  createFirmInvitation,
   updateFirmMember,
   removeFirmMember,
 };

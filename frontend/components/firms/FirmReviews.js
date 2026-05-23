@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { MessageSquare, Star } from 'lucide-react';
 import Card from '@/components/common/Card';
 import Avatar from '@/components/common/Avatar';
+import Button from '@/components/common/Button';
 import RatingStars from '@/components/common/RatingStars';
 import EmptyState from '@/components/common/EmptyState';
 import { useLanguage } from '@/components/LanguageProvider';
@@ -15,9 +16,11 @@ import reviewService from '@/services/reviewService';
  * (GET /api/reviews/firm/:firmId). Shows a "No review yet" empty state when
  * there are none.
  *
- * Props: { firmId }
+ * Props: { firmId, onAppeal? } — when `onAppeal` is provided, each review row
+ * renders an "Appeal" button that hands the review back to the parent for
+ * collecting an appeal reason.
  */
-export default function FirmReviews({ firmId }) {
+export default function FirmReviews({ firmId, onAppeal }) {
   const { t } = useLanguage();
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -125,6 +128,17 @@ export default function FirmReviews({ firmId }) {
                     <p className="mt-2 text-sm text-slate-600">
                       {review.comment || review.text}
                     </p>
+                    {typeof onAppeal === 'function' && (
+                      <div className="mt-3 flex items-center justify-end">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => onAppeal(review)}
+                        >
+                          Appeal
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </li>

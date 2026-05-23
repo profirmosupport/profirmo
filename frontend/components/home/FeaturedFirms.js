@@ -40,6 +40,14 @@ function FirmCard({ firm }) {
               {firm.firmType}
             </span>
           )}
+          {firm.owner && firm.owner.name && (
+            <p className="mt-1 text-xs text-slate-500">
+              Owned by{' '}
+              <span className="font-medium text-slate-700">
+                {firm.owner.name}
+              </span>
+            </p>
+          )}
         </div>
       </div>
 

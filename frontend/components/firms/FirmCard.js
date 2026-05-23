@@ -29,6 +29,7 @@ export default function FirmCard({ firm }) {
     reviewsCount,
     professionalCount,
     practiceAreas = [],
+    owner,
   } = firm;
 
   return (
@@ -45,6 +46,12 @@ export default function FirmCard({ firm }) {
                 {firmType}
               </Badge>
             </div>
+          )}
+          {owner && owner.name && (
+            <p className="mt-1 text-xs text-slate-500">
+              Owned by{' '}
+              <span className="font-medium text-slate-700">{owner.name}</span>
+            </p>
           )}
         </div>
       </div>

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { Users, BadgeCheck } from 'lucide-react';
 import Card from '@/components/common/Card';
 import Avatar from '@/components/common/Avatar';
@@ -35,11 +36,8 @@ export default function FirmProfessionalsList({ firm }) {
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
-          {members.map((member, index) => (
-            <div
-              key={member.id || `${member.name}-${index}`}
-              className="flex flex-col rounded-xl border border-slate-200 p-4"
-            >
+          {members.map((member, index) => {
+            const cardInner = (
               <div className="flex items-start gap-3">
                 <Avatar
                   src={member.profilePhoto}
@@ -71,8 +69,31 @@ export default function FirmProfessionalsList({ firm }) {
                   )}
                 </div>
               </div>
-            </div>
-          ))}
+            );
+
+            const key = member.id || `${member.name}-${index}`;
+
+            if (member.professionalId) {
+              return (
+                <Link
+                  key={key}
+                  href={`/professionals/${member.professionalId}`}
+                  className="flex flex-col rounded-xl border border-slate-200 p-4 transition-colors hover:border-amber-300"
+                >
+                  {cardInner}
+                </Link>
+              );
+            }
+
+            return (
+              <div
+                key={key}
+                className="flex flex-col rounded-xl border border-slate-200 p-4"
+              >
+                {cardInner}
+              </div>
+            );
+          })}
         </div>
       )}
     </Card>

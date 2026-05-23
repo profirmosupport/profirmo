@@ -16,6 +16,8 @@ const ENDPOINTS = {
   resendOtp: '/api/auth/resend-otp',
   verifyPasswordOtp: '/api/auth/verify-password-otp',
   resetPassword: '/api/auth/reset-password',
+  claimInfo: '/api/auth/claim-info',
+  claimAccount: '/api/auth/claim-account',
   // Legacy register endpoints still exist on the backend.
   registerClient: '/api/auth/register-client',
   registerProfessional: '/api/auth/register-professional',
@@ -73,6 +75,28 @@ export async function verifyEmail(token) {
  */
 export async function resendVerification(email) {
   return post(ENDPOINTS.resendVerification, { email });
+}
+
+/**
+ * Fetch the email + display name attached to a client-invitation token, so
+ * the claim page can pre-fill the form. Throws on expired / invalid tokens.
+ * @param {string} token
+ * @returns {Promise<{email,name,role}>}
+ */
+export async function getClaimInfo(token) {
+  const res = await get(ENDPOINTS.claimInfo, { params: { token } });
+  return unwrap(res);
+}
+
+/**
+ * Submit the client-claim form. On success the backend sets the refresh
+ * cookie and returns an access token — i.e. it auto-logs the user in.
+ * @param {{token,password,fullName?}} payload
+ * @returns {Promise<{accessToken,token,user}>}
+ */
+export async function claimAccount({ token, password, fullName }) {
+  const res = await post(ENDPOINTS.claimAccount, { token, password, fullName });
+  return unwrap(res);
 }
 
 /**

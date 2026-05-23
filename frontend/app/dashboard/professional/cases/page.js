@@ -1,90 +1,215 @@
 'use client';
 
+import { useCallback, useEffect, useState } from 'react';
+import { Briefcase, Plus, RefreshCw, Eye } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
-import CaseTable from '@/components/dashboard/CaseTable';
-import ConsultationTable from '@/components/dashboard/ConsultationTable';
-import FileManager from '@/components/dashboard/FileManager';
-import { useLanguage } from '@/components/LanguageProvider';
-import { useAuth } from '@/hooks/useAuth';
-import { useDashboard } from '@/hooks/useDashboard';
+import Card from '@/components/common/Card';
+import Button from '@/components/common/Button';
+import Badge from '@/components/common/Badge';
+import EmptyState from '@/components/common/EmptyState';
+import AddCaseModal from '@/components/cases/AddCaseModal';
+import caseService from '@/services/caseService';
 import { ROLES } from '@/utils/constants';
+import { formatDate } from '@/utils/formatters';
 
-function SectionTitle({ title, description }) {
+const PRIORITY_VARIANT = {
+  low: 'gray',
+  medium: 'gray',
+  high: 'amber',
+  urgent: 'red',
+};
+
+const STATUS_VARIANT = {
+  open: 'blue',
+  'in-progress': 'amber',
+  closed: 'green',
+};
+
+const STATUS_LABEL = {
+  open: 'Open',
+  'in-progress': 'In progress',
+  closed: 'Closed',
+};
+
+function ListSkeleton() {
   return (
-    <div className="mb-3">
-      <h2 className="text-base font-semibold text-slate-900">{title}</h2>
-      {description && <p className="text-sm text-slate-500">{description}</p>}
+    <div className="space-y-3">
+      {[...Array(5)].map((_, i) => (
+        <div
+          key={i}
+          className="h-16 w-full animate-pulse rounded-xl bg-slate-100"
+        />
+      ))}
     </div>
   );
 }
 
 export default function ProfessionalCasesPage() {
-  const { t } = useLanguage();
-  const { user } = useAuth();
-  const linkedId = user ? user.linkedId || user.firmId : undefined;
-  const dashboard = useDashboard(ROLES.PROFESSIONAL, linkedId);
+  const [cases, setCases] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [addOpen, setAddOpen] = useState(false);
 
-  const cases = dashboard.cases || [];
-  const consultations = dashboard.consultations || [];
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await caseService.getMyCases();
+      setCases(Array.isArray(res) ? res : []);
+    } catch (err) {
+      setError(err.message || 'Failed to load cases.');
+      setCases([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const upcoming = consultations.filter(
-    (c) => c.callStatus === 'scheduled' || c.callStatus === 'ongoing'
-  );
-  const ended = consultations.filter((c) => c.callStatus === 'ended');
-
-  const caseFiles = cases.flatMap((c) => c.files || []);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   return (
     <DashboardLayout
       role={ROLES.PROFESSIONAL}
       title="Cases"
-      subtitle="Matters, consultations and case files"
+      subtitle="Matters assigned to you"
     >
-      <div className="space-y-8">
-        {/* Cases */}
-        <section>
-          <SectionTitle
-            title={t('dashPro.cases.title')}
-            description={t('dashPro.cases.desc')}
-          />
-          <CaseTable cases={cases} />
-        </section>
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-slate-500">
+            {loading
+              ? 'Loading cases…'
+              : `${cases.length} case${cases.length === 1 ? '' : 's'}`}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={load}
+              disabled={loading}
+            >
+              <RefreshCw size={15} />
+              Refresh
+            </Button>
+            <Button size="sm" onClick={() => setAddOpen(true)}>
+              <Plus size={15} />
+              New case
+            </Button>
+          </div>
+        </div>
 
-        {/* Today's & upcoming consultations */}
-        <section>
-          <SectionTitle
-            title={t('dashPro.upcoming.title')}
-            description={t('dashPro.upcoming.desc')}
+        {loading ? (
+          <ListSkeleton />
+        ) : error ? (
+          <Card>
+            <div className="flex flex-col items-center justify-center gap-3 py-8 text-center">
+              <p className="text-sm font-medium text-slate-700">{error}</p>
+              <Button size="sm" onClick={load}>
+                <RefreshCw size={15} />
+                Try again
+              </Button>
+            </div>
+          </Card>
+        ) : cases.length === 0 ? (
+          <EmptyState
+            icon={<Briefcase size={24} />}
+            title="No cases yet"
+            description="Cases assigned to you will appear here."
+            action={
+              <Button size="sm" onClick={() => setAddOpen(true)}>
+                <Plus size={15} />
+                New case
+              </Button>
+            }
           />
-          <ConsultationTable
-            consultations={upcoming}
-            emptyTitle={t('dashPro.upcoming.emptyTitle')}
-            emptyDescription={t('dashPro.upcoming.emptyDesc')}
-          />
-        </section>
-
-        {/* Past consultations */}
-        <section>
-          <SectionTitle
-            title={t('dashPro.history.title')}
-            description={t('dashPro.history.desc')}
-          />
-          <ConsultationTable
-            consultations={ended}
-            emptyTitle={t('dashPro.history.emptyTitle')}
-            emptyDescription={t('dashPro.history.emptyDesc')}
-          />
-        </section>
-
-        {/* Case files */}
-        <section>
-          <SectionTitle
-            title={t('dashPro.documents.title')}
-            description={t('dashPro.documents.desc')}
-          />
-          <FileManager files={caseFiles} />
-        </section>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-4 py-3 font-semibold">Title</th>
+                  <th className="px-4 py-3 font-semibold">Category</th>
+                  <th className="px-4 py-3 font-semibold">Client</th>
+                  <th className="px-4 py-3 font-semibold">Priority</th>
+                  <th className="px-4 py-3 font-semibold">Status</th>
+                  <th className="px-4 py-3 font-semibold">Next hearing</th>
+                  <th className="px-4 py-3 font-semibold">Created</th>
+                  <th className="px-4 py-3 font-semibold text-right">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {cases.map((c) => (
+                  <tr key={c.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-slate-800">
+                        {c.title || '—'}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {c.category || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {c.client ? (
+                        <div>
+                          <p className="font-medium text-slate-800">
+                            {c.client.name}
+                          </p>
+                          {c.client.phone && (
+                            <p className="text-xs text-slate-400">
+                              {c.client.phone}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        c.clientId || '—'
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge variant={PRIORITY_VARIANT[c.priority] || 'gray'}>
+                        {c.priority || 'medium'}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge variant={STATUS_VARIANT[c.status] || 'gray'}>
+                        {STATUS_LABEL[c.status] || c.status || 'Open'}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {c.nextHearingDate ? formatDate(c.nextHearingDate) : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {formatDate(c.createdAt)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end">
+                        <Button
+                          href={`/dashboard/professional/cases/${c.id}`}
+                          variant="outline"
+                          size="sm"
+                        >
+                          <Eye size={14} />
+                          View
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
+
+      <AddCaseModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onCreated={() => {
+          setAddOpen(false);
+          load();
+        }}
+      />
     </DashboardLayout>
   );
 }

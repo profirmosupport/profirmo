@@ -11,7 +11,6 @@ const {
   sequelize,
   User,
   Session,
-  Client,
   Professional,
   Firm,
   ProfessionalApproval,
@@ -182,6 +181,142 @@ const enqueueVerificationEmail = async (user, rawToken) => {
   });
 };
 
+/**
+ * Queue a client-invitation email when a professional adds a new client.
+ * The link routes to the claim page where the client sets a password and
+ * gets logged in. Same emailVerificationTokenHash machinery powers both —
+ * one column, two flows, distinguished by user.status === 'invited'.
+ *
+ * @param {object} user - user record (needs email, fullName/name)
+ * @param {string} rawToken - raw invite token
+ * @param {string} [professionalName] - name of the inviting professional
+ */
+const enqueueClientInvitationEmail = async (user, rawToken, professionalName) => {
+  await enqueue('email', {
+    to: user.email,
+    template: 'clientInvitation',
+    vars: {
+      name: user.fullName || user.firstName || user.name || 'there',
+      professionalName: professionalName || 'A professional',
+      claimUrl: `${env.appUrl}/auth/claim?token=${rawToken}`,
+      expiryHours: env.emailVerificationExpiryHours,
+    },
+  });
+};
+
+/**
+ * Public-facing details for a claim token. The frontend uses this to
+ * pre-fill the claim form. Returns 400 when the token is invalid/expired so
+ * callers can show a friendly message.
+ */
+const getClaimInfo = async (rawToken) => {
+  if (!rawToken) {
+    throw { statusCode: 400, message: 'Invitation token is required' };
+  }
+  const user = await User.findOne({
+    where: { emailVerificationTokenHash: hashToken(rawToken) },
+  });
+  if (
+    !user ||
+    !user.emailVerificationExpiresAt ||
+    new Date(user.emailVerificationExpiresAt).getTime() <= Date.now()
+  ) {
+    throw { statusCode: 400, message: 'Invalid or expired invitation link' };
+  }
+  return {
+    email: user.email,
+    name:
+      user.fullName ||
+      [user.firstName, user.lastName].filter(Boolean).join(' ').trim() ||
+      user.name ||
+      '',
+    role: user.role,
+  };
+};
+
+/**
+ * Claim a client account: verify the invite token, set a password, mark the
+ * user verified, clear the token, and auto-log them in. Returns the same
+ * shape as `login` so the AuthProvider can adopt the session.
+ */
+const claimClientAccount = async ({ token, password, fullName }, meta = {}) => {
+  if (!token) {
+    throw { statusCode: 400, message: 'Invitation token is required' };
+  }
+  if (!password || String(password).length < 8) {
+    throw { statusCode: 422, message: 'Password must be at least 8 characters' };
+  }
+
+  const user = await User.findOne({
+    where: { emailVerificationTokenHash: hashToken(token) },
+  });
+  if (
+    !user ||
+    !user.emailVerificationExpiresAt ||
+    new Date(user.emailVerificationExpiresAt).getTime() <= Date.now()
+  ) {
+    throw { statusCode: 400, message: 'Invalid or expired invitation link' };
+  }
+
+  const passwordHash = await hashPassword(password);
+  const trimmedName = (fullName || '').trim();
+
+  const result = await sequelize.transaction(async (transaction) => {
+    user.password = passwordHash;
+    user.emailVerified = true;
+    user.accountVerified = true;
+    user.status = 'active';
+    user.emailVerificationTokenHash = null;
+    user.emailVerificationExpiresAt = null;
+    user.emailVerificationSentAt = null;
+    if (trimmedName) {
+      user.fullName = trimmedName;
+      user.name = trimmedName;
+      const [firstName, ...rest] = trimmedName.split(/\s+/);
+      user.firstName = firstName || user.firstName;
+      user.lastName = rest.join(' ') || user.lastName;
+    }
+    if (!user.uuid) user.uuid = genUuid();
+    if (!user.memberSince) user.memberSince = user.createdAt || new Date();
+    user.isOnline = true;
+    user.lastLogin = new Date();
+    await user.save({ transaction });
+
+    const refreshToken = generateRefreshToken();
+    await Session.create(
+      {
+        userId: user.id,
+        tokenHash: hashToken(refreshToken),
+        userAgent: meta.userAgent || null,
+        ipAddress: meta.ipAddress || null,
+        expiresAt: new Date(Date.now() + env.refreshTokenDays * 86400000),
+      },
+      { transaction }
+    );
+
+    return {
+      accessToken: signAccessToken(user),
+      refreshToken,
+      user: sanitizeUser(user),
+    };
+  });
+
+  try {
+    await notificationService.createNotification({
+      userId: user.id,
+      type: 'welcome',
+      title: 'Welcome to Profirmo',
+      message:
+        'Your account is active. You can view your bookings and cases here.',
+      link: '/dashboard',
+    });
+  } catch (err) {
+    console.warn(`[Auth] welcome notification failed: ${err.message || err}`);
+  }
+
+  return result;
+};
+
 // --- Core registration -----------------------------------------------------
 
 /**
@@ -227,14 +362,10 @@ const createUserWithRole = async ({ role, data = {} }) => {
   const phone = data.phone || data.mobileNumber || '';
 
   if (role === 'client') {
-    const client = await Client.create({
-      name: derivedName,
-      email,
-      phone,
-      city: data.city || '',
-      userType: data.userType || 'individual',
-    });
-    linkedId = client.id;
+    // Clients are first-class users — no separate clients table. linkedId
+    // stays null; downstream code reads name/phone/city directly off the
+    // user row.
+    linkedId = null;
   } else if (role === 'professional') {
     const professional = await Professional.create({
       name: derivedName,
@@ -1122,4 +1253,9 @@ module.exports = {
   verifyPasswordOtp,
   resetPassword,
   GENERIC_RESET_MESSAGE,
+  // Client-invitation flow ----------------------------------------------------
+  buildVerificationToken,
+  enqueueClientInvitationEmail,
+  getClaimInfo,
+  claimClientAccount,
 };

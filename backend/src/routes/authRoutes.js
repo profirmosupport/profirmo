@@ -93,6 +93,21 @@ router.post(
   authController.registerFirm
 );
 
+// --- Client invitation / claim --------------------------------------------
+
+// Fetch the email + name attached to a claim token so the frontend form can
+// pre-fill the UI before the user sets a password.
+router.get('/claim-info', authController.getClaimInfo);
+
+// Set a password against a valid claim token, mark the account active, and
+// return an access + refresh token (auto-login).
+router.post(
+  '/claim-account',
+  authLimiter,
+  validateBody({ token: 'required', password: 'required|min:8' }),
+  authController.claimAccount
+);
+
 // --- Password reset (forgot-password + email OTP) -------------------------
 
 // Begin a password reset. authLimiter throttles abuse; the response is

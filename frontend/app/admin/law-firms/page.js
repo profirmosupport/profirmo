@@ -39,6 +39,7 @@ import {
   createLawFirm,
   updateLawFirm,
   deleteLawFirm,
+  listUsers,
 } from '@/services/adminService';
 
 const PAGE_SIZE = 20;
@@ -183,6 +184,179 @@ function FirmActionsMenu({ onView, onEdit, onDelete }) {
   );
 }
 
+/**
+ * OwnerPicker — read-only display of the current owner with a "Change owner"
+ * button that reveals an inline search panel. Calls listUsers({ role:
+ * 'professional', search, limit: 10 }) for results.
+ *
+ * Props:
+ *  - currentOwner: { id, name, email, profilePhoto } | null
+ *  - selected: { id, name, email, profilePhoto } | null — picked but unsaved
+ *  - onSelect(user): called when a professional is picked
+ *  - onClear(): called when "Use current owner" is clicked to drop selection
+ */
+function OwnerPicker({ currentOwner, selected, onSelect, onClear }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState('');
+
+  // Debounce the query so we don't spam the API on every keystroke.
+  useEffect(() => {
+    if (!open) return undefined;
+    let cancelled = false;
+    setSearching(true);
+    setSearchError('');
+    const handle = setTimeout(async () => {
+      try {
+        const { data } = await listUsers({
+          role: 'professional',
+          search: query.trim() || undefined,
+          limit: 10,
+        });
+        if (!cancelled) setResults(Array.isArray(data) ? data : []);
+      } catch (err) {
+        if (!cancelled) {
+          setSearchError(err.message || 'Failed to search professionals.');
+          setResults([]);
+        }
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [open, query]);
+
+  const display = selected || currentOwner;
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+        Owner
+      </p>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+        {display ? (
+          <div className="flex min-w-0 items-center gap-3">
+            <Avatar
+              src={display.profilePhoto}
+              name={display.name || display.email || ''}
+              size="sm"
+            />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="truncate text-sm font-medium text-slate-800">
+                  {display.name || '—'}
+                </p>
+                <Badge variant={selected ? 'amber' : 'green'}>
+                  {selected ? 'Pending change' : 'Owner'}
+                </Badge>
+              </div>
+              <p className="truncate text-xs text-slate-500">
+                {display.email || '—'}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">No owner assigned.</p>
+        )}
+        <div className="flex items-center gap-2">
+          {selected && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onClear}
+            >
+              Reset
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setOpen((v) => !v)}
+          >
+            {open ? 'Close' : 'Change owner'}
+          </Button>
+        </div>
+      </div>
+
+      {open && (
+        <div className="mt-3 space-y-2 border-t border-slate-200 pt-3">
+          <p className="text-xs text-slate-500">
+            Pick any professional from the platform.
+          </p>
+          <Input
+            name="owner-search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search professionals by name or email…"
+          />
+          {selected && (
+            <div className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800">
+              Selected: {selected.name || selected.email}
+            </div>
+          )}
+          {searchError ? (
+            <p className="text-xs text-red-600">{searchError}</p>
+          ) : searching ? (
+            <p className="text-xs text-slate-500">Searching…</p>
+          ) : results.length === 0 ? (
+            <p className="text-xs text-slate-500">No professionals found.</p>
+          ) : (
+            <ul className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-white">
+              {results.map((u) => {
+                const isCurrent =
+                  currentOwner && u.id === currentOwner.id && !selected;
+                const isSelected = selected && u.id === selected.id;
+                return (
+                  <li
+                    key={u.id}
+                    className="flex items-center justify-between gap-3 px-3 py-2"
+                  >
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Avatar
+                        src={u.profilePhoto}
+                        name={u.name || u.email || ''}
+                        size="sm"
+                      />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-slate-800">
+                          {u.name || '—'}
+                        </p>
+                        <p className="truncate text-xs text-slate-500">
+                          {u.email || '—'}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant={isSelected ? 'primary' : 'outline'}
+                      size="sm"
+                      onClick={() => onSelect(u)}
+                      disabled={isCurrent}
+                    >
+                      {isSelected
+                        ? 'Selected'
+                        : isCurrent
+                          ? 'Current'
+                          : 'Select'}
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Build the payload for create/update from form state, omitting blanks. */
 function buildFirmPayload(form) {
   const payload = {};
@@ -244,6 +418,8 @@ export default function AdminLawFirmsPage() {
   const [editForm, setEditForm] = useState(null);
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editError, setEditError] = useState('');
+  // Owner pick state for the Edit modal.
+  const [editSelectedOwner, setEditSelectedOwner] = useState(null);
 
   // Delete modal state.
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -365,6 +541,7 @@ export default function AdminLawFirmsPage() {
   function openEdit(row) {
     setEditError('');
     setEditTarget(row);
+    setEditSelectedOwner(null);
     setEditForm({
       firmName: row.firmName || '',
       headquarters: row.headquarters || '',
@@ -386,6 +563,7 @@ export default function AdminLawFirmsPage() {
     if (editSubmitting) return;
     setEditTarget(null);
     setEditForm(null);
+    setEditSelectedOwner(null);
     setEditError('');
   }
 
@@ -406,9 +584,22 @@ export default function AdminLawFirmsPage() {
 
     setEditSubmitting(true);
     try {
-      await updateLawFirm(editTarget.id, buildFirmPayload(editForm));
+      const payload = buildFirmPayload(editForm);
+      // Override the ownerUserId only when the admin picked a different
+      // professional in the owner picker.
+      if (
+        editSelectedOwner &&
+        editSelectedOwner.id &&
+        editSelectedOwner.id !== editTarget.ownerUserId
+      ) {
+        payload.ownerUserId = editSelectedOwner.id;
+      } else {
+        delete payload.ownerUserId;
+      }
+      await updateLawFirm(editTarget.id, payload);
       setEditTarget(null);
       setEditForm(null);
+      setEditSelectedOwner(null);
       await load();
     } catch (err) {
       setEditError(err.message || 'Failed to update firm.');
@@ -1106,12 +1297,11 @@ export default function AdminLawFirmsPage() {
               onChange={onEditChange}
               options={STATUS_FORM_OPTIONS}
             />
-            <Input
-              label="Owner user ID"
-              name="ownerUserId"
-              value={editForm.ownerUserId}
-              onChange={onEditChange}
-              hint="Leave blank to create a firm without an owner"
+            <OwnerPicker
+              currentOwner={editTarget && editTarget.owner}
+              selected={editSelectedOwner}
+              onSelect={(u) => setEditSelectedOwner(u)}
+              onClear={() => setEditSelectedOwner(null)}
             />
             <div>
               <label

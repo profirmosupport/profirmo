@@ -29,6 +29,9 @@ const USER_COLUMNS = [
   ['emailVerificationTokenHash', 'VARCHAR(255)'],
   ['emailVerificationExpiresAt', 'DATETIME'],
   ['emailVerificationSentAt', 'DATETIME'],
+  // --- Phase-10: client unification — clients are users now -------------
+  ['city', 'VARCHAR(255)'],
+  ["userType", "VARCHAR(64) DEFAULT 'individual'"],
 ];
 
 // Phase-7 additive columns: { table: [[name, SQL type], ...] }. Existing
@@ -268,6 +271,33 @@ async function runMigrations() {
     `[Migrate] Review column check complete (${reviewAdded} processed).`
   );
 
+  // 7a. Descriptive case columns (priority, court info, next hearing, assigned-by).
+  const CASE_COLUMNS = [
+    ['priority', "VARCHAR(20) NOT NULL DEFAULT 'medium'"],
+    ['caseNumber', 'VARCHAR(255)'],
+    ['courtName', 'VARCHAR(255)'],
+    ['opposingParty', 'VARCHAR(255)'],
+    ['nextHearingDate', 'DATE'],
+    ['assignedByUserId', 'VARCHAR(64)'],
+    ['assignedAt', 'DATETIME'],
+  ];
+  let caseColsAdded = 0;
+  for (const [col, type] of CASE_COLUMNS) {
+    try {
+      await sequelize.query(
+        `ALTER TABLE \`cases\` ADD COLUMN IF NOT EXISTS \`${col}\` ${type}`
+      );
+      caseColsAdded += 1;
+    } catch (err) {
+      console.warn(
+        `[Migrate] Could not add cases.${col}: ${err.message}`
+      );
+    }
+  }
+  console.log(
+    `[Migrate] Case column check complete (${caseColsAdded} processed).`
+  );
+
   // 7b. Allow ownerless firms — admin can create a law firm before assigning
   //     an owner. Earlier the column was NOT NULL.
   try {
@@ -400,6 +430,47 @@ async function runMigrations() {
       `[Migrate] Professional backfill: users +${proCreated}, details +${detailCreated}, approvals +${approvalCreated}.`
     );
 
+    // 9b. Every `professional` user should have an approval row so the admin
+    //     panel can show its status. Firm OWNERS (users who own a LawFirm)
+    //     are auto-approved — they reached the role via a different path and
+    //     should not be blocked from logging in. Anyone else with no
+    //     ProfessionalDetail gets a PENDING_APPROVAL row.
+    const profUsersWithoutApproval = await User.findAll({
+      where: { role: 'professional' },
+      attributes: ['id'],
+      raw: true,
+    });
+    let approvalGapFilled = 0;
+    let approvalAutoApproved = 0;
+    for (const u of profUsersWithoutApproval) {
+      const existing = await ProfessionalApproval.findOne({
+        where: { userId: u.id },
+      });
+      const ownsFirm = await LawFirm.findOne({
+        where: { ownerUserId: u.id },
+      });
+      const targetStatus = ownsFirm ? 'APPROVED' : 'PENDING_APPROVAL';
+      if (existing) {
+        // Firm owners we mistakenly marked PENDING earlier get auto-approved.
+        if (ownsFirm && existing.status === 'PENDING_APPROVAL') {
+          await existing.update({ status: 'APPROVED' });
+          approvalAutoApproved += 1;
+        }
+        continue;
+      }
+      await ProfessionalApproval.create({
+        userId: u.id,
+        status: targetStatus,
+      });
+      if (targetStatus === 'APPROVED') approvalAutoApproved += 1;
+      else approvalGapFilled += 1;
+    }
+    if (approvalGapFilled > 0 || approvalAutoApproved > 0) {
+      console.log(
+        `[Migrate] Approval gap filled: +${approvalGapFilled} PENDING, +${approvalAutoApproved} auto-approved firm owners.`
+      );
+    }
+
     // --- Firms backfill (dedup-aware) -------------------------------------
     // A user with linkedId='firm-N' who already owns a LawFirm IS the
     // representative for that legacy firm — attach legacyFirmId to it
@@ -466,7 +537,346 @@ async function runMigrations() {
     console.warn(`[Migrate] Backfill failed: ${err.message}`);
   }
 
+  // 10. Client unification: clients are first-class users (role='client'), not
+  //     a separate table. For every row in the legacy `clients` table we
+  //     ensure a corresponding `users` row exists, repoint all clientId FKs
+  //     on booking / case / consultation / review to the new user id, populate
+  //     the new professional_clients link table from existing relationships,
+  //     drop the FK constraints that point at `clients`, then drop the table.
+  await runClientUnification();
+
+  // 11. Backfill FirmMember(role='owner') for any LawFirm whose owner does not
+  //     yet have an explicit member row, so professional-count + collective
+  //     reviews include the owner. Idempotent.
+  await runOwnerMemberBackfill();
+
+  // 12. Reviews are always against a professional, never a firm. Drop the
+  //     unused `firmId` column from the reviews table.
+  await runReviewFirmIdDrop();
+
   console.log('[Migrate] Migrations finished successfully.');
+}
+
+// Owners of a LawFirm sometimes lack an explicit FirmMember row (this is true
+// of every law_firms row backfilled from a legacy `firms` row). Create one so
+// professionalCount + collective-review look-ups treat the owner as a member.
+// If the owner lacks a ProfessionalDetail row entirely, create a stub one
+// (owners of a firm are by definition professionals).
+async function runOwnerMemberBackfill() {
+  try {
+    const {
+      LawFirm,
+      FirmMember,
+      ProfessionalDetail,
+    } = require('../models');
+    const firms = await LawFirm.findAll({ raw: true });
+    let added = 0;
+    let detailsCreated = 0;
+    for (const f of firms) {
+      if (!f.ownerUserId) continue;
+      let detail = await ProfessionalDetail.findOne({
+        where: { userId: f.ownerUserId },
+        raw: true,
+      });
+      if (!detail) {
+        detail = await ProfessionalDetail.create({ userId: f.ownerUserId });
+        detailsCreated += 1;
+      }
+      const existing = await FirmMember.findOne({
+        where: { firmId: f.id, professionalId: detail.id },
+        raw: true,
+      });
+      if (existing) continue;
+      await FirmMember.create({
+        firmId: f.id,
+        professionalId: detail.id,
+        role: 'owner',
+        status: 'active',
+        joiningDate: new Date(),
+      });
+      added += 1;
+    }
+    if (added > 0 || detailsCreated > 0) {
+      console.log(
+        `[Migrate] Owner FirmMember backfill: +${added} members, +${detailsCreated} detail stubs.`
+      );
+    }
+  } catch (err) {
+    console.warn(`[Migrate] Owner FirmMember backfill failed: ${err.message}`);
+  }
+}
+
+// Reviews never reference a firm directly — collective reviews are aggregated
+// from the member professionals. Drop the unused `firmId` column (and its FK
+// + index) from the reviews table.
+async function runReviewFirmIdDrop() {
+  try {
+    const [cols] = await sequelize.query(
+      "SHOW COLUMNS FROM `reviews` LIKE 'firmId'"
+    );
+    if (cols.length === 0) return;
+    // 1. Drop any FK constraint on reviews that points at firmId.
+    const [fks] = await sequelize.query(
+      `SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'reviews'
+           AND COLUMN_NAME = 'firmId'
+           AND REFERENCED_TABLE_NAME IS NOT NULL`
+    );
+    for (const fk of fks) {
+      try {
+        await sequelize.query(
+          `ALTER TABLE \`reviews\` DROP FOREIGN KEY \`${fk.CONSTRAINT_NAME}\``
+        );
+      } catch (err) {
+        console.warn(
+          `[Migrate] Could not drop reviews FK ${fk.CONSTRAINT_NAME}: ${err.message}`
+        );
+      }
+    }
+    // 2. Drop any index that references firmId.
+    const [indexRows] = await sequelize.query(
+      "SHOW INDEX FROM `reviews` WHERE Column_name = 'firmId'"
+    );
+    const seen = new Set();
+    for (const row of indexRows) {
+      const name = row.Key_name;
+      if (!name || name === 'PRIMARY' || seen.has(name)) continue;
+      seen.add(name);
+      try {
+        await sequelize.query(`ALTER TABLE \`reviews\` DROP INDEX \`${name}\``);
+      } catch (err) {
+        console.warn(
+          `[Migrate] Could not drop reviews index ${name}: ${err.message}`
+        );
+      }
+    }
+    // 3. Drop the column.
+    await sequelize.query('ALTER TABLE `reviews` DROP COLUMN `firmId`');
+    console.log('[Migrate] Dropped reviews.firmId column.');
+  } catch (err) {
+    console.warn(`[Migrate] Could not drop reviews.firmId: ${err.message}`);
+  }
+}
+
+// Look up FK constraint names that reference a given parent table, so the
+// migration can drop them without knowing the auto-generated name up-front.
+async function findFksReferencing(parentTable) {
+  const [rows] = await sequelize.query(
+    `SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME
+       FROM information_schema.KEY_COLUMN_USAGE
+       WHERE REFERENCED_TABLE_SCHEMA = DATABASE()
+         AND REFERENCED_TABLE_NAME = ?`,
+    { replacements: [parentTable] }
+  );
+  return rows;
+}
+
+// Best-effort: the table may not exist on a fresh DB.
+async function tableExists(name) {
+  const [rows] = await sequelize.query(
+    `SELECT 1 FROM information_schema.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? LIMIT 1`,
+    { replacements: [name] }
+  );
+  return rows.length > 0;
+}
+
+async function runClientUnification() {
+  try {
+    if (!(await tableExists('clients'))) {
+      // Already unified — nothing to do.
+      return;
+    }
+    const {
+      User,
+      ProfessionalClient,
+      Booking,
+      Case,
+      Consultation,
+      Review,
+    } = require('../models');
+
+    // Pull every legacy Client row directly via SQL (the model has been
+    // removed from the registry; reading via Sequelize would fail).
+    const [legacyClients] = await sequelize.query(
+      'SELECT id, name, email, phone, city, userType, createdAt FROM clients'
+    );
+
+    // clientId -> userId mapping built as we go.
+    const map = new Map();
+    let userCreated = 0;
+    let userMatched = 0;
+    for (const c of legacyClients) {
+      // 1. User that auth created with linkedId pointing at this client.
+      let user = await User.findOne({ where: { linkedId: c.id } });
+      // 2. Existing user by email (clients had email; users have email).
+      if (!user && c.email) {
+        user = await User.findOne({ where: { email: c.email.toLowerCase() } });
+      }
+      // 3. Existing user by mobile number (clients had phone).
+      if (!user && c.phone) {
+        user = await User.findOne({ where: { mobileNumber: c.phone } });
+      }
+      if (user) {
+        userMatched += 1;
+        // Backfill missing profile fields from the client row.
+        const patch = {};
+        if (!user.fullName && c.name) patch.fullName = c.name;
+        if (!user.name && c.name) patch.name = c.name;
+        if (!user.mobileNumber && c.phone) patch.mobileNumber = c.phone;
+        if (!user.city && c.city) patch.city = c.city;
+        if (user.role !== 'client' && user.role !== 'professional') {
+          // Avoid downgrading a professional/admin user.
+        }
+        if (Object.keys(patch).length > 0) await user.update(patch);
+      } else {
+        // 4. Create a brand-new user (role=client) for the orphan client row.
+        //    Email is required + unique; synthesise one when missing.
+        const email = (c.email && c.email.toLowerCase()) ||
+          `pf-client-${c.id}@profirmo.local`;
+        // Guard against unique-collision on the synthesised email.
+        const conflict = await User.findOne({ where: { email } });
+        if (conflict) {
+          user = conflict;
+          userMatched += 1;
+        } else {
+          user = await User.create({
+            email,
+            password: await hashPassword('client123'),
+            role: 'client',
+            name: c.name || '',
+            fullName: c.name || '',
+            mobileNumber: c.phone || null,
+            city: c.city || '',
+            linkedId: null,
+            status: 'active',
+            accountVerified: true,
+            emailVerified: true,
+            memberSince: c.createdAt || new Date(),
+          });
+          userCreated += 1;
+        }
+      }
+      map.set(c.id, user.id);
+    }
+    console.log(
+      `[Migrate] Client unification: users matched ${userMatched}, created ${userCreated}.`
+    );
+
+    // Drop the linkedId column references that are no longer meaningful —
+    // for any user with linkedId pointing at a former clients.id, null it out
+    // (the row is now self-contained).
+    if (map.size > 0) {
+      const legacyIds = Array.from(map.keys());
+      await sequelize.query(
+        `UPDATE users SET linkedId = NULL
+           WHERE role = 'client' AND linkedId IN (${legacyIds.map(() => '?').join(',')})`,
+        { replacements: legacyIds }
+      );
+    }
+
+    // Drop every FK constraint referencing the legacy `clients` table BEFORE
+    // we repoint the rows — otherwise the FK refuses to accept user ids.
+    const fks = await findFksReferencing('clients');
+    for (const fk of fks) {
+      try {
+        await sequelize.query(
+          `ALTER TABLE \`${fk.TABLE_NAME}\` DROP FOREIGN KEY \`${fk.CONSTRAINT_NAME}\``
+        );
+      } catch (err) {
+        console.warn(
+          `[Migrate] Could not drop FK ${fk.TABLE_NAME}.${fk.CONSTRAINT_NAME}: ${err.message}`
+        );
+      }
+    }
+
+    // Repoint clientId FKs on the four dependent tables.
+    let repointed = 0;
+    for (const [clientId, userId] of map) {
+      const [r1] = await sequelize.query(
+        'UPDATE bookings SET clientId = ? WHERE clientId = ?',
+        { replacements: [userId, clientId] }
+      );
+      const [r2] = await sequelize.query(
+        'UPDATE cases SET clientId = ? WHERE clientId = ?',
+        { replacements: [userId, clientId] }
+      );
+      const [r3] = await sequelize.query(
+        'UPDATE consultations SET clientId = ? WHERE clientId = ?',
+        { replacements: [userId, clientId] }
+      );
+      const [r4] = await sequelize.query(
+        'UPDATE reviews SET clientId = ? WHERE clientId = ?',
+        { replacements: [userId, clientId] }
+      );
+      repointed +=
+        ((r1 && r1.affectedRows) || 0) +
+        ((r2 && r2.affectedRows) || 0) +
+        ((r3 && r3.affectedRows) || 0) +
+        ((r4 && r4.affectedRows) || 0);
+    }
+    console.log(
+      `[Migrate] Client unification: clientId references repointed = ${repointed}.`
+    );
+
+    // Backfill professional_clients from existing case / booking / consultation
+    // relationships so each professional sees the clients they have engaged with.
+    const linkRows = new Set();
+    const addLink = (professionalId, clientUserId) => {
+      if (!professionalId || !clientUserId) return;
+      linkRows.add(`${professionalId}|${clientUserId}`);
+    };
+    const cases = await Case.findAll({
+      attributes: ['professionalId', 'clientId'],
+      raw: true,
+    });
+    for (const r of cases) addLink(r.professionalId, r.clientId);
+    const bookings = await Booking.findAll({
+      attributes: ['professionalId', 'clientId'],
+      raw: true,
+    });
+    for (const r of bookings) addLink(r.professionalId, r.clientId);
+    const consults = await Consultation.findAll({
+      attributes: ['professionalId', 'clientId'],
+      raw: true,
+    });
+    for (const r of consults) addLink(r.professionalId, r.clientId);
+    const reviews = await Review.findAll({
+      attributes: ['professionalId', 'clientId'],
+      raw: true,
+    });
+    for (const r of reviews) addLink(r.professionalId, r.clientId);
+
+    let linksCreated = 0;
+    for (const key of linkRows) {
+      const [professionalId, clientUserId] = key.split('|');
+      const [existing] = await sequelize.query(
+        'SELECT id FROM professional_clients WHERE professionalId = ? AND clientUserId = ? LIMIT 1',
+        { replacements: [professionalId, clientUserId] }
+      );
+      if (existing.length > 0) continue;
+      await ProfessionalClient.create({
+        professionalId,
+        clientUserId,
+        addedByUserId: null,
+      });
+      linksCreated += 1;
+    }
+    console.log(
+      `[Migrate] Client unification: professional_clients +${linksCreated}.`
+    );
+
+    // Finally drop the clients table.
+    try {
+      await sequelize.query('DROP TABLE IF EXISTS clients');
+      console.log('[Migrate] Client unification: dropped clients table.');
+    } catch (err) {
+      console.warn(`[Migrate] Could not drop clients table: ${err.message}`);
+    }
+  } catch (err) {
+    console.warn(`[Migrate] Client unification failed: ${err.message}`);
+  }
 }
 
 module.exports = { runMigrations };
