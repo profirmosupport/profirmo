@@ -123,12 +123,15 @@ export default function CaseDetail({ caseId }) {
   const [notes, setNotes] = useState([]);
   const [notesLoading, setNotesLoading] = useState(false);
   const [noteBody, setNoteBody] = useState('');
+  // Attachments selected for the in-progress new-note form. Cleared on send.
+  const [noteAttachments, setNoteAttachments] = useState([]);
   const [noteSubmitting, setNoteSubmitting] = useState(false);
   const [noteError, setNoteError] = useState('');
 
-  // Inline-edit state for a single note (id + draft body).
+  // Inline-edit state for a single note (id + draft body + draft attachments).
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [editingNoteDraft, setEditingNoteDraft] = useState('');
+  const [editingNoteAttachments, setEditingNoteAttachments] = useState([]);
   const [noteRowBusy, setNoteRowBusy] = useState(null);
   // Confirm-delete target for a note.
   const [deletingNoteId, setDeletingNoteId] = useState(null);
@@ -245,8 +248,9 @@ export default function CaseDetail({ caseId }) {
     setNoteError('');
     setNoteSubmitting(true);
     try {
-      await caseService.addNote(caseId, body);
+      await caseService.addNote(caseId, { body, attachments: noteAttachments });
       setNoteBody('');
+      setNoteAttachments([]);
       await Promise.all([loadNotes(), loadLog()]);
     } catch (err) {
       setNoteError(err.message || 'Could not add note.');
@@ -255,22 +259,53 @@ export default function CaseDetail({ caseId }) {
     }
   }
 
+  function addNoteAttachment(url) {
+    if (!url) return;
+    setNoteAttachments((prev) =>
+      prev.some((a) => a.url === url)
+        ? prev
+        : [...prev, { url, name: url.split('/').pop() }]
+    );
+  }
+  function removeNoteAttachment(url) {
+    setNoteAttachments((prev) => prev.filter((a) => a.url !== url));
+  }
+
   function startEditNote(note) {
     setEditingNoteId(note.id);
     setEditingNoteDraft(note.body || '');
+    setEditingNoteAttachments(
+      Array.isArray(note.attachments) ? note.attachments : []
+    );
   }
   function cancelEditNote() {
     setEditingNoteId(null);
     setEditingNoteDraft('');
+    setEditingNoteAttachments([]);
+  }
+  function addEditingNoteAttachment(url) {
+    if (!url) return;
+    setEditingNoteAttachments((prev) =>
+      prev.some((a) => a.url === url)
+        ? prev
+        : [...prev, { url, name: url.split('/').pop() }]
+    );
+  }
+  function removeEditingNoteAttachment(url) {
+    setEditingNoteAttachments((prev) => prev.filter((a) => a.url !== url));
   }
   async function saveEditNote(noteId) {
     const draft = editingNoteDraft.trim();
     if (!draft) return;
     setNoteRowBusy(noteId);
     try {
-      await caseService.editNote(caseId, noteId, draft);
+      await caseService.editNote(caseId, noteId, {
+        body: draft,
+        attachments: editingNoteAttachments,
+      });
       setEditingNoteId(null);
       setEditingNoteDraft('');
+      setEditingNoteAttachments([]);
       await Promise.all([loadNotes(), loadLog()]);
     } catch (err) {
       setNoteError(err.message || 'Could not edit note.');
@@ -544,6 +579,36 @@ export default function CaseDetail({ caseId }) {
                 placeholder="Add a note for this case…"
                 className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-800 transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
               />
+              {/* Attachments uploader — any stakeholder can attach docs/pics. */}
+              <FileUpload
+                value=""
+                onChange={(url) => addNoteAttachment(url)}
+                category="other"
+                accept=".pdf,.doc,.docx,image/*"
+              />
+              {noteAttachments.length > 0 && (
+                <ul className="space-y-1.5">
+                  {noteAttachments.map((a) => (
+                    <li
+                      key={a.url}
+                      className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs"
+                    >
+                      <span className="flex items-center gap-1.5 truncate text-slate-600">
+                        <Paperclip size={11} className="text-slate-400" />
+                        {a.name || a.url}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeNoteAttachment(a.url)}
+                        className="text-slate-400 hover:text-red-600"
+                        aria-label="Remove attachment"
+                      >
+                        <X size={12} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
               <div className="flex items-center justify-between gap-2">
                 {noteError ? (
                   <p className="text-xs text-red-600">{noteError}</p>
@@ -627,6 +692,37 @@ export default function CaseDetail({ caseId }) {
                             }
                             className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-800 transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
                           />
+                          <FileUpload
+                            value=""
+                            onChange={(url) => addEditingNoteAttachment(url)}
+                            category="other"
+                            accept=".pdf,.doc,.docx,image/*"
+                          />
+                          {editingNoteAttachments.length > 0 && (
+                            <ul className="space-y-1.5">
+                              {editingNoteAttachments.map((a) => (
+                                <li
+                                  key={a.url}
+                                  className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs"
+                                >
+                                  <span className="flex items-center gap-1.5 truncate text-slate-600">
+                                    <Paperclip size={11} className="text-slate-400" />
+                                    {a.name || a.url}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      removeEditingNoteAttachment(a.url)
+                                    }
+                                    className="text-slate-400 hover:text-red-600"
+                                    aria-label="Remove attachment"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
                           <div className="flex justify-end gap-2">
                             <Button
                               variant="outline"
@@ -651,6 +747,30 @@ export default function CaseDetail({ caseId }) {
                             {truncated}
                             {didTruncate && '…'}
                           </p>
+                          {Array.isArray(n.attachments) &&
+                            n.attachments.length > 0 && (
+                              <ul className="mt-2 flex flex-wrap gap-1.5">
+                                {n.attachments.map((a, i) => {
+                                  const href = resolveFileUrl(a.url) || a.url;
+                                  return (
+                                    <li key={i}>
+                                      <a
+                                        href={href}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                                      >
+                                        <Paperclip
+                                          size={10}
+                                          className="text-slate-400"
+                                        />
+                                        {a.name || `Attachment ${i + 1}`}
+                                      </a>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            )}
                           {didTruncate && (
                             <button
                               type="button"
@@ -891,6 +1011,32 @@ export default function CaseDetail({ caseId }) {
             <p className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap text-sm text-slate-700">
               {viewingNote.body}
             </p>
+            {Array.isArray(viewingNote.attachments) &&
+              viewingNote.attachments.length > 0 && (
+                <div>
+                  <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Attachments
+                  </h4>
+                  <ul className="flex flex-wrap gap-2">
+                    {viewingNote.attachments.map((a, i) => {
+                      const href = resolveFileUrl(a.url) || a.url;
+                      return (
+                        <li key={i}>
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                          >
+                            <Paperclip size={12} className="text-slate-400" />
+                            {a.name || `Attachment ${i + 1}`}
+                          </a>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
           </div>
         )}
       </Modal>
@@ -931,6 +1077,26 @@ export default function CaseDetail({ caseId }) {
                 <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
                   {n.body}
                 </p>
+                {Array.isArray(n.attachments) && n.attachments.length > 0 && (
+                  <ul className="mt-2 flex flex-wrap gap-1.5">
+                    {n.attachments.map((a, i) => {
+                      const href = resolveFileUrl(a.url) || a.url;
+                      return (
+                        <li key={i}>
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                          >
+                            <Paperclip size={10} className="text-slate-400" />
+                            {a.name || `Attachment ${i + 1}`}
+                          </a>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </li>
             ))}
           </ul>

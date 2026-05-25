@@ -66,9 +66,14 @@ export async function listNotes(id) {
   return unwrap(res) || [];
 }
 
-/** Append a note to a case. */
-export async function addNote(id, body) {
-  const res = await post(`${BASE}/${id}/notes`, { body });
+/** Append a note to a case — body is either a string (back-compat) or
+ *  `{ body, attachments? }`. */
+export async function addNote(id, payload) {
+  const data =
+    typeof payload === 'string' || payload === null || payload === undefined
+      ? { body: payload }
+      : payload;
+  const res = await post(`${BASE}/${id}/notes`, data);
   return unwrap(res);
 }
 
@@ -102,9 +107,14 @@ export async function deleteUpdate(caseId, updateId) {
   return unwrap(res);
 }
 
-/** Edit an existing note body. */
-export async function editNote(caseId, noteId, body) {
-  const res = await patch(`${BASE}/${caseId}/notes/${noteId}`, { body });
+/** Edit an existing note's body and/or attachments. */
+export async function editNote(caseId, noteId, payload) {
+  // Back-compat: callers used to pass the new body string directly.
+  const body =
+    typeof payload === 'string' || payload === null || payload === undefined
+      ? { body: payload }
+      : payload;
+  const res = await patch(`${BASE}/${caseId}/notes/${noteId}`, body);
   return unwrap(res);
 }
 

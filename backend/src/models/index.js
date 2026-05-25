@@ -273,6 +273,7 @@ LawFirm.addHook(
 );
 Case.addHook('afterFind', jsonParser(['clientIds', 'professionalIds']));
 CaseUpdate.addHook('afterFind', jsonParser(['attachments']));
+CaseNote.addHook('afterFind', jsonParser(['attachments']));
 
 module.exports = {
   sequelize,

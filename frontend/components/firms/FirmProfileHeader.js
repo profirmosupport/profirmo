@@ -32,8 +32,16 @@ export default function FirmProfileHeader({ firm }) {
     rating,
     reviewsCount,
     professionalCount,
+    numberOfProfessionals,
     owner,
   } = firm;
+
+  // Prefer the self-declared headcount (entered while creating / editing
+  // the firm). Fall back to the derived count of active FirmMember rows.
+  const displayedCount =
+    numberOfProfessionals !== null && numberOfProfessionals !== undefined
+      ? numberOfProfessionals
+      : professionalCount || 0;
 
   return (
     <Card>
@@ -78,13 +86,9 @@ export default function FirmProfileHeader({ firm }) {
               )}
               <span className="inline-flex items-center gap-1.5">
                 <Users size={15} className="text-slate-400" />
-                {(professionalCount || 0) === 1
-                  ? t('firmCmp.professionalCountOne', {
-                      count: professionalCount || 0,
-                    })
-                  : t('firmCmp.professionalCountOther', {
-                      count: professionalCount || 0,
-                    })}
+                {displayedCount === 1
+                  ? t('firmCmp.professionalCountOne', { count: displayedCount })
+                  : t('firmCmp.professionalCountOther', { count: displayedCount })}
               </span>
               {establishedYear && (
                 <span className="inline-flex items-center gap-1.5">

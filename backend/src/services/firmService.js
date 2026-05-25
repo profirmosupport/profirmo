@@ -396,7 +396,19 @@ const normalizeLawFirm = (f, professionalCount = 0, owner = null) => ({
   practiceAreas: toArray(f.practiceAreas),
   rating: toNum(f.rating),
   reviewsCount: toNum(f.reviewsCount),
+  // Derived from the firm_members table (the firm's actual roster).
   professionalCount: toNum(professionalCount),
+  // Self-declared values entered while creating / editing the firm. Distinct
+  // from `professionalCount` (which counts active FirmMember rows) and from
+  // `totalEmployees` (which may include support staff).
+  numberOfProfessionals:
+    f.numberOfProfessionals === null || f.numberOfProfessionals === undefined
+      ? null
+      : Number(f.numberOfProfessionals),
+  totalEmployees:
+    f.totalEmployees === null || f.totalEmployees === undefined
+      ? null
+      : Number(f.totalEmployees),
   ownerUserId: f.ownerUserId || null,
   owner: owner || null,
 });

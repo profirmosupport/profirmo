@@ -59,6 +59,7 @@ export default function FirmAboutDetails({ firm }) {
   const {
     registrationNumber,
     totalEmployees,
+    numberOfProfessionals,
     establishedYear,
     website,
     registrationCertificate,
@@ -70,6 +71,7 @@ export default function FirmAboutDetails({ firm }) {
   const hasFacts =
     registrationNumber ||
     totalEmployees ||
+    numberOfProfessionals ||
     establishedYear ||
     website;
   const hasDocs =
@@ -104,6 +106,19 @@ export default function FirmAboutDetails({ firm }) {
               </div>
             </div>
           )}
+          {numberOfProfessionals ? (
+            <div className="flex items-start gap-2">
+              <Users size={15} className="mt-0.5 text-slate-400" />
+              <div>
+                <dt className="text-xs text-slate-500">
+                  Number of professionals
+                </dt>
+                <dd className="text-sm font-medium text-slate-800">
+                  {numberOfProfessionals}
+                </dd>
+              </div>
+            </div>
+          ) : null}
           {totalEmployees ? (
             <div className="flex items-start gap-2">
               <Users size={15} className="mt-0.5 text-slate-400" />

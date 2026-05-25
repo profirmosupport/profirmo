@@ -61,22 +61,22 @@ const getCaseNotes = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'Case notes fetched', notes);
 });
 
-// POST /api/cases/:id/notes
+// POST /api/cases/:id/notes — accepts { body, attachments? }.
 const addCaseNote = asyncHandler(async (req, res) => {
   const note = await caseService.addNote(
     req.params.id,
     req.user,
-    req.body && req.body.body
+    req.body || {}
   );
   return successResponse(res, 201, 'Note added', note);
 });
 
-// PATCH /api/cases/:id/notes/:noteId
+// PATCH /api/cases/:id/notes/:noteId — partial body of { body, attachments }.
 const editCaseNote = asyncHandler(async (req, res) => {
   const note = await caseService.editNote(
     req.params.noteId,
     req.user,
-    req.body && req.body.body
+    req.body || {}
   );
   if (!note) throw { statusCode: 404, message: 'Note not found.' };
   return successResponse(res, 200, 'Note edited', note);

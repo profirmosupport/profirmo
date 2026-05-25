@@ -4,6 +4,7 @@
 
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
+const jsonField = require('./jsonField');
 
 const genId = () =>
   `note-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
@@ -25,6 +26,10 @@ const CaseNote = sequelize.define(
       defaultValue: '',
     },
     body: { type: DataTypes.TEXT, allowNull: false, defaultValue: '' },
+    // Array of { url, name } descriptors describing each attached file.
+    // Stored as JSON LONGTEXT; the afterFind hook in models/index.js
+    // parses it for raw queries.
+    attachments: jsonField('attachments', []),
   },
   {
     tableName: 'case_notes',

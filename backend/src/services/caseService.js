@@ -845,8 +845,23 @@ const listForFirm = async (user) => {
 
 // --- Notes -----------------------------------------------------------------
 
-/** Append a note to a case. */
-const addNote = async (caseId, user, body) => {
+/**
+ * Append a note to a case. Accepts either the legacy 3-arg signature
+ * `(caseId, user, body)` or a 3-arg `(caseId, user, { body, attachments })`
+ * payload so the new file-attachment flow can pass extras without breaking
+ * existing callers.
+ */
+const addNote = async (caseId, user, payload) => {
+  // Normalise the call shape.
+  const data =
+    typeof payload === 'string' || payload === null || payload === undefined
+      ? { body: payload }
+      : payload;
+  const body = data && data.body;
+  const attachments = Array.isArray(data && data.attachments)
+    ? data.attachments.filter((a) => a && (a.url || a.name))
+    : [];
+
   if (!body || !String(body).trim()) {
     throw { statusCode: 422, message: 'Note body is required.' };
   }
@@ -867,21 +882,27 @@ const addNote = async (caseId, user, body) => {
     authorUserId: (user && user.id) || null,
     authorName: authorName || 'Member',
     body: String(body).trim(),
+    attachments,
   });
   await writeLog(caseId, user, 'note_added', 'A note was added.', {
     noteId: note.id,
+    attachmentCount: attachments.length,
   });
 
   // Notify every stakeholder (client + assigned pros) so they don't miss
   // case activity. Fire-and-forget — the note has already persisted.
   const preview = String(body).trim().slice(0, 120);
   const caseRow = found.get({ plain: true });
+  const attachSuffix =
+    attachments.length > 0
+      ? ` (${attachments.length} attachment${attachments.length === 1 ? '' : 's'})`
+      : '';
   notifyCaseStakeholders(caseRow, user, {
     type: 'case_note_added',
     title: `New note on "${caseRow.title || 'case'}"`,
     message: `${authorName || 'A team member'} added a note: ${preview}${
       String(body).trim().length > 120 ? '…' : ''
-    }`,
+    }${attachSuffix}`,
     metadata: { noteId: note.id },
   }).catch(() => {});
   return note.get({ plain: true });
@@ -896,16 +917,32 @@ const listNotes = async (caseId) =>
   });
 
 /**
- * Edit a note's body. Returns null when the note is missing. Writes a
- * `note_edited` audit log entry so the history is preserved.
+ * Edit a note's body and/or attachments. Accepts either the legacy 3-arg
+ * `(noteId, user, body)` shape or a `(noteId, user, { body, attachments })`
+ * payload. Returns null when the note is missing.
  */
-const editNote = async (noteId, user, body) => {
-  if (!body || !String(body).trim()) {
-    throw { statusCode: 422, message: 'Note body is required.' };
-  }
+const editNote = async (noteId, user, payload) => {
+  const data =
+    typeof payload === 'string' || payload === null || payload === undefined
+      ? { body: payload }
+      : payload;
+
   const note = await CaseNote.findByPk(noteId);
   if (!note) return null;
-  await note.update({ body: String(body).trim() });
+
+  const patch = {};
+  if (data.body !== undefined) {
+    const next = String(data.body || '').trim();
+    if (!next) throw { statusCode: 422, message: 'Note body is required.' };
+    patch.body = next;
+  }
+  if (Array.isArray(data.attachments)) {
+    patch.attachments = data.attachments.filter(
+      (a) => a && (a.url || a.name)
+    );
+  }
+
+  await note.update(patch);
   await writeLog(note.caseId, user, 'note_edited', 'A note was edited.', {
     noteId: note.id,
   });

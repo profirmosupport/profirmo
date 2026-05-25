@@ -29,9 +29,18 @@ export default function FirmCard({ firm }) {
     rating,
     reviewsCount,
     professionalCount,
+    numberOfProfessionals,
     practiceAreas = [],
     owner,
   } = firm;
+
+  // The card surfaces the self-declared headcount the firm owner entered
+  // while creating the firm — falling back to the derived FirmMember count
+  // when it's not set (e.g. legacy firms backfilled without that value).
+  const displayedCount =
+    numberOfProfessionals !== null && numberOfProfessionals !== undefined
+      ? numberOfProfessionals
+      : professionalCount || 0;
 
   return (
     <Card hover className="flex h-full flex-col">
@@ -66,13 +75,9 @@ export default function FirmCard({ firm }) {
         )}
         <span className="inline-flex items-center gap-1">
           <Users size={14} className="text-slate-400" />
-          {(professionalCount || 0) === 1
-            ? t('firmCmp.professionalCountOne', {
-                count: professionalCount || 0,
-              })
-            : t('firmCmp.professionalCountOther', {
-                count: professionalCount || 0,
-              })}
+          {displayedCount === 1
+            ? t('firmCmp.professionalCountOne', { count: displayedCount })
+            : t('firmCmp.professionalCountOther', { count: displayedCount })}
         </span>
       </div>
 

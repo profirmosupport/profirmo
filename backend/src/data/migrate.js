@@ -336,6 +336,17 @@ async function runMigrations() {
     }
   }
 
+  // 7e. CaseNote `attachments` JSON column for existing DBs.
+  try {
+    await sequelize.query(
+      'ALTER TABLE `case_notes` ADD COLUMN IF NOT EXISTS `attachments` LONGTEXT'
+    );
+  } catch (err) {
+    if (!/doesn'?t exist|Unknown table/i.test(err.message)) {
+      console.warn(`[Migrate] Could not add case_notes.attachments: ${err.message}`);
+    }
+  }
+
   // 7b. Allow ownerless firms — admin can create a law firm before assigning
   //     an owner. Earlier the column was NOT NULL.
   try {
