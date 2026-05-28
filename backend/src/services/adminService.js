@@ -522,6 +522,21 @@ const updateUser = async ({ targetUserId, changes = {}, actingUserId } = {}) => 
     }
     patch.password = await hashPassword(pwd);
   }
+  // Admin override for the email-verification state. Mirrors the side effects
+  // of verifyEmail() when set to true: also flip accountVerified, promote
+  // pending_verification users to active, and clear leftover token state.
+  if (changes.emailVerified !== undefined) {
+    const verified =
+      changes.emailVerified === true || changes.emailVerified === 'true';
+    patch.emailVerified = verified;
+    if (verified) {
+      patch.accountVerified = true;
+      patch.emailVerificationTokenHash = null;
+      patch.emailVerificationExpiresAt = null;
+      patch.emailVerificationSentAt = null;
+      if (user.status === 'pending_verification') patch.status = 'active';
+    }
+  }
 
   await user.update(patch);
   return { user: sanitizeUser(user), updatedBy: actingUserId || null };

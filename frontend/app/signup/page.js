@@ -36,7 +36,7 @@ import {
 } from '@/services/profileService';
 import { valuesFromProfile } from '@/components/professionals/ProfessionalRegistrationForm';
 import { isEmail, isPhone, isStrongPassword } from '@/utils/validators';
-import { useCities } from '@/hooks/useAppSettings';
+import { useLocations } from '@/hooks/useLocations';
 import Combobox from '@/components/common/Combobox';
 import ProfessionalRegistrationForm, {
   PROFESSIONAL_TYPES,
@@ -134,7 +134,43 @@ export default function SignupPage() {
   const [banner, setBanner] = useState('');
 
   // Admin-managed city list powers the signup dropdown.
-  const { cities } = useCities();
+  const {
+    countries,
+    statesByCountry,
+    citiesByState,
+    countryById,
+    stateById,
+    cityById,
+  } = useLocations();
+
+  const clientCountryId =
+    countries.find((c) => c.name === client.country)?.id || '';
+  const clientStateRows = statesByCountry(clientCountryId);
+  const clientStateId =
+    clientStateRows.find((s) => s.name === client.state)?.id || '';
+  const clientCityRows = citiesByState(clientStateId);
+  const clientCityId =
+    clientCityRows.find((c) => c.name === client.city)?.id || '';
+  function clientPickCountry(id) {
+    const c = countryById(id);
+    setClient((v) => ({ ...v, country: c ? c.name : '', state: '', city: '' }));
+    setClientErrors((er) => ({
+      ...er,
+      country: undefined,
+      state: undefined,
+      city: undefined,
+    }));
+  }
+  function clientPickState(id) {
+    const s = stateById(id);
+    setClient((v) => ({ ...v, state: s ? s.name : '', city: '' }));
+    setClientErrors((er) => ({ ...er, state: undefined, city: undefined }));
+  }
+  function clientPickCity(id) {
+    const c = cityById(id);
+    setClient((v) => ({ ...v, city: c ? c.name : '' }));
+    setClientErrors((er) => ({ ...er, city: undefined }));
+  }
 
   // Professional form state.
   const [proSubmitting, setProSubmitting] = useState(false);
@@ -886,50 +922,45 @@ export default function SignupPage() {
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Country
-                  </label>
-                  <input
-                    name="country"
-                    value={client.country}
-                    onChange={handleClientChange}
-                    placeholder="India"
-                    className={clientFieldClass('country')}
-                  />
-                  {clientErrors.country && (
-                    <p className="mt-1 text-xs text-red-600">
-                      {clientErrors.country}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    State
-                  </label>
-                  <input
-                    name="state"
-                    value={client.state}
-                    onChange={handleClientChange}
-                    placeholder="Maharashtra"
-                    className={clientFieldClass('state')}
-                  />
-                  {clientErrors.state && (
-                    <p className="mt-1 text-xs text-red-600">
-                      {clientErrors.state}
-                    </p>
-                  )}
-                </div>
+                <Combobox
+                  label="Country"
+                  name="country"
+                  value={clientCountryId}
+                  onChange={(e) => clientPickCountry(e.target.value)}
+                  placeholder="Select country…"
+                  options={countries.map((c) => ({ value: c.id, label: c.name }))}
+                  error={clientErrors.country}
+                  required
+                />
+                <Combobox
+                  label="State"
+                  name="state"
+                  value={clientStateId}
+                  onChange={(e) => clientPickState(e.target.value)}
+                  placeholder={
+                    clientCountryId ? 'Select state…' : 'Pick a country first'
+                  }
+                  options={clientStateRows.map((s) => ({
+                    value: s.id,
+                    label: s.name,
+                  }))}
+                  disabled={!clientCountryId}
+                  error={clientErrors.state}
+                  required
+                />
                 <Combobox
                   label="City"
                   name="city"
-                  value={client.city}
-                  onChange={handleClientChange}
-                  placeholder="Select city…"
-                  options={cities.map((c) => ({
-                    value: c.name,
+                  value={clientCityId}
+                  onChange={(e) => clientPickCity(e.target.value)}
+                  placeholder={
+                    clientStateId ? 'Select city…' : 'Pick a state first'
+                  }
+                  options={clientCityRows.map((c) => ({
+                    value: c.id,
                     label: c.name,
                   }))}
+                  disabled={!clientStateId}
                   error={clientErrors.city}
                   required
                 />

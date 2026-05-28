@@ -126,6 +126,11 @@ const NAV_BY_ROLE = {
       icon: Briefcase,
     },
     {
+      labelKey: 'dash.nav.leads',
+      href: '/dashboard/firm/leads',
+      icon: Inbox,
+    },
+    {
       labelKey: 'dash.nav.cases',
       href: '/dashboard/firm/cases',
       icon: FolderKanban,
@@ -217,7 +222,7 @@ const NAV_BY_ROLE = {
         },
         {
           labelKey: 'dash.nav.cities',
-          href: '/admin/cities',
+          href: '/admin/locations',
           icon: MapPin,
         },
       ],

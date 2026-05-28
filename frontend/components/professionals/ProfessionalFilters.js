@@ -8,7 +8,8 @@ import Select from '@/components/common/Select';
 import Combobox from '@/components/common/Combobox';
 import { useLanguage } from '@/components/LanguageProvider';
 import { useFilterOptions } from '@/hooks/useFilterOptions';
-import { useCities, useSubCategoriesFlat } from '@/hooks/useAppSettings';
+import { useSubCategoriesFlat } from '@/hooks/useAppSettings';
+import { useLocations } from '@/hooks/useLocations';
 import { EXPERIENCE_RANGES, RATE_RANGES } from '@/utils/constants';
 
 const toOptions = (arr) => arr.map((v) => ({ value: v, label: v }));
@@ -60,7 +61,7 @@ export default function ProfessionalFilters({
   // `options` keeps language list from live data. Cities and categories now
   // come from the admin-managed lists so they stay in sync with the panel.
   const options = useFilterOptions();
-  const { cities } = useCities();
+  const { flatCities } = useLocations();
   const { subCategories } = useSubCategoriesFlat();
   // Mobile-only open/closed state. Desktop ignores this (panel is lg:block).
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -170,7 +171,10 @@ export default function ProfessionalFilters({
               value={params.city || ''}
               onChange={(e) => update({ city: e.target.value || undefined })}
               placeholder={t('profCmp.allCities')}
-              options={cities.map((c) => ({ value: c.name, label: c.name }))}
+              options={flatCities.map((c) => ({
+                value: c.id,
+                label: c.label,
+              }))}
             />
 
             <Combobox

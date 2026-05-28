@@ -12,8 +12,37 @@ function unwrap(response) {
 
 // --- Public --------------------------------------------------------------
 
-export async function submitLead({ fullName, email, phone, source }) {
-  const res = await post('/api/leads', { fullName, email, phone, source });
+export async function submitLead({
+  fullName,
+  email,
+  phone,
+  source,
+  message,
+  firmId,
+}) {
+  const res = await post('/api/leads', {
+    fullName,
+    email,
+    phone,
+    source,
+    message,
+    firmId,
+  });
+  return unwrap(res);
+}
+
+// Firm-only: list the inquiries submitted via the firm-profile "Contact firm"
+// modal. Auth-gated on the backend (only the firm owner / member sees these).
+export async function listMyFirmLeads() {
+  const res = await get('/api/law-firm/mine/leads');
+  const data = unwrap(res);
+  return (data && data.leads) || [];
+}
+
+// Firm-only: convert a lead into a firm client. Reuses an existing client-user
+// matched by email/phone server-side, or creates one fresh.
+export async function addLeadAsClient(leadId) {
+  const res = await post(`/api/law-firm/mine/leads/${leadId}/add-client`, {});
   return unwrap(res);
 }
 

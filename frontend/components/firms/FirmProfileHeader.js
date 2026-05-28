@@ -1,12 +1,36 @@
 'use client';
 
+import { useState } from 'react';
 import { MapPin, Users, Mail, Phone, Globe, CalendarDays } from 'lucide-react';
 import Card from '@/components/common/Card';
 import Badge from '@/components/common/Badge';
 import Button from '@/components/common/Button';
 import Avatar from '@/components/common/Avatar';
 import RatingStars from '@/components/common/RatingStars';
+import ContactFirmModal from '@/components/firms/ContactFirmModal';
 import { useLanguage } from '@/components/LanguageProvider';
+
+// Mask "user@example.com" → "u***@example.com" so the email isn't scraped off
+// the public page but the visitor still sees it's a real address.
+function maskEmail(email) {
+  if (!email || typeof email !== 'string') return '';
+  const at = email.indexOf('@');
+  if (at < 1) return '••••@••••';
+  const user = email.slice(0, at);
+  const domain = email.slice(at + 1);
+  const visible = user.slice(0, Math.min(1, user.length));
+  return `${visible}${'•'.repeat(Math.max(3, user.length - 1))}@${domain}`;
+}
+
+// Mask phone digits, keeping the last two visible so the firm can verify
+// callbacks but the full number isn't harvestable from the page source.
+function maskPhone(phone) {
+  if (!phone) return '';
+  const digits = String(phone).replace(/\D/g, '');
+  if (digits.length < 4) return '•'.repeat(digits.length || 4);
+  const tail = digits.slice(-2);
+  return `${'•'.repeat(digits.length - 2)}${tail}`;
+}
 
 /**
  * FirmProfileHeader — large header panel on a firm profile.
@@ -17,6 +41,7 @@ import { useLanguage } from '@/components/LanguageProvider';
  */
 export default function FirmProfileHeader({ firm }) {
   const { t } = useLanguage();
+  const [contactOpen, setContactOpen] = useState(false);
   if (!firm) return null;
 
   const {
@@ -105,15 +130,21 @@ export default function FirmProfileHeader({ firm }) {
 
             <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-slate-500">
               {contactEmail && (
-                <span className="inline-flex items-center gap-1.5">
+                <span
+                  className="inline-flex items-center gap-1.5"
+                  title="Use the Contact firm button to reach this firm"
+                >
                   <Mail size={13} className="text-slate-400" />
-                  {contactEmail}
+                  {maskEmail(contactEmail)}
                 </span>
               )}
               {contactNumber && (
-                <span className="inline-flex items-center gap-1.5">
+                <span
+                  className="inline-flex items-center gap-1.5"
+                  title="Use the Contact firm button to reach this firm"
+                >
                   <Phone size={13} className="text-slate-400" />
-                  {contactNumber}
+                  {maskPhone(contactNumber)}
                 </span>
               )}
               {website && (
@@ -139,10 +170,10 @@ export default function FirmProfileHeader({ firm }) {
 
         <div className="shrink-0 lg:w-56">
           <Button
-            href={contactEmail ? `mailto:${contactEmail}` : '/contact'}
             variant="primary"
             size="md"
             className="w-full"
+            onClick={() => setContactOpen(true)}
           >
             {t('firmCmp.contactFirm')}
           </Button>
@@ -151,6 +182,11 @@ export default function FirmProfileHeader({ firm }) {
           </p>
         </div>
       </div>
+      <ContactFirmModal
+        open={contactOpen}
+        onClose={() => setContactOpen(false)}
+        firm={firm}
+      />
     </Card>
   );
 }

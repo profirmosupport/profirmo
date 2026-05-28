@@ -384,6 +384,26 @@ async function runMigrations() {
     }
   }
 
+  // 7f. Lead `firmId` + `message` columns. The firm-profile "Contact firm"
+  // modal needs both — message for the inquiry text, firmId so each firm
+  // sees only the leads addressed to them.
+  for (const [col, type] of [
+    ['firmId', 'VARCHAR(64) NULL'],
+    ['message', 'TEXT NULL'],
+  ]) {
+    try {
+      await sequelize.query(
+        `ALTER TABLE \`leads\` ADD COLUMN IF NOT EXISTS \`${col}\` ${type}`
+      );
+    } catch (err) {
+      if (!/doesn'?t exist|Unknown table/i.test(err.message)) {
+        console.warn(
+          `[Migrate] Could not add leads.${col}: ${err.message}`
+        );
+      }
+    }
+  }
+
   // 7b. Allow ownerless firms — admin can create a law firm before assigning
   //     an owner. Earlier the column was NOT NULL.
   try {
@@ -674,6 +694,20 @@ async function runMigrations() {
     }
   }
 
+  // 16a-pre. Add `stateId` to `cities` so existing rows can be relinked
+  // to the new Country/State hierarchy. Idempotent.
+  try {
+    await sequelize.query(
+      'ALTER TABLE `cities` ADD COLUMN IF NOT EXISTS `stateId` VARCHAR(64) NULL'
+    );
+  } catch (err) {
+    if (!/doesn'?t exist|Unknown table/i.test(err.message)) {
+      console.warn(
+        `[Migrate] Could not add cities.stateId: ${err.message}`
+      );
+    }
+  }
+
   // 16a. Sub-category `featured` flag — drives the homepage curation.
   try {
     await sequelize.query(
@@ -728,6 +762,10 @@ async function runMigrations() {
   //     then map every existing professional's `professionalType` string to
   //     a sub-category id. Idempotent: skips rows that already exist.
   await runAppSettingsSeed();
+
+  // 18. Seed Country/State hierarchy + map existing cities to states +
+  //     migrate practiceCities city-names to city-ids. Idempotent.
+  await runLocationsSeed();
 
   console.log('[Migrate] Migrations finished successfully.');
 }
@@ -1360,6 +1398,408 @@ async function runAppSettingsSeed() {
     }
   } catch (err) {
     console.warn(`[Migrate] App settings seed failed: ${err.message}`);
+  }
+}
+
+// Seed Country / State + relink existing City rows to the right State.
+// Idempotent: skips rows whose slug already exists. Once cities have
+// stateIds, migrate every professional's `practiceCities` array from
+// city NAMES to city IDS so future lookups join on the FK.
+async function runLocationsSeed() {
+  try {
+    const {
+      Country,
+      State,
+      City,
+      ProfessionalDetail,
+    } = require('../models');
+
+    const slugify = (s) =>
+      String(s || '')
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+
+    // --- 1. India + states + cities --------------------------------------
+    // All 28 Indian states + 8 Union Territories with their major cities.
+    // The list is alphabetised so the dropdowns render in a predictable
+    // order; admin can reorder via the sortOrder field later.
+    const SEED = {
+      country: { name: 'India', slug: 'india', code: 'IN', sortOrder: 1 },
+      states: [
+        // --- States (28) ---
+        {
+          name: 'Andhra Pradesh',
+          cities: [
+            'Visakhapatnam',
+            'Vijayawada',
+            'Guntur',
+            'Tirupati',
+            'Nellore',
+            'Kurnool',
+            'Rajahmundry',
+          ],
+        },
+        {
+          name: 'Arunachal Pradesh',
+          cities: ['Itanagar', 'Naharlagun', 'Pasighat', 'Tawang'],
+        },
+        {
+          name: 'Assam',
+          cities: ['Guwahati', 'Dibrugarh', 'Silchar', 'Jorhat', 'Tezpur'],
+        },
+        {
+          name: 'Bihar',
+          cities: [
+            'Patna',
+            'Gaya',
+            'Bhagalpur',
+            'Muzaffarpur',
+            'Darbhanga',
+            'Purnia',
+          ],
+        },
+        {
+          name: 'Chhattisgarh',
+          cities: ['Raipur', 'Bhilai', 'Bilaspur', 'Korba', 'Durg'],
+        },
+        {
+          name: 'Goa',
+          cities: ['Panaji', 'Margao', 'Vasco da Gama', 'Mapusa'],
+        },
+        {
+          name: 'Gujarat',
+          cities: [
+            'Ahmedabad',
+            'Surat',
+            'Vadodara',
+            'Rajkot',
+            'Bhavnagar',
+            'Gandhinagar',
+            'Jamnagar',
+          ],
+        },
+        {
+          name: 'Haryana',
+          cities: [
+            'Faridabad',
+            'Gurugram',
+            'Panipat',
+            'Ambala',
+            'Rohtak',
+            'Karnal',
+            'Hisar',
+          ],
+        },
+        {
+          name: 'Himachal Pradesh',
+          cities: ['Shimla', 'Manali', 'Dharamshala', 'Solan', 'Mandi'],
+        },
+        {
+          name: 'Jharkhand',
+          cities: ['Ranchi', 'Jamshedpur', 'Dhanbad', 'Bokaro', 'Hazaribagh'],
+        },
+        {
+          name: 'Karnataka',
+          cities: [
+            'Bangalore',
+            'Mysore',
+            'Mangalore',
+            'Hubli',
+            'Belgaum',
+            'Davangere',
+            'Gulbarga',
+          ],
+        },
+        {
+          name: 'Kerala',
+          cities: [
+            'Kochi',
+            'Thiruvananthapuram',
+            'Kozhikode',
+            'Thrissur',
+            'Kollam',
+            'Kannur',
+          ],
+        },
+        {
+          name: 'Madhya Pradesh',
+          cities: ['Bhopal', 'Indore', 'Gwalior', 'Jabalpur', 'Ujjain', 'Sagar'],
+        },
+        {
+          name: 'Maharashtra',
+          cities: [
+            'Mumbai',
+            'Pune',
+            'Nagpur',
+            'Nashik',
+            'Aurangabad',
+            'Solapur',
+            'Thane',
+            'Kolhapur',
+            'Navi Mumbai',
+          ],
+        },
+        {
+          name: 'Manipur',
+          cities: ['Imphal', 'Thoubal', 'Bishnupur', 'Churachandpur'],
+        },
+        {
+          name: 'Meghalaya',
+          cities: ['Shillong', 'Tura', 'Jowai', 'Nongstoin'],
+        },
+        {
+          name: 'Mizoram',
+          cities: ['Aizawl', 'Lunglei', 'Champhai'],
+        },
+        {
+          name: 'Nagaland',
+          cities: ['Kohima', 'Dimapur', 'Mokokchung', 'Tuensang'],
+        },
+        {
+          name: 'Odisha',
+          cities: [
+            'Bhubaneswar',
+            'Cuttack',
+            'Rourkela',
+            'Berhampur',
+            'Sambalpur',
+            'Puri',
+          ],
+        },
+        {
+          name: 'Punjab',
+          cities: [
+            'Ludhiana',
+            'Amritsar',
+            'Jalandhar',
+            'Patiala',
+            'Bathinda',
+            'Mohali',
+            'Pathankot',
+          ],
+        },
+        {
+          name: 'Rajasthan',
+          cities: [
+            'Jaipur',
+            'Udaipur',
+            'Jodhpur',
+            'Kota',
+            'Ajmer',
+            'Bikaner',
+            'Alwar',
+          ],
+        },
+        {
+          name: 'Sikkim',
+          cities: ['Gangtok', 'Namchi', 'Gyalshing', 'Mangan'],
+        },
+        {
+          name: 'Tamil Nadu',
+          cities: [
+            'Chennai',
+            'Coimbatore',
+            'Madurai',
+            'Tiruchirappalli',
+            'Salem',
+            'Tirunelveli',
+            'Vellore',
+            'Erode',
+          ],
+        },
+        {
+          name: 'Telangana',
+          cities: [
+            'Hyderabad',
+            'Warangal',
+            'Karimnagar',
+            'Nizamabad',
+            'Khammam',
+          ],
+        },
+        {
+          name: 'Tripura',
+          cities: ['Agartala', 'Udaipur Tripura', 'Dharmanagar', 'Kailashahar'],
+        },
+        {
+          name: 'Uttar Pradesh',
+          cities: [
+            'Lucknow',
+            'Kanpur',
+            'Agra',
+            'Varanasi',
+            'Noida',
+            'Ghaziabad',
+            'Meerut',
+            'Prayagraj',
+            'Bareilly',
+            'Gorakhpur',
+          ],
+        },
+        {
+          name: 'Uttarakhand',
+          cities: [
+            'Dehradun',
+            'Haridwar',
+            'Rishikesh',
+            'Nainital',
+            'Roorkee',
+            'Haldwani',
+          ],
+        },
+        {
+          name: 'West Bengal',
+          cities: [
+            'Kolkata',
+            'Howrah',
+            'Siliguri',
+            'Durgapur',
+            'Asansol',
+            'Darjeeling',
+          ],
+        },
+        // --- Union Territories (8) ---
+        {
+          name: 'Andaman and Nicobar Islands',
+          cities: ['Port Blair'],
+        },
+        {
+          name: 'Chandigarh',
+          cities: ['Chandigarh'],
+        },
+        {
+          name: 'Dadra and Nagar Haveli and Daman and Diu',
+          cities: ['Daman', 'Silvassa', 'Diu'],
+        },
+        { name: 'Delhi', cities: ['Delhi', 'New Delhi'] },
+        {
+          name: 'Jammu and Kashmir',
+          cities: ['Srinagar', 'Jammu', 'Anantnag', 'Baramulla'],
+        },
+        {
+          name: 'Ladakh',
+          cities: ['Leh', 'Kargil'],
+        },
+        {
+          name: 'Lakshadweep',
+          cities: ['Kavaratti'],
+        },
+        {
+          name: 'Puducherry',
+          cities: ['Puducherry', 'Karaikal', 'Mahe', 'Yanam'],
+        },
+      ],
+    };
+
+    // Ensure the country exists.
+    let country = await Country.findOne({ where: { slug: SEED.country.slug } });
+    if (!country) {
+      country = await Country.create({
+        name: SEED.country.name,
+        slug: SEED.country.slug,
+        code: SEED.country.code,
+        sortOrder: SEED.country.sortOrder,
+        active: true,
+      });
+      console.log(`[Migrate] Locations: created country ${country.name}.`);
+    }
+
+    let statesCreated = 0;
+    let citiesCreated = 0;
+    let citiesRelinked = 0;
+    let stateSort = 1;
+    for (const s of SEED.states) {
+      const stateSlug = `${country.slug}-${slugify(s.name)}`;
+      let state = await State.findOne({ where: { slug: stateSlug } });
+      if (!state) {
+        state = await State.create({
+          countryId: country.id,
+          name: s.name,
+          slug: stateSlug,
+          sortOrder: stateSort,
+          active: true,
+        });
+        statesCreated += 1;
+      }
+      stateSort += 1;
+
+      let citySort = 1;
+      for (const cityName of s.cities) {
+        const citySlug = slugify(cityName);
+        let city = await City.findOne({ where: { slug: citySlug } });
+        if (!city) {
+          city = await City.create({
+            name: cityName,
+            slug: citySlug,
+            stateId: state.id,
+            sortOrder: citySort,
+            active: true,
+          });
+          citiesCreated += 1;
+        } else if (!city.stateId) {
+          // Existing pre-hierarchy row — attach to this state.
+          await city.update({ stateId: state.id });
+          citiesRelinked += 1;
+        }
+        citySort += 1;
+      }
+    }
+    console.log(
+      `[Migrate] Locations seed: states +${statesCreated}, cities +${citiesCreated}, relinked ${citiesRelinked}.`
+    );
+
+    // --- 2. Migrate practiceCities (city NAME -> city ID) ----------------
+    const allCities = await City.findAll({ raw: true });
+    const cityIdByLowerName = new Map(
+      allCities.map((c) => [String(c.name || '').toLowerCase().trim(), c.id])
+    );
+    const cityIdSet = new Set(allCities.map((c) => c.id));
+    const pros = await ProfessionalDetail.findAll({ raw: true });
+    let proPatched = 0;
+    for (const p of pros) {
+      let current = p.practiceCities;
+      if (typeof current === 'string') {
+        try {
+          current = JSON.parse(current);
+        } catch {
+          current = [];
+        }
+      }
+      if (!Array.isArray(current) || current.length === 0) continue;
+      // Already-id-form rows are skipped.
+      if (current.every((v) => typeof v === 'string' && cityIdSet.has(v))) {
+        continue;
+      }
+      const migrated = [];
+      for (const v of current) {
+        if (typeof v !== 'string' || !v.trim()) continue;
+        if (cityIdSet.has(v)) {
+          migrated.push(v); // already an id
+          continue;
+        }
+        const id = cityIdByLowerName.get(v.toLowerCase().trim());
+        if (id) migrated.push(id);
+      }
+      if (
+        migrated.length > 0 &&
+        JSON.stringify(migrated) !== JSON.stringify(current)
+      ) {
+        await ProfessionalDetail.update(
+          { practiceCities: migrated },
+          { where: { id: p.id } }
+        );
+        proPatched += 1;
+      }
+    }
+    if (proPatched > 0) {
+      console.log(
+        `[Migrate] Locations backfill: practiceCities migrated to ids on +${proPatched} professional(s).`
+      );
+    }
+  } catch (err) {
+    console.warn(`[Migrate] Locations seed failed: ${err.message}`);
   }
 }
 

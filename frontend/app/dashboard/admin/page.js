@@ -1,8 +1,8 @@
 'use client';
 
 // Admin overview — the consolidated platform-admin dashboard.
-// Fetches GET /api/admin/overview on mount and renders live stats, a
-// users-by-role breakdown, approval action cards and recent activity.
+// Fetches GET /api/admin/overview on mount and renders live stats,
+// approval action cards and recent activity.
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
@@ -28,22 +28,6 @@ import EmptyState from '@/components/common/EmptyState';
 import { ROLES } from '@/utils/constants';
 import { formatRelative } from '@/utils/formatters';
 import { getAdminOverview } from '@/services/adminService';
-
-// Friendly labels for the users-by-role breakdown.
-const ROLE_LABELS = {
-  client: 'Clients',
-  professional: 'Professionals',
-  firm_admin: 'Firm admins',
-  firm_professional: 'Firm professionals',
-  platform_admin: 'Platform admins',
-};
-const ROLE_ORDER = [
-  'client',
-  'professional',
-  'firm_admin',
-  'firm_professional',
-  'platform_admin',
-];
 
 /** Status → Badge variant for audit-log rows. */
 function logStatusVariant(status) {
@@ -107,7 +91,6 @@ export default function AdminOverviewPage() {
 
   // Defensive shape — every section reads from a safe fallback.
   const users = (overview && overview.users) || {};
-  const byRole = users.byRole || {};
   const professionals = (overview && overview.professionals) || {};
   const firms = (overview && overview.firms) || {};
   const invitations = (overview && overview.invitations) || {};
@@ -169,28 +152,6 @@ export default function AdminOverviewPage() {
               variant="slate"
             />
           </div>
-
-          {/* Users by role */}
-          <section>
-            <SectionTitle
-              title="Users by role"
-              description="Breakdown of registered accounts across the platform."
-            />
-            <Card>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-                {ROLE_ORDER.map((roleKey) => (
-                  <div key={roleKey}>
-                    <p className="text-2xl font-bold text-slate-900">
-                      {byRole[roleKey] || 0}
-                    </p>
-                    <p className="mt-0.5 text-xs font-medium text-slate-500">
-                      {ROLE_LABELS[roleKey] || roleKey}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </section>
 
           {/* Approval workflows — professionals + firms */}
           <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">

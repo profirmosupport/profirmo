@@ -52,11 +52,14 @@ const FirmJoinRequest = require('./FirmJoinRequest');
 // email are plain indexed columns — no association / FK is declared.
 const PasswordResetOtp = require('./PasswordResetOtp');
 
-// --- App settings: taxonomy + cities ---------------------------------------
-// Admin-managed lists that drive every category / sub-category / city
-// dropdown across the app.
+// --- App settings: taxonomy + locations -----------------------------------
+// Admin-managed lists that drive every category / sub-category / location
+// dropdown across the app. Cities now belong to States which belong to
+// Countries, so signup + filter forms can cascade.
 const Category = require('./Category');
 const SubCategory = require('./SubCategory');
+const Country = require('./Country');
+const State = require('./State');
 const City = require('./City');
 
 // --- Sales pipeline: Lead -> Opportunity -> Client -------------------------
@@ -272,6 +275,12 @@ ProfessionalDetail.addHook(
 // --- Category <-> SubCategory ---------------------------------------------
 Category.hasMany(SubCategory, fkCascade('categoryId'));
 SubCategory.belongsTo(Category, fkCascade('categoryId'));
+
+// --- Country <-> State <-> City -------------------------------------------
+Country.hasMany(State, fkCascade('countryId'));
+State.belongsTo(Country, fkCascade('countryId'));
+State.hasMany(City, fkSetNull('stateId'));
+City.belongsTo(State, fkSetNull('stateId'));
 LawyerDetail.addHook(
   'afterFind',
   jsonParser([
@@ -331,6 +340,8 @@ module.exports = {
   PasswordResetOtp,
   Category,
   SubCategory,
+  Country,
+  State,
   City,
   Lead,
   Opportunity,

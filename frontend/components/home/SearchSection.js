@@ -6,13 +6,14 @@ import Link from 'next/link';
 import { Search, Briefcase, MapPin, Sparkles } from 'lucide-react';
 import { useLanguage } from '@/components/LanguageProvider';
 import Combobox from '@/components/common/Combobox';
-import { useCities, useSubCategoriesFlat } from '@/hooks/useAppSettings';
+import { useSubCategoriesFlat } from '@/hooks/useAppSettings';
+import { useLocations } from '@/hooks/useLocations';
 
 export default function SearchSection() {
   const router = useRouter();
   const { t } = useLanguage();
   const { subCategories } = useSubCategoriesFlat();
-  const { cities } = useCities();
+  const { flatCities } = useLocations();
   const [keyword, setKeyword] = useState('');
   const [profession, setProfession] = useState('');
   const [city, setCity] = useState('');
@@ -96,7 +97,10 @@ export default function SearchSection() {
               onChange={(e) => setCity(e.target.value)}
               placeholder={t('search.allCities')}
               leftIcon={<MapPin size={16} />}
-              options={cities.map((c) => ({ value: c.name, label: c.name }))}
+              options={flatCities.map((c) => ({
+                value: c.id,
+                label: c.label,
+              }))}
             />
 
             {/* Submit */}

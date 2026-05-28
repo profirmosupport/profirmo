@@ -60,9 +60,12 @@ const SYNC_ORDER = [
   // Link table between professionals and client-users (many-to-many).
   db.ProfessionalClient,
   // --- App settings taxonomy ------------------------------------------
-  // Category is the parent of SubCategory (FK). City has no FK.
+  // Category is the parent of SubCategory; Country is the parent of State,
+  // State is the parent of City. Created parents-first.
   db.Category,
   db.SubCategory,
+  db.Country,
+  db.State,
   db.City,
   // --- Sales pipeline -------------------------------------------------
   // Lead -> Opportunity -> User(client). LeadActivity is polymorphic on

@@ -22,6 +22,7 @@ const {
   Opportunity,
   LeadActivity,
   User,
+  LawFirm,
 } = require('../models');
 const { hashPassword } = require('../utils/password');
 const authService = require('./authService');
@@ -106,40 +107,48 @@ async function recordActivity({
 async function capturePublic(payload) {
   const clean = validateLeadInput(payload);
   const source = norm(payload.source) || 'Homepage AI CTA';
+  const message = norm(payload.message) || null;
+  const firmId = norm(payload.firmId) || null;
 
-  // Dedup: if any lead matches the email OR phone (case-insensitive email),
-  // update its activity feed instead of creating a duplicate row.
-  const existing = await Lead.findOne({
-    where: {
-      [Op.or]: [
-        { email: clean.email },
-        { phone: clean.phone },
-      ],
-    },
-    order: [['createdAt', 'DESC']],
-  });
-  if (existing) {
-    const patch = {};
-    if (existing.fullName !== clean.fullName) patch.fullName = clean.fullName;
-    if (existing.email !== clean.email) patch.email = clean.email;
-    if (existing.phone !== clean.phone) patch.phone = clean.phone;
-    if (Object.keys(patch).length > 0) {
-      await existing.update(patch);
-    }
-    await recordActivity({
-      entityType: 'lead',
-      entityId: existing.id,
-      action: 'lead.resubmitted',
-      toValue: source,
-      note: `Submission re-captured from ${source}.`,
+  // Firm-contact leads bypass dedup so every inquiry shows up on the firm's
+  // dashboard, even if the visitor has previously contacted somebody else.
+  // The legacy homepage / advanced-search lead capture still dedups so we
+  // don't pile up duplicate marketing rows for the same email.
+  if (!firmId) {
+    const existing = await Lead.findOne({
+      where: {
+        [Op.or]: [
+          { email: clean.email },
+          { phone: clean.phone },
+        ],
+      },
+      order: [['createdAt', 'DESC']],
     });
-    return { lead: existing.get({ plain: true }), deduped: true };
+    if (existing) {
+      const patch = {};
+      if (existing.fullName !== clean.fullName) patch.fullName = clean.fullName;
+      if (existing.email !== clean.email) patch.email = clean.email;
+      if (existing.phone !== clean.phone) patch.phone = clean.phone;
+      if (Object.keys(patch).length > 0) {
+        await existing.update(patch);
+      }
+      await recordActivity({
+        entityType: 'lead',
+        entityId: existing.id,
+        action: 'lead.resubmitted',
+        toValue: source,
+        note: `Submission re-captured from ${source}.`,
+      });
+      return { lead: existing.get({ plain: true }), deduped: true };
+    }
   }
 
   const lead = await Lead.create({
     fullName: clean.fullName,
     email: clean.email,
     phone: clean.phone,
+    message,
+    firmId,
     source,
     status: 'New',
   });
@@ -203,12 +212,45 @@ async function listLeads({
     offset,
     raw: true,
   });
+  // Decorate each row with the firm's display name so the admin panel can
+  // surface "Acme Legal" instead of an opaque `lawfirm-…` id. Batched into
+  // a single query keyed by firmId so we don't N+1 on big lists.
+  const firmIds = [...new Set(rows.map((r) => r.firmId).filter(Boolean))];
+  if (firmIds.length > 0) {
+    const firms = await LawFirm.findAll({
+      where: { id: { [Op.in]: firmIds } },
+      attributes: ['id', 'firmName'],
+      raw: true,
+    });
+    const byId = new Map(firms.map((f) => [f.id, f.firmName]));
+    rows.forEach((r) => {
+      r.firmName = r.firmId ? byId.get(r.firmId) || null : null;
+    });
+  } else {
+    rows.forEach((r) => {
+      r.firmName = null;
+    });
+  }
   return {
     rows,
     page: safePage,
     limit: safeLimit,
     total: count,
   };
+}
+
+/**
+ * List leads addressed to a specific firm (used by the firm dashboard's
+ * leads pipeline). No pagination — firms see all of their own inquiries.
+ */
+async function listLeadsByFirm(firmId) {
+  if (!firmId) return [];
+  const rows = await Lead.findAll({
+    where: { firmId },
+    order: [['createdAt', 'DESC']],
+    raw: true,
+  });
+  return rows;
 }
 
 async function adminCreateLead({ fullName, email, phone, source, status, notes, assignedToUserId }, actingUserId) {
@@ -587,6 +629,7 @@ module.exports = {
   capturePublic,
   getLeadById,
   listLeads,
+  listLeadsByFirm,
   adminCreateLead,
   updateLead,
   deleteLead,

@@ -9,5 +9,6 @@ const router = express.Router();
 
 router.get('/categories', ctrl.publicListCategories);
 router.get('/cities', ctrl.publicListCities);
+router.get('/locations', ctrl.publicListLocations);
 
 module.exports = router;

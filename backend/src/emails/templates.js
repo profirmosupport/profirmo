@@ -331,13 +331,15 @@ const TEMPLATES = {
 
   /**
    * Information-request message sent when an admin needs more details.
-   * vars: { professionalName, requestedInfo, resubmitUrl }
+   * vars: { professionalName, requestedInfo }
+   * The applicant replies by emailing profirmo.support@gmail.com — no
+   * resubmit link is exposed.
    */
   professionalInfoRequest(vars = {}) {
     const professionalName = vars.professionalName || 'there';
     const requestedInfo =
       vars.requestedInfo || 'Additional information is required.';
-    const resubmitUrl = vars.resubmitUrl || '#';
+    const supportEmail = 'profirmo.support@gmail.com';
 
     const subject = 'Additional Information Needed for Your Application';
 
@@ -357,10 +359,10 @@ const TEMPLATES = {
         ${esc(requestedInfo)}
       </p>
       <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">
-        Please update your application with the requested information and
-        resubmit it for review.
+        Please email the requested information to
+        <a href="mailto:${supportEmail}" style="color:#0f766e;font-weight:600;">${supportEmail}</a>
+        and our team will continue your review.
       </p>
-      ${button('Update and resubmit', resubmitUrl)}
       <p style="margin:0;font-size:14px;line-height:1.6;">
         The Profirmo Team
       </p>`
@@ -375,9 +377,8 @@ const TEMPLATES = {
       'What we need:',
       `  ${requestedInfo}`,
       '',
-      'Please update your application with the requested information and',
-      'resubmit it for review:',
-      resubmitUrl,
+      `Please email the requested information to ${supportEmail} and our`,
+      'team will continue your review.',
       '',
       'The Profirmo Team',
     ].join('\n');

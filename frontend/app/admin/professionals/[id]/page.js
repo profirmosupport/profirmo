@@ -18,8 +18,6 @@ import {
   User,
   MapPin,
   Briefcase,
-  Scale,
-  Calculator,
   CheckCircle2,
   XCircle,
   Eye,
@@ -32,6 +30,7 @@ import Modal from '@/components/common/Modal';
 import EmptyState from '@/components/common/EmptyState';
 import DocumentPreviewModal from '@/components/common/DocumentPreviewModal';
 import { useAuth } from '@/components/AuthProvider';
+import { useLocations } from '@/hooks/useLocations';
 import { ROLES } from '@/utils/constants';
 import { formatDate, getInitials } from '@/utils/formatters';
 import { resolveFileUrl } from '@/services/fileService';
@@ -134,22 +133,6 @@ function formatAvailability(value) {
     })
     .filter(Boolean)
     .join(' · ');
-}
-
-/** A boolean field rendered as a Yes / No tick row. */
-function BoolField({ label, value }) {
-  if (value === null || value === undefined) return null;
-  const yes = value === true || value === 'true' || value === 1;
-  return (
-    <div className="flex items-center gap-2">
-      {yes ? (
-        <CheckCircle2 size={16} className="text-emerald-600" />
-      ) : (
-        <XCircle size={16} className="text-slate-300" />
-      )}
-      <span className="text-sm text-slate-700">{label}</span>
-    </div>
-  );
 }
 
 /** Chip list rendered from an array or comma-separated string. */
@@ -321,6 +304,7 @@ export default function AdminProfessionalReviewPage() {
   const [actionSuccess, setActionSuccess] = useState('');
 
   const isAdmin = user && user.role === ROLES.PLATFORM_ADMIN;
+  const { cityById } = useLocations();
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -497,6 +481,23 @@ export default function AdminProfessionalReviewPage() {
   const photoUrl = resolveFileUrl(
     pd.profilePhoto || applicant.profilePhoto || ''
   );
+
+  // practiceCities is stored as city ids (post-hierarchy migration). Resolve
+  // them to human-readable "State — City" labels so the admin doesn't see
+  // raw `city-…` codes. Legacy rows that still hold raw names pass through.
+  const practiceCityLabels = (Array.isArray(pd.practiceCities)
+    ? pd.practiceCities
+    : []
+  )
+    .filter(Boolean)
+    .map((c) => {
+      if (typeof c === 'string' && c.startsWith('city-')) {
+        const found = cityById(c);
+        return found ? found.label : null;
+      }
+      return String(c);
+    })
+    .filter(Boolean);
 
   // Collect all non-empty documents across detail objects.
   const sources = {
@@ -731,7 +732,7 @@ export default function AdminProfessionalReviewPage() {
                   : null
               }
             />
-            <ChipList label="Practice cities" value={pd.practiceCities} />
+            <ChipList label="Practice cities" value={practiceCityLabels} />
             <ChipList label="Courts practising" value={pd.courtsPracticing} />
             <ChipList label="Skills" value={pd.skills} />
             <ChipList label="Languages" value={pd.languages} />
@@ -739,140 +740,6 @@ export default function AdminProfessionalReviewPage() {
             <ChipList label="Certifications" value={pd.certifications} />
           </div>
         </Section>
-
-        {/* Lawyer-specific */}
-        {lawyerDetail && (
-          <Section icon={<Scale size={16} />} title="Legal details">
-            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <Field
-                label="Bar council ID"
-                value={lawyerDetail.barCouncilId}
-              />
-              <Field
-                label="Bar registration number"
-                value={lawyerDetail.barRegistrationNumber}
-              />
-              <Field
-                label="Enrollment number"
-                value={lawyerDetail.enrollmentNumber}
-              />
-              <Field
-                label="Enrollment year"
-                value={
-                  lawyerDetail.enrollmentYear
-                    ? String(lawyerDetail.enrollmentYear)
-                    : null
-                }
-              />
-              <Field label="Bar council" value={lawyerDetail.barCouncil} />
-              <Field
-                label="Court of practice"
-                value={lawyerDetail.courtOfPractice}
-              />
-              <Field
-                label="Jurisdiction"
-                value={lawyerDetail.jurisdiction}
-              />
-              <Field
-                label="Practice areas"
-                value={
-                  Array.isArray(lawyerDetail.practiceAreas)
-                    ? null
-                    : lawyerDetail.practiceAreas
-                }
-              />
-            </dl>
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <ChipList
-                label="Practice areas"
-                value={
-                  Array.isArray(lawyerDetail.practiceAreas)
-                    ? lawyerDetail.practiceAreas
-                    : null
-                }
-              />
-              <ChipList
-                label="Specializations"
-                value={lawyerDetail.specializations}
-              />
-            </div>
-          </Section>
-        )}
-
-        {/* Tax consultant-specific */}
-        {taxConsultantDetail && (
-          <Section
-            icon={<Calculator size={16} />}
-            title="Tax consultant details"
-          >
-            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <Field
-                label="Registration number"
-                value={taxConsultantDetail.registrationNumber}
-              />
-              <Field
-                label="Membership number"
-                value={taxConsultantDetail.membershipNumber}
-              />
-              <Field
-                label="Qualification"
-                value={taxConsultantDetail.qualification}
-              />
-              <Field
-                label="Firm / association"
-                value={taxConsultantDetail.firmName}
-              />
-              <Field
-                label="GSTIN"
-                value={taxConsultantDetail.gstin || taxConsultantDetail.gstNumber}
-              />
-              <Field
-                label="PAN"
-                value={taxConsultantDetail.pan || taxConsultantDetail.panNumber}
-              />
-            </dl>
-            <div className="mt-4">
-              <dt className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
-                Areas of expertise
-              </dt>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                <BoolField
-                  label="Income tax"
-                  value={taxConsultantDetail.incomeTax}
-                />
-                <BoolField label="GST" value={taxConsultantDetail.gst} />
-                <BoolField
-                  label="TDS"
-                  value={taxConsultantDetail.tds}
-                />
-                <BoolField
-                  label="Corporate tax"
-                  value={taxConsultantDetail.corporateTax}
-                />
-                <BoolField
-                  label="International tax"
-                  value={taxConsultantDetail.internationalTax}
-                />
-                <BoolField
-                  label="Tax audit"
-                  value={taxConsultantDetail.taxAudit}
-                />
-                <BoolField
-                  label="Company registration"
-                  value={taxConsultantDetail.companyRegistration}
-                />
-                <BoolField
-                  label="Accounting & bookkeeping"
-                  value={taxConsultantDetail.accounting}
-                />
-                <BoolField
-                  label="Compliance"
-                  value={taxConsultantDetail.compliance}
-                />
-              </div>
-            </div>
-          </Section>
-        )}
 
         {/* Documents */}
         <Section icon={<FileText size={16} />} title="Documents">
@@ -896,9 +763,20 @@ export default function AdminProfessionalReviewPage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() =>
-                      setPreview({ url: doc.url, name: doc.label })
-                    }
+                    onClick={() => {
+                      // PDFs open in a new tab so the admin gets the
+                      // browser's full PDF reader (zoom, search, download)
+                      // instead of the in-app image preview modal.
+                      if (/\.pdf(\?|#|$)/i.test(doc.url)) {
+                        window.open(
+                          resolveFileUrl(doc.url),
+                          '_blank',
+                          'noopener,noreferrer'
+                        );
+                        return;
+                      }
+                      setPreview({ url: doc.url, name: doc.label });
+                    }}
                   >
                     <Eye size={15} />
                     Preview

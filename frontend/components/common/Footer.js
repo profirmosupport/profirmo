@@ -2,8 +2,21 @@
 
 import Link from 'next/link';
 import { Twitter, Linkedin, Github, Mail, ArrowRight, MapPin } from 'lucide-react';
-import { useCities } from '@/hooks/useAppSettings';
 import { useLanguage } from '@/components/LanguageProvider';
+
+// Top 10 Indian cities surfaced in the footer for SEO landing pages.
+const TOP_INDIA_CITIES = [
+  'Mumbai',
+  'Delhi',
+  'Bangalore',
+  'Hyderabad',
+  'Chennai',
+  'Kolkata',
+  'Pune',
+  'Ahmedabad',
+  'Jaipur',
+  'Lucknow',
+];
 
 const SOCIALS = [
   { icon: Twitter, label: 'X (Twitter)' },
@@ -42,8 +55,7 @@ const COLUMNS = [
 export default function Footer() {
   const year = new Date().getFullYear();
   const { t } = useLanguage();
-  const { cities } = useCities();
-  const cityNames = cities.map((c) => c.name);
+  const cityNames = TOP_INDIA_CITIES;
 
   return (
     <footer className="relative overflow-hidden bg-slate-950 text-slate-400">

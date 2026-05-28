@@ -224,9 +224,18 @@ export async function createUser(data) {
   return unwrap(res);
 }
 
-/** Edit a user. Body may include name fields, email, role, mobileNumber, password. */
+/** Edit a user. Body may include name fields, email, role, mobileNumber, password, emailVerified. */
 export async function updateUser(id, changes) {
   const res = await patch(`/api/admin/users/${id}`, changes);
+  return unwrap(res);
+}
+
+/**
+ * Mark a user's email as verified (admin override). Promotes the user to
+ * `active` if they were still `pending_verification`.
+ */
+export async function markUserEmailVerified(id) {
+  const res = await patch(`/api/admin/users/${id}`, { emailVerified: true });
   return unwrap(res);
 }
 

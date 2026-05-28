@@ -1,5 +1,8 @@
 const lawFirmService = require('../services/lawFirmService');
 const invitationService = require('../services/invitationService');
+const leadService = require('../services/leadService');
+const clientService = require('../services/clientService');
+const { Lead } = require('../models');
 const asyncHandler = require('../utils/asyncHandler');
 const { successResponse } = require('../utils/responseHandler');
 
@@ -31,6 +34,59 @@ const getMembers = asyncHandler(async (req, res) => {
 const getFirmClients = asyncHandler(async (req, res) => {
   const result = await lawFirmService.getFirmClients(req.user.id);
   return successResponse(res, 200, 'Firm clients fetched', result);
+});
+
+// GET /api/law-firm/mine/leads — inquiries submitted via the firm-profile
+// "Contact firm" modal. Returns an empty list when the caller has no firm.
+const getMyFirmLeads = asyncHandler(async (req, res) => {
+  const my = await lawFirmService.getMyFirm(req.user.id);
+  const firm = my && my.lawFirm;
+  if (!firm) {
+    return successResponse(res, 200, 'Firm leads fetched', { leads: [] });
+  }
+  const leads = await leadService.listLeadsByFirm(firm.id);
+  return successResponse(res, 200, 'Firm leads fetched', { leads });
+});
+
+// POST /api/law-firm/mine/leads/:leadId/add-client
+// Convert a lead into a firm client. clientService.create already reuses an
+// existing client-user matched by email/phone (no duplicates) and creates a
+// fresh client-user otherwise; we then link the lead row to the resulting
+// client and flip its status to Converted so the firm sees the pipeline move.
+const addLeadAsClient = asyncHandler(async (req, res) => {
+  const my = await lawFirmService.getMyFirm(req.user.id);
+  const firm = my && my.lawFirm;
+  if (!firm) {
+    throw { statusCode: 404, message: 'You do not own a firm.' };
+  }
+  const lead = await Lead.findByPk(req.params.leadId);
+  if (!lead) throw { statusCode: 404, message: 'Lead not found.' };
+  if (lead.firmId !== firm.id) {
+    throw {
+      statusCode: 403,
+      message: 'This lead was not submitted to your firm.',
+    };
+  }
+
+  const client = await clientService.create(
+    {
+      name: lead.fullName,
+      email: lead.email,
+      phone: lead.phone,
+    },
+    req.user
+  );
+
+  await lead.update({
+    status: 'Converted',
+    clientId: client.id,
+    convertedAt: new Date(),
+  });
+
+  return successResponse(res, 201, 'Lead added as client', {
+    client,
+    lead: lead.get({ plain: true }),
+  });
 });
 
 // POST /api/law-firm/mine/members — DEPRECATED: superseded by invitations.
@@ -106,6 +162,8 @@ module.exports = {
   updateFirm,
   getMembers,
   getFirmClients,
+  getMyFirmLeads,
+  addLeadAsClient,
   addMember,
   changeMemberRole,
   removeMember,

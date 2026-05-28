@@ -12,14 +12,14 @@ import FirmCard from '@/components/firms/FirmCard';
 import { useFirms } from '@/hooks/useFirms';
 import { useLanguage } from '@/components/LanguageProvider';
 import { FIRM_TYPES } from '@/utils/constants';
-import { useCities } from '@/hooks/useAppSettings';
+import { useLocations } from '@/hooks/useLocations';
 
 const toOptions = (arr) => arr.map((v) => ({ value: v, label: v }));
 
 export default function FirmsPage() {
   const { t } = useLanguage();
   const { items, meta, loading, error, params, setParams } = useFirms();
-  const { cities } = useCities();
+  const { flatCities } = useLocations();
   const update = (patch) =>
     setParams((prev) => ({ ...prev, ...patch, page: 1 }));
 
@@ -73,7 +73,10 @@ export default function FirmsPage() {
                 value={params.city || ''}
                 onChange={(e) => update({ city: e.target.value || undefined })}
                 placeholder={t('firmList.allCities')}
-                options={cities.map((c) => ({ value: c.name, label: c.name }))}
+                options={flatCities.map((c) => ({
+                  value: c.id,
+                  label: c.label,
+                }))}
               />
               <Select
                 label={t('firmList.firmType')}

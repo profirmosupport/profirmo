@@ -21,9 +21,15 @@ const Lead = sequelize.define(
     fullName: { type: DataTypes.STRING(255), allowNull: false },
     email: { type: DataTypes.STRING(255), allowNull: false },
     phone: { type: DataTypes.STRING(40), allowNull: false },
-    // Where the lead came from. Only two sources are emitted by the frontend
-    // today ("Homepage AI CTA", "Advanced Search") but the column is a free
-    // string so the admin can add more sources later.
+    // Free-text inquiry written by the visitor on the firm contact form.
+    message: { type: DataTypes.TEXT, allowNull: true },
+    // Firm the visitor was contacting (when the lead was submitted via the
+    // firm-profile "Contact firm" modal). Nullable for legacy homepage /
+    // advanced-search leads which aren't tied to any specific firm.
+    firmId: { type: DataTypes.STRING(64), allowNull: true },
+    // Where the lead came from. Sources today: "Homepage AI CTA",
+    // "Advanced Search", "Firm contact". Free-form string so the admin can
+    // add more sources later.
     source: {
       type: DataTypes.STRING(64),
       allowNull: false,
@@ -49,6 +55,7 @@ const Lead = sequelize.define(
       { fields: ['phone'] },
       { fields: ['status'] },
       { fields: ['assignedToUserId'] },
+      { fields: ['firmId'] },
     ],
   }
 );

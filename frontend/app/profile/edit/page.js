@@ -204,7 +204,8 @@ export default function ProfileEditPage() {
     [refreshUser]
   );
 
-  // Final submit (Step 3) — persist the document URLs and refresh.
+  // Final submit (Step 3) — persist the document URLs, refresh, then send the
+  // user back to their dashboard so they can see the updated completion %.
   const handleSubmit = useCallback(
     async (payload) => {
       if (submitting) return;
@@ -218,13 +219,14 @@ export default function ProfileEditPage() {
         if (refreshed) setProfile(refreshed);
         await refreshUser();
         setSuccess('All set — your profile is up to date.');
+        router.push('/dashboard');
       } catch (err) {
         setBanner(err.message || 'Could not save your documents.');
       } finally {
         setSubmitting(false);
       }
     },
-    [submitting, refreshUser]
+    [submitting, refreshUser, router]
   );
 
   if (authLoading || !isAuthenticated) {
@@ -277,9 +279,9 @@ export default function ProfileEditPage() {
                   Update your account information.
                 </p>
               </div>
-              <Button href="/profile" variant="outline" size="sm">
+              <Button href="/dashboard" variant="outline" size="sm">
                 <ArrowLeft className="h-4 w-4" />
-                Back to profile
+                Back to dashboard
               </Button>
             </div>
 

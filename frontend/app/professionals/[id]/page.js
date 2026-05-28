@@ -10,7 +10,6 @@ import Button from '@/components/common/Button';
 import EmptyState from '@/components/common/EmptyState';
 import ProfessionalProfileHeader from '@/components/professionals/ProfessionalProfileHeader';
 import ProfessionalServices from '@/components/professionals/ProfessionalServices';
-import ProfessionalAvailability from '@/components/professionals/ProfessionalAvailability';
 import ProfessionalReviews from '@/components/professionals/ProfessionalReviews';
 import ProfessionalCard from '@/components/professionals/ProfessionalCard';
 import { useLanguage } from '@/components/LanguageProvider';
@@ -173,7 +172,7 @@ export default function ProfessionalProfilePage() {
   }
 
   const aboutText = professional.about || professional.bio;
-  const { education, certifications, achievements, lawyer, tax } = professional;
+  const { education, certifications, achievements, lawyer } = professional;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -238,31 +237,10 @@ export default function ProfessionalProfilePage() {
               </dl>
             </Card>
           )}
-          {tax && (
-            <Card>
-              <h2 className="mb-3 text-base font-semibold text-slate-900">
-                Tax practice details
-              </h2>
-              <dl className="grid gap-3 sm:grid-cols-2">
-                {Object.entries(tax)
-                  .filter(([, v]) => v !== null && v !== undefined && v !== '')
-                  .map(([key, value]) => (
-                    <div key={key}>
-                      <dt className="text-xs uppercase tracking-wide text-slate-400">
-                        {key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) =>
-                          c.toUpperCase()
-                        )}
-                      </dt>
-                      <dd className="text-sm text-slate-700">
-                        {Array.isArray(value) ? value.join(', ') : String(value)}
-                      </dd>
-                    </div>
-                  ))}
-              </dl>
-            </Card>
-          )}
+          {/* Tax practice details section was removed — the identifiers
+              we surface to clients (consultation fee, sub-categories,
+              languages, etc.) already render in the header / about cards. */}
 
-          <ProfessionalAvailability professional={professional} />
           <ProfessionalReviews
             professionalId={professional.id}
             onReviewChange={refreshProfessional}

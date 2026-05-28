@@ -25,12 +25,14 @@ function setLeadCookie(res, leadId) {
 
 // POST /api/leads  (public)
 const captureLead = asyncHandler(async (req, res) => {
-  const { fullName, email, phone, source } = req.body || {};
+  const { fullName, email, phone, source, message, firmId } = req.body || {};
   const result = await leadService.capturePublic({
     fullName,
     email,
     phone,
     source,
+    message,
+    firmId,
   });
   setLeadCookie(res, result.lead.id);
   return successResponse(res, 201, 'Lead captured', {

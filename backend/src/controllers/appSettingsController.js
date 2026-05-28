@@ -166,6 +166,138 @@ const adminDeleteCity = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'City deleted', result);
 });
 
+// --- Public + admin: locations hierarchy ---------------------------------
+
+const publicListLocations = asyncHandler(async (req, res) => {
+  const data = await svc.listLocationsPublic();
+  return successResponse(res, 200, 'Locations fetched', data);
+});
+
+const adminListLocations = asyncHandler(async (req, res) => {
+  const data = await svc.listLocationsAdmin();
+  return successResponse(res, 200, 'Locations fetched', data);
+});
+
+const adminCreateCountry = asyncHandler(async (req, res) => {
+  const adminId = req.user.id || req.user.sub;
+  const row = await svc.createCountry(req.body || {});
+  await logAudit({
+    req,
+    userId: adminId,
+    action: 'admin.country_created',
+    entity: 'country',
+    entityId: row.id,
+    status: 'success',
+    metadata: { name: row.name },
+  });
+  return successResponse(res, 201, 'Country created', row);
+});
+
+const adminUpdateCountry = asyncHandler(async (req, res) => {
+  const adminId = req.user.id || req.user.sub;
+  const row = await svc.updateCountry(req.params.id, req.body || {});
+  await logAudit({
+    req,
+    userId: adminId,
+    action: 'admin.country_updated',
+    entity: 'country',
+    entityId: req.params.id,
+    status: 'success',
+    metadata: { fields: Object.keys(req.body || {}) },
+  });
+  return successResponse(res, 200, 'Country updated', row);
+});
+
+const adminDeleteCountry = asyncHandler(async (req, res) => {
+  const adminId = req.user.id || req.user.sub;
+  const result = await svc.deleteCountry(req.params.id);
+  await logAudit({
+    req,
+    userId: adminId,
+    action: 'admin.country_deleted',
+    entity: 'country',
+    entityId: req.params.id,
+    status: 'success',
+    metadata: {},
+  });
+  return successResponse(res, 200, 'Country deleted', result);
+});
+
+const adminCreateState = asyncHandler(async (req, res) => {
+  const adminId = req.user.id || req.user.sub;
+  const row = await svc.createState(req.body || {});
+  await logAudit({
+    req,
+    userId: adminId,
+    action: 'admin.state_created',
+    entity: 'state',
+    entityId: row.id,
+    status: 'success',
+    metadata: { name: row.name, countryId: row.countryId },
+  });
+  return successResponse(res, 201, 'State created', row);
+});
+
+const adminUpdateState = asyncHandler(async (req, res) => {
+  const adminId = req.user.id || req.user.sub;
+  const row = await svc.updateState(req.params.id, req.body || {});
+  await logAudit({
+    req,
+    userId: adminId,
+    action: 'admin.state_updated',
+    entity: 'state',
+    entityId: req.params.id,
+    status: 'success',
+    metadata: { fields: Object.keys(req.body || {}) },
+  });
+  return successResponse(res, 200, 'State updated', row);
+});
+
+const adminDeleteState = asyncHandler(async (req, res) => {
+  const adminId = req.user.id || req.user.sub;
+  const result = await svc.deleteState(req.params.id);
+  await logAudit({
+    req,
+    userId: adminId,
+    action: 'admin.state_deleted',
+    entity: 'state',
+    entityId: req.params.id,
+    status: 'success',
+    metadata: {},
+  });
+  return successResponse(res, 200, 'State deleted', result);
+});
+
+const adminCreateCityForState = asyncHandler(async (req, res) => {
+  const adminId = req.user.id || req.user.sub;
+  const row = await svc.createCityForState(req.body || {});
+  await logAudit({
+    req,
+    userId: adminId,
+    action: 'admin.city_created',
+    entity: 'city',
+    entityId: row.id,
+    status: 'success',
+    metadata: { name: row.name, stateId: row.stateId },
+  });
+  return successResponse(res, 201, 'City created', row);
+});
+
+const adminUpdateCityHierarchical = asyncHandler(async (req, res) => {
+  const adminId = req.user.id || req.user.sub;
+  const row = await svc.updateCityHierarchical(req.params.id, req.body || {});
+  await logAudit({
+    req,
+    userId: adminId,
+    action: 'admin.city_updated',
+    entity: 'city',
+    entityId: req.params.id,
+    status: 'success',
+    metadata: { fields: Object.keys(req.body || {}) },
+  });
+  return successResponse(res, 200, 'City updated', row);
+});
+
 module.exports = {
   publicListCategories,
   publicListCities,
@@ -180,4 +312,15 @@ module.exports = {
   adminCreateCity,
   adminUpdateCity,
   adminDeleteCity,
+  // Locations hierarchy
+  publicListLocations,
+  adminListLocations,
+  adminCreateCountry,
+  adminUpdateCountry,
+  adminDeleteCountry,
+  adminCreateState,
+  adminUpdateState,
+  adminDeleteState,
+  adminCreateCityForState,
+  adminUpdateCityHierarchical,
 };

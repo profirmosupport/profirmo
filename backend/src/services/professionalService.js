@@ -10,6 +10,7 @@ const {
   TaxConsultantDetail,
   Category,
   SubCategory,
+  City,
 } = require('../models');
 const reviewStats = require('./reviewStats');
 
@@ -411,15 +412,24 @@ const filterProfessionals = (items, filters = {}) => {
 
   const city = filters.city || filters.location;
   if (city) {
-    const q = String(city).toLowerCase();
-    // A professional matches when the city is their base address city OR
-    // any of the cities they have flagged as a practice city.
+    const raw = String(city).trim();
+    const q = raw.toLowerCase();
+    // The filter value can be a city id (new dropdowns) or a city name
+    // (legacy URLs like ?city=Mumbai). Look up the name when an id is
+    // given so we can compare against the address-city name too.
+    let cityName = '';
+    if (filters._cityNameById && filters._cityNameById[raw]) {
+      cityName = String(filters._cityNameById[raw]).toLowerCase();
+    }
     rows = rows.filter((p) => {
-      if (String(p.city || '').toLowerCase() === q) return true;
+      const baseCity = String(p.city || '').toLowerCase();
+      if (baseCity === q || (cityName && baseCity === cityName)) return true;
       const practice = toArray(p.practiceCities).map((c) =>
         String(c).toLowerCase()
       );
-      return practice.includes(q);
+      if (practice.includes(q)) return true;
+      if (cityName && practice.includes(cityName)) return true;
+      return false;
     });
   }
 
@@ -514,6 +524,24 @@ const list = async ({ filters = {}, page, limit } = {}) => {
   // Legacy professional rows were backfilled into this model in migrate.js.
   const all = await loadProfileProfessionals();
   await applyReviewStats(all);
+
+  // City filter can carry an id (from the new dropdowns) or a name (legacy
+  // URLs). Load a lookup once so the filter can resolve ids to names and
+  // match both flavours.
+  const cityFilter = filters.city || filters.location;
+  if (cityFilter && /^city-/.test(String(cityFilter))) {
+    try {
+      const row = await City.findByPk(cityFilter, {
+        attributes: ['id', 'name'],
+        raw: true,
+      });
+      if (row) {
+        filters = { ...filters, _cityNameById: { [row.id]: row.name } };
+      }
+    } catch {
+      /* swallow — filter falls back to direct id/name matching */
+    }
+  }
 
   const filtered = filterProfessionals(all, filters);
   sortProfessionals(filtered, filters.sort);

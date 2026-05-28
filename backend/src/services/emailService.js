@@ -57,6 +57,27 @@ async function sendEmail({ to, subject, html, text }) {
   if (!to) throw new Error('sendEmail: "to" is required');
   if (!subject) throw new Error('sendEmail: "subject" is required');
 
+  // Always write a local mirror so the rendered message can be inspected
+  // regardless of whether the SMTP transport actually delivered. This is the
+  // first place to check when "the email didn't arrive" — the body proves
+  // what we asked the provider to send.
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const fileName = `${stamp}-${sanitizeRecipient(to)}.html`;
+  const filePath = path.join(SENT_DIR, fileName);
+  const document =
+    `<!-- to: ${to} -->\n` +
+    `<!-- from: ${env.emailFrom} -->\n` +
+    `<!-- subject: ${subject} -->\n` +
+    `<!-- sentAt: ${new Date().toISOString()} -->\n` +
+    `<!-- transport: ${env.emailTransport} -->\n` +
+    (text ? `<!--\nplain-text:\n${text}\n-->\n` : '') +
+    (html || `<pre>${text || ''}</pre>`);
+  try {
+    fs.writeFileSync(filePath, document, 'utf8');
+  } catch (writeErr) {
+    console.warn('[Email] disk mirror failed:', writeErr.message);
+  }
+
   if (env.emailTransport === 'smtp') {
     const info = await getSmtpTransport().sendMail({
       from: env.emailFrom,
@@ -65,27 +86,32 @@ async function sendEmail({ to, subject, html, text }) {
       html,
       text,
     });
+    // nodemailer's `info.rejected` lists addresses the SMTP server refused
+    // (e.g. Resend rejecting an unverified sender or a blocked domain). We
+    // surface it here so the worker can flag the job as failed instead of
+    // silently marking it completed.
+    const rejected = Array.isArray(info && info.rejected) ? info.rejected : [];
+    const accepted = Array.isArray(info && info.accepted) ? info.accepted : [];
     console.log(
       `[Email] sent via SMTP to=${to} subject="${subject}" ` +
-        `messageId=${info && info.messageId}`
+        `messageId=${info && info.messageId} ` +
+        `accepted=${accepted.length} rejected=${rejected.length} ` +
+        `mirror=sent-emails/${fileName}` +
+        (info && info.response ? ` response="${info.response}"` : '')
     );
-    return { transport: 'smtp', to, messageId: info && info.messageId };
+    if (rejected.length > 0) {
+      throw new Error(
+        `SMTP server rejected ${rejected.length} recipient(s): ${rejected.join(', ')}`
+      );
+    }
+    return {
+      transport: 'smtp',
+      to,
+      messageId: info && info.messageId,
+      file: filePath,
+    };
   }
 
-  // --- dev transport: write the rendered email to disk ---------------------
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const fileName = `${stamp}-${sanitizeRecipient(to)}.html`;
-  const filePath = path.join(SENT_DIR, fileName);
-
-  const document =
-    `<!-- to: ${to} -->\n` +
-    `<!-- from: ${env.emailFrom} -->\n` +
-    `<!-- subject: ${subject} -->\n` +
-    `<!-- sentAt: ${new Date().toISOString()} -->\n` +
-    (text ? `<!--\nplain-text:\n${text}\n-->\n` : '') +
-    (html || `<pre>${text || ''}</pre>`);
-
-  fs.writeFileSync(filePath, document, 'utf8');
   console.log(
     `[Email] (dev) to=${to} subject="${subject}" -> ` +
       `sent-emails/${fileName}`

@@ -95,6 +95,58 @@ export async function adminDeleteCity(id) {
   return unwrap(res);
 }
 
+// --- Locations hierarchy ---------------------------------------------------
+
+export async function listLocationsPublic() {
+  const res = await get('/api/app-settings/locations');
+  return unwrap(res) || [];
+}
+
+export async function adminListLocations() {
+  const res = await get('/api/admin/locations');
+  return unwrap(res) || [];
+}
+
+export async function adminCreateCountry(data) {
+  const res = await post('/api/admin/countries', data);
+  return unwrap(res);
+}
+export async function adminUpdateCountry(id, data) {
+  const res = await patch(`/api/admin/countries/${id}`, data);
+  return unwrap(res);
+}
+export async function adminDeleteCountry(id) {
+  const res = await del(`/api/admin/countries/${id}`);
+  return unwrap(res);
+}
+
+export async function adminCreateState(data) {
+  const res = await post('/api/admin/states', data);
+  return unwrap(res);
+}
+export async function adminUpdateState(id, data) {
+  const res = await patch(`/api/admin/states/${id}`, data);
+  return unwrap(res);
+}
+export async function adminDeleteState(id) {
+  const res = await del(`/api/admin/states/${id}`);
+  return unwrap(res);
+}
+
+export async function adminCreateCityForState(data) {
+  const res = await post('/api/admin/locations/cities', data);
+  return unwrap(res);
+}
+export async function adminUpdateCityHierarchical(id, data) {
+  const res = await patch(`/api/admin/locations/cities/${id}`, data);
+  return unwrap(res);
+}
+export async function adminDeleteCityHierarchical(id) {
+  // Re-uses the legacy /admin/cities DELETE route.
+  const res = await del(`/api/admin/cities/${id}`);
+  return unwrap(res);
+}
+
 export default {
   listCategories,
   listCities,

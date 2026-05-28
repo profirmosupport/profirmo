@@ -47,6 +47,18 @@ export const translations = {
     'footer.disclaimer':
       'Pro Firmo is a technology platform and does not itself provide legal or tax advice.',
 
+    // --- Not found / 404 page ---
+    'notFound.code': '404',
+    'notFound.title': 'We couldn’t find that page',
+    'notFound.desc':
+      'The page you’re looking for has moved, expired or never existed. Try searching for a professional, or jump back to one of the popular sections below.',
+    'notFound.searchPlaceholder': 'Search lawyers, tax consultants, cities…',
+    'notFound.searchCta': 'Search',
+    'notFound.backHome': 'Back to home',
+    'notFound.findPros': 'Find professionals',
+    'notFound.browseFirms': 'Browse firms',
+    'notFound.popular': 'Popular destinations',
+
     // --- Cities ---
     'city.Mumbai': 'Mumbai',
     'city.Delhi': 'Delhi',
@@ -326,6 +338,18 @@ export const translations = {
     'footer.rights': 'सर्वाधिकार सुरक्षित।',
     'footer.disclaimer':
       'Pro Firmo एक प्रौद्योगिकी मंच है और स्वयं कानूनी या कर सलाह प्रदान नहीं करता।',
+
+    // --- Not found / 404 page ---
+    'notFound.code': '404',
+    'notFound.title': 'हमें वह पेज नहीं मिला',
+    'notFound.desc':
+      'जिस पेज को आप ढूंढ रहे हैं वह हटा दिया गया है, समाप्त हो गया है या कभी मौजूद नहीं था। किसी प्रोफेशनल को खोजें या नीचे दिए लोकप्रिय सेक्शन्स पर जाएं।',
+    'notFound.searchPlaceholder': 'वकील, कर सलाहकार, शहर खोजें…',
+    'notFound.searchCta': 'खोजें',
+    'notFound.backHome': 'होम पर वापस',
+    'notFound.findPros': 'प्रोफेशनल खोजें',
+    'notFound.browseFirms': 'फर्म ब्राउज़ करें',
+    'notFound.popular': 'लोकप्रिय गंतव्य',
 
     // --- Cities ---
     'city.Mumbai': 'मुंबई',

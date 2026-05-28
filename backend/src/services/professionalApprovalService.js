@@ -268,15 +268,23 @@ async function reject(approvalId, adminId, reason) {
     };
   }
   const approval = await loadActionableApproval(approvalId);
+  const cleanReason = String(reason).trim();
   const now = new Date();
 
+  // Stamp the approval row first so the cascade-delete below leaves audit
+  // logs / job payloads consistent with a REJECTED state.
   await approval.update({
     status: 'REJECTED',
-    rejectionReason: String(reason).trim(),
+    rejectionReason: cleanReason,
     reviewedBy: adminId,
     reviewedAt: now,
   });
+  const approvalSnapshot = approval.get({ plain: true });
 
+  // Email the rejected applicant the reason + an invite to apply again as a
+  // fresh signup, then wipe the user record. The Job queue persists the
+  // recipient + template vars in `payload`, so the email still goes out
+  // after the user row (and the cascade-tracked approval) are deleted.
   const user = await User.findByPk(approval.userId);
   if (user) {
     await enqueue('email', {
@@ -284,30 +292,16 @@ async function reject(approvalId, adminId, reason) {
       template: 'professionalRejection',
       vars: {
         professionalName: user.fullName || user.name || 'Professional',
-        reason: String(reason).trim(),
-        resubmitUrl: `${env.appUrl}/professional/resubmit`,
+        reason: cleanReason,
+        resubmitUrl: `${env.appUrl}/signup`,
       },
     });
-    try {
-      await notificationService.createNotification({
-        userId: user.id,
-        type: 'professional_rejection',
-        title: 'Your professional application was not approved',
-        message: `Your application was not approved. Reason: ${String(
-          reason
-        ).trim()}. You may update your details and resubmit.`,
-        link: '/professional/resubmit',
-        metadata: { approvalId: approval.id },
-      });
-    } catch (err) {
-      console.error(
-        '[ProApproval] notification failed:',
-        err.message || err
-      );
-    }
+    // FK cascades clear addresses, professional/lawyer/tax details, sessions,
+    // notifications, leads, cases, the approval row itself, etc.
+    await user.destroy();
   }
 
-  return approval.get({ plain: true });
+  return approvalSnapshot;
 }
 
 /**
@@ -343,7 +337,6 @@ async function requestInfo(approvalId, adminId, message) {
       vars: {
         professionalName: user.fullName || user.name || 'Professional',
         requestedInfo: String(message).trim(),
-        resubmitUrl: `${env.appUrl}/professional/resubmit`,
       },
     });
     try {
@@ -353,8 +346,8 @@ async function requestInfo(approvalId, adminId, message) {
         title: 'Additional information needed for your application',
         message: `An admin has requested more information: ${String(
           message
-        ).trim()}`,
-        link: '/professional/resubmit',
+        ).trim()}. Please email the requested details to profirmo.support@gmail.com.`,
+        link: 'mailto:profirmo.support@gmail.com',
         metadata: { approvalId: approval.id },
       });
     } catch (err) {

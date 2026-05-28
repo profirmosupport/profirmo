@@ -16,6 +16,7 @@ import Button from '@/components/common/Button';
 import Avatar from '@/components/common/Avatar';
 import RatingStars from '@/components/common/RatingStars';
 import { useLanguage } from '@/components/LanguageProvider';
+import { useLocations } from '@/hooks/useLocations';
 import { formatCurrency } from '@/utils/formatters';
 
 /**
@@ -27,6 +28,7 @@ import { formatCurrency } from '@/utils/formatters';
  */
 export default function ProfessionalProfileHeader({ professional }) {
   const { t } = useLanguage();
+  const { cityById } = useLocations();
   if (!professional) return null;
 
   const {
@@ -60,11 +62,21 @@ export default function ProfessionalProfileHeader({ professional }) {
   } = professional;
 
   const subs = Array.isArray(subCategories) ? subCategories : [];
-  const practice = Array.isArray(practiceCities)
-    ? practiceCities.filter(Boolean)
-    : [];
-  const otherPractice = practice.filter(
-    (c) => String(c).toLowerCase() !== String(city || '').toLowerCase()
+  // practiceCities is stored as city ids — resolve to names so the profile
+  // header doesn't surface internal ids. Legacy rows that still hold raw
+  // names pass through unchanged.
+  const practiceNames = (Array.isArray(practiceCities) ? practiceCities : [])
+    .filter(Boolean)
+    .map((c) => {
+      if (typeof c === 'string' && c.startsWith('city-')) {
+        const found = cityById(c);
+        return found ? found.name : null;
+      }
+      return String(c);
+    })
+    .filter(Boolean);
+  const otherPractice = practiceNames.filter(
+    (c) => c.toLowerCase() !== String(city || '').toLowerCase()
   );
   const courts = Array.isArray(courtsPracticing)
     ? courtsPracticing.filter(Boolean)
@@ -174,20 +186,15 @@ export default function ProfessionalProfileHeader({ professional }) {
             </div>
 
             {otherPractice.length > 0 && (
-              <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
+              <p className="mt-3 text-xs text-slate-600">
                 <span className="inline-flex items-center gap-1 font-medium text-slate-500">
                   <MapPin size={12} className="text-slate-400" />
                   Also practises in
+                </span>{' '}
+                <span className="font-medium text-teal-700">
+                  {otherPractice.join(', ')}
                 </span>
-                {otherPractice.map((c) => (
-                  <span
-                    key={c}
-                    className="rounded-full bg-teal-50 px-2.5 py-0.5 font-medium text-teal-700"
-                  >
-                    {c}
-                  </span>
-                ))}
-              </div>
+              </p>
             )}
 
             {languages.length > 0 && (

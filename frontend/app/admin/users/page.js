@@ -18,6 +18,7 @@ import {
   Ban,
   CheckCircle2,
   Eye,
+  MailCheck,
   Pencil,
   Trash2,
   UserPlus,
@@ -42,6 +43,7 @@ import {
   createUser,
   updateUser,
   deleteUser,
+  markUserEmailVerified,
 } from '@/services/adminService';
 
 const PAGE_SIZE = 20;
@@ -123,7 +125,15 @@ const EMPTY_CREATE_FORM = {
  * Activate / Delete. Replaces the previous row of inline icon buttons so the
  * table stays compact at every width.
  */
-function UserActionsMenu({ row, isSelf, onView, onEdit, onSuspend, onDelete }) {
+function UserActionsMenu({
+  row,
+  isSelf,
+  onView,
+  onEdit,
+  onSuspend,
+  onDelete,
+  onVerifyEmail,
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -143,9 +153,12 @@ function UserActionsMenu({ row, isSelf, onView, onEdit, onSuspend, onDelete }) {
     };
   }, [open]);
 
-  const canToggle =
-    !isSelf && (row.status === 'active' || row.status === 'suspended');
+  // Suspend / activate is available for every non-self account. A
+  // `pending_verification` row can be promoted to active without going
+  // through email verification — admin override.
+  const canToggle = !isSelf;
   const isActive = row.status === 'active';
+  const canVerifyEmail = !isSelf && !row.emailVerified;
 
   return (
     <div ref={ref} className="relative inline-block text-left">
@@ -200,6 +213,19 @@ function UserActionsMenu({ row, isSelf, onView, onEdit, onSuspend, onDelete }) {
             >
               {isActive ? <Ban size={14} /> : <CheckCircle2 size={14} />}
               {isActive ? 'Suspend' : 'Activate'}
+            </button>
+          )}
+          {canVerifyEmail && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onVerifyEmail();
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-teal-700 transition hover:bg-slate-50"
+            >
+              <MailCheck size={14} /> Mark email verified
             </button>
           )}
           {!isSelf && (
@@ -337,6 +363,31 @@ export default function AdminUsersPage() {
       setActionError(err.message || 'Failed to update the user.');
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  // ----- Mark email verified (admin override) ----------------------------
+
+  // Tracks the row currently being verified so we can disable repeated clicks
+  // and surface a per-row error inline.
+  const [verifyingId, setVerifyingId] = useState(null);
+  const [verifyError, setVerifyError] = useState('');
+
+  async function verifyEmail(row) {
+    if (verifyingId) return;
+    setVerifyError('');
+    setVerifyingId(row.id);
+    try {
+      await markUserEmailVerified(row.id);
+      await load();
+    } catch (err) {
+      setVerifyError(
+        `Could not mark ${row.email || 'user'} as verified: ${
+          err.message || 'unknown error'
+        }`
+      );
+    } finally {
+      setVerifyingId(null);
     }
   }
 
@@ -621,6 +672,21 @@ export default function AdminUsersPage() {
           </div>
         </Card>
 
+        {/* Inline status banner from the "Mark email verified" action. */}
+        {verifyError && (
+          <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+            <span className="flex-1">{verifyError}</span>
+            <button
+              type="button"
+              onClick={() => setVerifyError('')}
+              className="text-xs font-medium text-red-700 hover:underline"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {/* Header row */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -693,10 +759,6 @@ export default function AdminUsersPage() {
                     const name = userName(row);
                     const badge = statusBadge(row.status);
                     const isSelf = user && row.id === user.id;
-                    const canToggle =
-                      !isSelf &&
-                      (row.status === 'active' ||
-                        row.status === 'suspended');
                     return (
                       <tr key={row.id} className="hover:bg-slate-50">
                         <td className="px-4 py-3">
@@ -761,6 +823,7 @@ export default function AdminUsersPage() {
                               onEdit={() => openEdit(row)}
                               onSuspend={() => openConfirm(row)}
                               onDelete={() => openDelete(row)}
+                              onVerifyEmail={() => verifyEmail(row)}
                             />
                           </div>
                         </td>

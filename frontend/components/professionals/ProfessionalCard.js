@@ -7,6 +7,7 @@ import Button from '@/components/common/Button';
 import Avatar from '@/components/common/Avatar';
 import RatingStars from '@/components/common/RatingStars';
 import { useLanguage } from '@/components/LanguageProvider';
+import { useLocations } from '@/hooks/useLocations';
 import { formatCurrency, slugify } from '@/utils/formatters';
 
 /**
@@ -19,6 +20,7 @@ import { formatCurrency, slugify } from '@/utils/formatters';
  */
 export default function ProfessionalCard({ professional }) {
   const { t } = useLanguage();
+  const { cityById } = useLocations();
   if (!professional) return null;
 
   const {
@@ -64,13 +66,21 @@ export default function ProfessionalCard({ professional }) {
   const visibleSubs = subs.slice(0, 2);
   const extraSubsCount = Math.max(0, subs.length - visibleSubs.length);
 
-  // Practice cities chip row. The base city already shows above, so de-dupe
-  // it so we don't render Mumbai twice.
-  const practice = Array.isArray(practiceCities)
-    ? practiceCities.filter(Boolean)
-    : [];
-  const otherPractice = practice.filter(
-    (c) => String(c).toLowerCase() !== String(city || '').toLowerCase()
+  // practiceCities holds city IDs (post-hierarchy migration) or, for legacy
+  // rows, raw city names. Resolve each to a display name so the card never
+  // leaks an internal id, then de-dupe against the base `city` (also a name).
+  const practiceNames = (Array.isArray(practiceCities) ? practiceCities : [])
+    .filter(Boolean)
+    .map((c) => {
+      if (typeof c === 'string' && c.startsWith('city-')) {
+        const found = cityById(c);
+        return found ? found.name : null;
+      }
+      return String(c);
+    })
+    .filter(Boolean);
+  const otherPractice = practiceNames.filter(
+    (c) => c.toLowerCase() !== String(city || '').toLowerCase()
   );
 
   return (
@@ -156,20 +166,15 @@ export default function ProfessionalCard({ professional }) {
       )}
 
       {otherPractice.length > 0 && (
-        <div className="mt-2 flex flex-wrap items-start gap-1.5 text-[11px] text-slate-500">
+        <p className="mt-2 truncate text-[11px] text-slate-500">
           <span className="inline-flex items-center gap-1 font-medium text-slate-400">
             <MapPin size={11} />
             Also practises in
+          </span>{' '}
+          <span className="font-medium text-teal-700">
+            {otherPractice.join(', ')}
           </span>
-          {otherPractice.map((c) => (
-            <span
-              key={c}
-              className="rounded-full bg-teal-50 px-2 py-0.5 font-medium text-teal-700"
-            >
-              {c}
-            </span>
-          ))}
-        </div>
+        </p>
       )}
 
       <div className="mt-3">

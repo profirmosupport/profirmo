@@ -11,6 +11,7 @@ import { useAuth } from '@/hooks/useAuth';
 import reviewService from '@/services/reviewService';
 import caseService from '@/services/caseService';
 import professionalService from '@/services/professionalService';
+import { getProfile } from '@/services/profileService';
 import { ROLES } from '@/utils/constants';
 
 export default function ProfessionalDashboardPage() {
@@ -23,6 +24,10 @@ export default function ProfessionalDashboardPage() {
   const [myReviews, setMyReviews] = useState([]);
   const [myCases, setMyCases] = useState([]);
   const [myProfessional, setMyProfessional] = useState(null);
+  // `profileCompletion` is computed server-side using the 10% photo +
+  // 3×30% steps model, so the dashboard widget stays in sync with the
+  // wizard's view of "what's left to fill in".
+  const [profileCompletion, setProfileCompletion] = useState(0);
 
   const loadProfessional = useCallback(async () => {
     if (!linkedId) return;
@@ -31,6 +36,14 @@ export default function ProfessionalDashboardPage() {
       if (data && data.id) setMyProfessional(data);
     } catch {
       // Ignore — availability manager falls back to an empty schedule.
+    }
+    try {
+      const profile = await getProfile();
+      if (profile && typeof profile.profileCompletion === 'number') {
+        setProfileCompletion(profile.profileCompletion);
+      }
+    } catch {
+      // Ignore — dashboard widget just shows 0% if the call fails.
     }
   }, [linkedId]);
 
@@ -82,17 +95,7 @@ export default function ProfessionalDashboardPage() {
 
   const professional = myProfessional || {};
 
-  // Profile completion estimate — drawn from live fields.
-  const fields = [
-    professional.bio,
-    professional.specialization || professional.designation,
-    professional.registrationNumber,
-    professional.languages && professional.languages.length,
-    professional.consultationFee || professional.perMinuteRate,
-    professional.availability && professional.availability.length,
-  ];
-  const filled = fields.filter(Boolean).length;
-  const completion = Math.round((filled / fields.length) * 100);
+  const completion = profileCompletion;
 
   return (
     <DashboardLayout

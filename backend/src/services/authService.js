@@ -16,6 +16,7 @@ const {
   ProfessionalApproval,
   ProfessionalDetail,
   PasswordResetOtp,
+  Address,
 } = require('../models');
 const {
   signAccessToken,
@@ -471,6 +472,7 @@ const createUserWithRole = async ({ role, data = {} }) => {
       null,
     fullName: derivedName,
     mobileNumber: data.mobileNumber || data.phone || null,
+    profilePhoto: data.profilePhoto || null,
     status: 'pending_verification',
     isOnline: false,
     accountVerified: false,
@@ -481,6 +483,28 @@ const createUserWithRole = async ({ role, data = {} }) => {
     emailVerificationExpiresAt: verification.expiresAt,
     emailVerificationSentAt: now,
   });
+
+  // Persist the postal address captured during signup so the user's profile
+  // page pre-fills country / state / city / addressLine on first load. Only
+  // create the row when any address field was supplied; otherwise leave the
+  // user without an address record and let the profile editor create one.
+  const hasAddressInput = Boolean(
+    (data.country && String(data.country).trim()) ||
+      (data.state && String(data.state).trim()) ||
+      (data.city && String(data.city).trim()) ||
+      (data.addressLine && String(data.addressLine).trim()) ||
+      (data.postalCode && String(data.postalCode).trim())
+  );
+  if (hasAddressInput) {
+    await Address.create({
+      userId: user.id,
+      country: (data.country || '').trim() || null,
+      state: (data.state || '').trim() || null,
+      city: (data.city || '').trim() || null,
+      addressLine: (data.addressLine || '').trim() || null,
+      postalCode: (data.postalCode || '').trim() || null,
+    });
+  }
 
   // The raw token is attached transiently so the caller can email it; it is
   // never persisted in this form.

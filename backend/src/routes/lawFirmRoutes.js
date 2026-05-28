@@ -13,6 +13,11 @@ router.use(authenticate);
 router.get('/mine', lawFirmController.getMyFirm);
 router.get('/mine/members', lawFirmController.getMembers);
 router.get('/mine/clients', lawFirmController.getFirmClients);
+router.get('/mine/leads', lawFirmController.getMyFirmLeads);
+router.post(
+  '/mine/leads/:leadId/add-client',
+  lawFirmController.addLeadAsClient
+);
 
 // Search approved professionals to invite (declared before /mine paths is
 // not required, but kept near the read routes for clarity).

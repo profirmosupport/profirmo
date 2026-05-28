@@ -13,7 +13,7 @@ import Button from '@/components/common/Button';
 import PhotoUpload from '@/components/common/PhotoUpload';
 import FileUpload from '@/components/common/FileUpload';
 import { createLawFirm, updateLawFirm } from '@/services/profileService';
-import { useCities } from '@/hooks/useAppSettings';
+import { useLocations } from '@/hooks/useLocations';
 
 function toArray(str) {
   if (!str) return [];
@@ -77,8 +77,14 @@ export default function LawFirmForm({ lawFirm, onSaved }) {
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState(null);
-  const { cities } = useCities();
-  const cityOptions = cities.map((c) => ({ value: c.name, label: c.name }));
+  const { flatCities, cityById } = useLocations();
+  // The firm's headquarters is stored as a city name for back-compat. We
+  // resolve to id for the Combobox and write the name back on pick.
+  const cityOptions = flatCities.map((c) => ({ value: c.id, label: c.label }));
+  const headquartersCityId =
+    flatCities.find(
+      (c) => c.name.toLowerCase() === String(form.headquarters || '').toLowerCase()
+    )?.id || '';
 
   const isNew = !lawFirm;
 
@@ -246,8 +252,11 @@ export default function LawFirmForm({ lawFirm, onSaved }) {
           <Combobox
             label="Headquarters"
             name="headquarters"
-            value={form.headquarters}
-            onChange={(e) => update('headquarters', e.target.value)}
+            value={headquartersCityId}
+            onChange={(e) => {
+              const row = cityById(e.target.value);
+              update('headquarters', row ? row.name : '');
+            }}
             options={cityOptions}
             placeholder="Select city…"
           />

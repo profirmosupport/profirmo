@@ -323,11 +323,13 @@ const updateProfessionalProfile = async (userId, body = {}) => {
     detailUpdates.professionalType || professionalDetail.professionalType;
 
   // --- Upsert the type-specific detail row ---------------------------------
-  if (
-    professionalType === 'Lawyer' &&
-    body.lawyer &&
-    typeof body.lawyer === 'object'
-  ) {
+  // The 3-step signup wizard sends `professionalType: 'Legal Consultant'`
+  // (and 'Tax Consultant'). The old type label 'Lawyer' / 'Tech Consultant'
+  // is kept as a synonym for legacy callers — match any of them.
+  const isLegalType =
+    professionalType === 'Lawyer' ||
+    /lawyer|advocate|legal/i.test(String(professionalType || ''));
+  if (isLegalType && body.lawyer && typeof body.lawyer === 'object') {
     const lawyerUpdates = pick(body.lawyer, LAWYER_DETAIL_FIELDS);
     const existingLawyer = await LawyerDetail.findOne({
       where: { professionalId: professionalDetail.id },
@@ -342,11 +344,10 @@ const updateProfessionalProfile = async (userId, body = {}) => {
     }
   }
 
-  if (
-    professionalType === 'Tech Consultant' &&
-    body.tech &&
-    typeof body.tech === 'object'
-  ) {
+  const isTechType =
+    professionalType === 'Tech Consultant' ||
+    /tech/i.test(String(professionalType || ''));
+  if (isTechType && body.tech && typeof body.tech === 'object') {
     const techUpdates = pick(body.tech, TECH_DETAIL_FIELDS);
     const existingTech = await TechConsultantDetail.findOne({
       where: { professionalId: professionalDetail.id },

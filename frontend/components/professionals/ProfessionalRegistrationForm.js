@@ -26,7 +26,8 @@ import MultiCombobox from '@/components/common/MultiCombobox';
 import FileUpload from '@/components/common/FileUpload';
 import PhotoUpload from '@/components/common/PhotoUpload';
 import { isEmail, isPhone, isStrongPassword } from '@/utils/validators';
-import { useCategories, useCities } from '@/hooks/useAppSettings';
+import { useCategories } from '@/hooks/useAppSettings';
+import { useLocations } from '@/hooks/useLocations';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -43,14 +44,6 @@ const CONSULTATION_TYPE_OPTIONS = [
   { value: 'Both', label: 'Both' },
 ];
 
-const TAX_EXPERTISE_FLAGS = [
-  { key: 'gstExpertise', label: 'GST expertise' },
-  { key: 'incomeTaxExpertise', label: 'Income tax expertise' },
-  { key: 'corporateTaxExpertise', label: 'Corporate tax expertise' },
-  { key: 'businessAdvisory', label: 'Business advisory' },
-  { key: 'accountingServices', label: 'Accounting services' },
-  { key: 'financialPlanning', label: 'Financial planning' },
-];
 
 // ---------------------------------------------------------------------------
 // Empty form shape
@@ -108,12 +101,6 @@ function emptyValues() {
     // Tax fields
     taxRegistrationNumber: '',
     specializationAreas: '',
-    gstExpertise: false,
-    incomeTaxExpertise: false,
-    corporateTaxExpertise: false,
-    businessAdvisory: false,
-    accountingServices: false,
-    financialPlanning: false,
     taxConsultationType: '',
     taxConsultantCertificate: '',
     registrationCertificate: '',
@@ -206,41 +193,62 @@ export function valuesFromProfile(data) {
   v.resume = pick(pro.resume);
   v.degreeCertificate = pick(pro.degreeCertificate);
 
-  // Legal
-  v.barRegistrationNumber = pick(legal.barRegistrationNumber);
-  v.enrollmentNumber = pick(legal.enrollmentNumber);
-  v.advocateLicenseNumber = pick(legal.advocateLicenseNumber);
+  // Legal — promoted identifiers (bar/enrollment/license, chamber, courts,
+  // consultation type) live on ProfessionalDetail. We prefer that source so
+  // values typed at signup show up on /profile/edit, falling back to the
+  // legacy LawyerDetail row when nothing's been migrated.
+  v.barRegistrationNumber = pick(pro.barRegistrationNumber, legal.barRegistrationNumber);
+  v.enrollmentNumber = pick(pro.enrollmentNumber, legal.enrollmentNumber);
+  v.advocateLicenseNumber = pick(
+    pro.licenseNumber,
+    legal.advocateLicenseNumber,
+    legal.licenseNumber
+  );
   v.practiceAreas = toCsv(legal.practiceAreas);
-  v.courtPractice = toCsv(legal.courtPractice);
+  // Use whichever source has data — courtsPracticing on professionalDetail is
+  // the modern home; legacy rows still have courtPractice on lawyerDetail.
+  v.courtPractice =
+    toCsv(pro.courtsPracticing) || toCsv(legal.courtPractice);
   v.jurisdiction = pick(legal.jurisdiction);
-  v.chamberAddress = pick(legal.chamberAddress);
+  v.chamberAddress = pick(pro.chamberAddress, legal.chamberAddress);
   v.lawDegree = pick(legal.lawDegree);
-  v.legalConsultationType = pick(legal.consultationType);
+  v.legalConsultationType = pick(pro.consultancyType, legal.consultationType);
   v.yearsOfPractice =
     legal.yearsOfPractice !== undefined && legal.yearsOfPractice !== null
       ? String(legal.yearsOfPractice)
       : '';
-  v.advocateLicense = pick(legal.advocateLicense);
-  v.barCouncilRegistration = pick(legal.barCouncilRegistration);
+  // Document URLs: ProfessionalDetail holds the canonical post-signup copy
+  // (advocateLicenseDoc / barCouncilCertDoc / lawDegreeDoc), but legacy rows
+  // keep them on LawyerDetail under different keys.
+  v.advocateLicense = pick(pro.advocateLicenseDoc, legal.advocateLicense);
+  v.barCouncilRegistration = pick(
+    pro.barCouncilCertDoc,
+    legal.barCouncilRegistration
+  );
   v.practiceCertificate = pick(legal.practiceCertificate);
-  v.lawDegreeDocument = pick(legal.lawDegreeDocument);
+  v.lawDegreeDocument = pick(pro.lawDegreeDoc, legal.lawDegreeDocument);
   v.supportingCertificates = Array.isArray(legal.supportingCertificates)
     ? legal.supportingCertificates.filter(Boolean)
     : [];
+  // Government ID lives on ProfessionalDetail post-signup.
+  v.governmentId = pick(pro.governmentIdDoc, pro.governmentId);
 
-  // Tax
-  v.taxRegistrationNumber = pick(tax.taxRegistrationNumber);
+  // Tax — same story: identifiers + docs are promoted to ProfessionalDetail.
+  v.taxRegistrationNumber = pick(pro.taxRegistrationNumber, tax.taxRegistrationNumber);
   v.specializationAreas = toCsv(tax.specializationAreas);
-  v.gstExpertise = Boolean(tax.gstExpertise);
-  v.incomeTaxExpertise = Boolean(tax.incomeTaxExpertise);
-  v.corporateTaxExpertise = Boolean(tax.corporateTaxExpertise);
-  v.businessAdvisory = Boolean(tax.businessAdvisory);
-  v.accountingServices = Boolean(tax.accountingServices);
-  v.financialPlanning = Boolean(tax.financialPlanning);
-  v.taxConsultationType = pick(tax.consultationType);
-  v.taxConsultantCertificate = pick(tax.taxConsultantCertificate);
-  v.registrationCertificate = pick(tax.registrationCertificate);
-  v.professionalLicense = pick(tax.professionalLicense);
+  v.taxConsultationType = pick(pro.consultancyType, tax.consultationType);
+  v.taxConsultantCertificate = pick(
+    pro.taxRegistrationCertDoc,
+    tax.taxConsultantCertificate
+  );
+  v.registrationCertificate = pick(
+    pro.qualificationCertDoc,
+    tax.registrationCertificate
+  );
+  v.professionalLicense = pick(
+    pro.professionalLicenseDoc,
+    tax.professionalLicense
+  );
   v.supportingCertifications = Array.isArray(tax.supportingCertifications)
     ? tax.supportingCertifications.filter(Boolean)
     : [];
@@ -311,12 +319,6 @@ export function buildPayload(values, professionalType, mode) {
 
   const tax = {
     taxRegistrationNumber: values.taxRegistrationNumber.trim(),
-    gstExpertise: Boolean(values.gstExpertise),
-    incomeTaxExpertise: Boolean(values.incomeTaxExpertise),
-    corporateTaxExpertise: Boolean(values.corporateTaxExpertise),
-    businessAdvisory: Boolean(values.businessAdvisory),
-    accountingServices: Boolean(values.accountingServices),
-    financialPlanning: Boolean(values.financialPlanning),
     consultationType: values.taxConsultationType || '',
     taxConsultantCertificate: values.taxConsultantCertificate || '',
     registrationCertificate: values.registrationCertificate || '',
@@ -470,8 +472,6 @@ export function validateValues(values, professionalType, mode) {
     req('barRegistrationNumber', 'Bar registration number is required.');
     req('enrollmentNumber', 'Enrollment number is required.');
     req('advocateLicenseNumber', 'Advocate license number is required.');
-    if (toArray(values.practiceAreas).length === 0)
-      errors.practiceAreas = 'At least one practice area is required.';
     req('jurisdiction', 'Jurisdiction is required.');
   } else if (professionalType === PROFESSIONAL_TYPES.TAX) {
     req('taxRegistrationNumber', 'Tax registration number is required.');
@@ -659,7 +659,49 @@ export default function ProfessionalRegistrationForm({
 
   // Admin-managed taxonomy + cities power the dropdowns.
   const { categories } = useCategories();
-  const { cities } = useCities();
+  const {
+    countries,
+    statesByCountry,
+    citiesByState,
+    flatCities,
+    cityById,
+    stateById,
+    countryById,
+  } = useLocations();
+
+  // Resolve the IDs that drive the cascading Country/State/City Selects.
+  // We mirror these IDs into `country/state/city` text fields below so the
+  // existing buildPayload (which writes those text values into the address)
+  // keeps working without a deeper rewrite.
+  const selectedCountryId =
+    countries.find((c) => c.name === values.country)?.id || '';
+  const stateRows = statesByCountry(selectedCountryId);
+  const selectedStateId =
+    stateRows.find((s) => s.name === values.state)?.id || '';
+  const cityRowsForState = citiesByState(selectedStateId);
+  const selectedCityId =
+    cityRowsForState.find((c) => c.name === values.city)?.id || '';
+
+  function pickCountry(id) {
+    const c = countryById(id);
+    setValues((v) => ({
+      ...v,
+      country: c ? c.name : '',
+      state: '',
+      city: '',
+    }));
+    setErrors((er) => ({ ...er, country: undefined, state: undefined, city: undefined }));
+  }
+  function pickState(id) {
+    const s = stateById(id);
+    setValues((v) => ({ ...v, state: s ? s.name : '', city: '' }));
+    setErrors((er) => ({ ...er, state: undefined, city: undefined }));
+  }
+  function pickCity(id) {
+    const c = cityById(id);
+    setValues((v) => ({ ...v, city: c ? c.name : '' }));
+    setErrors((er) => ({ ...er, city: undefined }));
+  }
   const categoryForType = useMemo(() => {
     if (!Array.isArray(categories)) return null;
     const target = isLegal ? 'legal' : 'tax';
@@ -709,7 +751,6 @@ export default function ProfessionalRegistrationForm({
         'barRegistrationNumber',
         'enrollmentNumber',
         'advocateLicenseNumber',
-        'practiceAreas',
         'jurisdiction',
         'taxRegistrationNumber',
       ],
@@ -798,7 +839,6 @@ export default function ProfessionalRegistrationForm({
           'barRegistrationNumber',
           'enrollmentNumber',
           'advocateLicenseNumber',
-          'practiceAreas',
           'jurisdiction',
           'taxRegistrationNumber',
         ],
@@ -978,31 +1018,42 @@ export default function ProfessionalRegistrationForm({
             </div>
           )}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Input
+            <Combobox
               label="Country"
               name="country"
-              value={values.country}
-              onChange={handleChange}
-              placeholder="India"
+              value={selectedCountryId}
+              onChange={(e) => pickCountry(e.target.value)}
+              options={countries.map((c) => ({ value: c.id, label: c.name }))}
+              placeholder="Select country…"
               required
               error={allErrors.country}
             />
-            <Input
+            <Combobox
               label="State"
               name="state"
-              value={values.state}
-              onChange={handleChange}
-              placeholder="Maharashtra"
+              value={selectedStateId}
+              onChange={(e) => pickState(e.target.value)}
+              options={stateRows.map((s) => ({ value: s.id, label: s.name }))}
+              placeholder={
+                selectedCountryId ? 'Select state…' : 'Pick a country first'
+              }
+              disabled={!selectedCountryId}
               required
               error={allErrors.state}
             />
             <Combobox
               label="City"
               name="city"
-              value={values.city}
-              onChange={handleChange}
-              options={cities.map((c) => ({ value: c.name, label: c.name }))}
-              placeholder="Select city…"
+              value={selectedCityId}
+              onChange={(e) => pickCity(e.target.value)}
+              options={cityRowsForState.map((c) => ({
+                value: c.id,
+                label: c.name,
+              }))}
+              placeholder={
+                selectedStateId ? 'Select city…' : 'Pick a state first'
+              }
+              disabled={!selectedStateId}
               required
               error={allErrors.city}
             />
@@ -1014,9 +1065,12 @@ export default function ProfessionalRegistrationForm({
             onChange={(next) =>
               setValues((v) => ({ ...v, practiceCities: next }))
             }
-            options={cities.map((c) => ({ value: c.name, label: c.name }))}
+            options={flatCities.map((c) => ({
+              value: c.id,
+              label: c.label,
+            }))}
             placeholder="Select every city you take clients in…"
-            hint="These also appear when clients filter the listing by city."
+            hint="Searchable — choose from State — City. Clients filtering the listing by city will see you for any of these."
           />
           <Input
             label="Address line"
@@ -1293,16 +1347,9 @@ export default function ProfessionalRegistrationForm({
               required
               error={allErrors.advocateLicenseNumber}
             />
-            <Input
-              label="Practice areas"
-              name="practiceAreas"
-              value={values.practiceAreas}
-              onChange={handleChange}
-              placeholder="Criminal, Civil, Family"
-              hint="Comma-separated"
-              required
-              error={allErrors.practiceAreas}
-            />
+            {/* Practice areas are now covered by the admin-managed
+                sub-categories multi-select above, so this field is no
+                longer collected. */}
             <Input
               label="Courts you practice in"
               name="courtPractice"
@@ -1410,31 +1457,10 @@ export default function ProfessionalRegistrationForm({
               required
               error={allErrors.taxRegistrationNumber}
             />
-            {/* Specialization areas are now covered by the admin-managed
-                sub-categories selected at the top of the form, so this field
-                is no longer rendered. */}
-            <div>
-              <p className="mb-2 text-sm font-medium text-slate-700">
-                Expertise
-              </p>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {TAX_EXPERTISE_FLAGS.map((flag) => (
-                  <label
-                    key={flag.key}
-                    className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 transition hover:border-amber-300 hover:bg-amber-50/50"
-                  >
-                    <input
-                      type="checkbox"
-                      name={flag.key}
-                      checked={Boolean(values[flag.key])}
-                      onChange={handleChange}
-                      className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-200"
-                    />
-                    {flag.label}
-                  </label>
-                ))}
-              </div>
-            </div>
+            {/* Expertise is now driven by the admin-managed sub-categories
+                multi-select at the top of the form — those are the
+                professional's expertise areas, so the separate flag list has
+                been removed. */}
             <Select
               label="Consultation type"
               name="taxConsultationType"

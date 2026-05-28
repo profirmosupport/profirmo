@@ -6,7 +6,7 @@
 // uniqueness against `slug`.
 
 const { Op } = require('sequelize');
-const { Category, SubCategory, City } = require('../models');
+const { Category, SubCategory, Country, State, City } = require('../models');
 
 const slugify = (s) =>
   String(s || '')
@@ -287,6 +287,278 @@ async function deleteCity(id) {
   return { id };
 }
 
+// --- Locations hierarchy (Country -> State -> City) ----------------------
+
+// Admin view: full nested tree of Country -> State -> City. Used by the
+// /admin/locations page to render the collapsible hierarchy.
+async function listLocationsAdmin() {
+  const [countries, states, cities] = await Promise.all([
+    Country.findAll({
+      order: [['sortOrder', 'ASC'], ['name', 'ASC']],
+      raw: true,
+    }),
+    State.findAll({
+      order: [['sortOrder', 'ASC'], ['name', 'ASC']],
+      raw: true,
+    }),
+    City.findAll({
+      order: [['sortOrder', 'ASC'], ['name', 'ASC']],
+      raw: true,
+    }),
+  ]);
+  const statesByCountry = new Map();
+  for (const s of states) {
+    if (!statesByCountry.has(s.countryId)) statesByCountry.set(s.countryId, []);
+    statesByCountry.get(s.countryId).push(s);
+  }
+  const citiesByState = new Map();
+  for (const c of cities) {
+    if (!c.stateId) continue;
+    if (!citiesByState.has(c.stateId)) citiesByState.set(c.stateId, []);
+    citiesByState.get(c.stateId).push(c);
+  }
+  return countries.map((c) => ({
+    ...c,
+    states: (statesByCountry.get(c.id) || []).map((s) => ({
+      ...s,
+      cities: citiesByState.get(s.id) || [],
+    })),
+  }));
+}
+
+// Public view: only active rows. Same nested shape.
+async function listLocationsPublic() {
+  const [countries, states, cities] = await Promise.all([
+    Country.findAll({
+      where: { active: true },
+      order: [['sortOrder', 'ASC'], ['name', 'ASC']],
+      attributes: ['id', 'name', 'slug', 'code'],
+      raw: true,
+    }),
+    State.findAll({
+      where: { active: true },
+      order: [['sortOrder', 'ASC'], ['name', 'ASC']],
+      attributes: ['id', 'countryId', 'name', 'slug'],
+      raw: true,
+    }),
+    City.findAll({
+      where: { active: true },
+      order: [['sortOrder', 'ASC'], ['name', 'ASC']],
+      attributes: ['id', 'stateId', 'name', 'slug'],
+      raw: true,
+    }),
+  ]);
+  const statesByCountry = new Map();
+  for (const s of states) {
+    if (!statesByCountry.has(s.countryId)) statesByCountry.set(s.countryId, []);
+    statesByCountry.get(s.countryId).push(s);
+  }
+  const citiesByState = new Map();
+  for (const c of cities) {
+    if (!c.stateId) continue;
+    if (!citiesByState.has(c.stateId)) citiesByState.set(c.stateId, []);
+    citiesByState.get(c.stateId).push(c);
+  }
+  return countries.map((c) => ({
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+    code: c.code,
+    states: (statesByCountry.get(c.id) || []).map((s) => ({
+      id: s.id,
+      name: s.name,
+      slug: s.slug,
+      countryId: s.countryId,
+      cities: citiesByState.get(s.id) || [],
+    })),
+  }));
+}
+
+async function createCountry({ name, code, sortOrder, active }) {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) throw httpError(400, 'Country name is required.');
+  const slug = slugify(trimmed);
+  if (!slug) throw httpError(400, 'Country name produces an empty slug.');
+  const dup = await Country.findOne({ where: { slug } });
+  if (dup) throw httpError(409, `Country "${trimmed}" already exists.`);
+  return Country.create({
+    name: trimmed,
+    slug,
+    code: (code || '').trim().toUpperCase() || null,
+    sortOrder: Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : 0,
+    active: active === false ? false : true,
+  });
+}
+
+async function updateCountry(id, { name, code, sortOrder, active }) {
+  const country = await Country.findByPk(id);
+  if (!country) throw httpError(404, 'Country not found.');
+  const patch = {};
+  if (name !== undefined) {
+    const trimmed = String(name).trim();
+    if (!trimmed) throw httpError(400, 'Country name cannot be empty.');
+    patch.name = trimmed;
+    const newSlug = slugify(trimmed);
+    if (newSlug && newSlug !== country.slug) {
+      const dup = await Country.findOne({
+        where: { slug: newSlug, id: { [Op.ne]: id } },
+      });
+      if (dup) throw httpError(409, `Country "${trimmed}" already exists.`);
+      patch.slug = newSlug;
+    }
+  }
+  if (code !== undefined) {
+    patch.code = (code || '').trim().toUpperCase() || null;
+  }
+  if (sortOrder !== undefined && Number.isFinite(Number(sortOrder))) {
+    patch.sortOrder = Number(sortOrder);
+  }
+  if (active !== undefined) patch.active = Boolean(active);
+  await country.update(patch);
+  return country.toJSON();
+}
+
+async function deleteCountry(id) {
+  const country = await Country.findByPk(id);
+  if (!country) throw httpError(404, 'Country not found.');
+  await country.destroy();
+  return { id };
+}
+
+async function createState({ countryId, name, sortOrder, active }) {
+  if (!countryId) throw httpError(400, 'countryId is required.');
+  const country = await Country.findByPk(countryId);
+  if (!country) throw httpError(404, 'Parent country not found.');
+  const trimmed = String(name || '').trim();
+  if (!trimmed) throw httpError(400, 'State name is required.');
+  const slug = `${country.slug}-${slugify(trimmed)}`;
+  const dup = await State.findOne({ where: { slug } });
+  if (dup) {
+    throw httpError(
+      409,
+      `State "${trimmed}" already exists under ${country.name}.`
+    );
+  }
+  return State.create({
+    countryId,
+    name: trimmed,
+    slug,
+    sortOrder: Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : 0,
+    active: active === false ? false : true,
+  });
+}
+
+async function updateState(id, { name, sortOrder, active, countryId }) {
+  const state = await State.findByPk(id);
+  if (!state) throw httpError(404, 'State not found.');
+  const patch = {};
+  let parent = null;
+  if (countryId !== undefined && countryId !== state.countryId) {
+    parent = await Country.findByPk(countryId);
+    if (!parent) throw httpError(404, 'Parent country not found.');
+    patch.countryId = countryId;
+  }
+  if (name !== undefined) {
+    const trimmed = String(name).trim();
+    if (!trimmed) throw httpError(400, 'State name cannot be empty.');
+    patch.name = trimmed;
+    const parentForSlug = parent || (await Country.findByPk(state.countryId));
+    const newSlug = `${parentForSlug.slug}-${slugify(trimmed)}`;
+    if (newSlug !== state.slug) {
+      const dup = await State.findOne({
+        where: { slug: newSlug, id: { [Op.ne]: id } },
+      });
+      if (dup) {
+        throw httpError(
+          409,
+          `State "${trimmed}" already exists under ${parentForSlug.name}.`
+        );
+      }
+      patch.slug = newSlug;
+    }
+  }
+  if (sortOrder !== undefined && Number.isFinite(Number(sortOrder))) {
+    patch.sortOrder = Number(sortOrder);
+  }
+  if (active !== undefined) patch.active = Boolean(active);
+  await state.update(patch);
+  return state.toJSON();
+}
+
+async function deleteState(id) {
+  const state = await State.findByPk(id);
+  if (!state) throw httpError(404, 'State not found.');
+  await state.destroy();
+  return { id };
+}
+
+// Cities under the hierarchy. Replaces the legacy stateless createCity for
+// new admin writes; the legacy version (above) still works for back-compat.
+async function createCityForState({ stateId, name, sortOrder, active }) {
+  if (!stateId) throw httpError(400, 'stateId is required.');
+  const state = await State.findByPk(stateId);
+  if (!state) throw httpError(404, 'Parent state not found.');
+  const trimmed = String(name || '').trim();
+  if (!trimmed) throw httpError(400, 'City name is required.');
+  // Suffix the slug with the state slug so two cities of the same name in
+  // different states don't collide.
+  const slug = `${state.slug}-${slugify(trimmed)}`;
+  const dup = await City.findOne({ where: { slug } });
+  if (dup) {
+    throw httpError(
+      409,
+      `City "${trimmed}" already exists under ${state.name}.`
+    );
+  }
+  return City.create({
+    name: trimmed,
+    slug,
+    stateId,
+    sortOrder: Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : 0,
+    active: active === false ? false : true,
+  });
+}
+
+async function updateCityHierarchical(id, { name, sortOrder, active, stateId }) {
+  const city = await City.findByPk(id);
+  if (!city) throw httpError(404, 'City not found.');
+  const patch = {};
+  let parent = null;
+  if (stateId !== undefined && stateId !== city.stateId) {
+    parent = await State.findByPk(stateId);
+    if (!parent) throw httpError(404, 'Parent state not found.');
+    patch.stateId = stateId;
+  }
+  if (name !== undefined) {
+    const trimmed = String(name).trim();
+    if (!trimmed) throw httpError(400, 'City name cannot be empty.');
+    patch.name = trimmed;
+    const parentForSlug =
+      parent || (city.stateId ? await State.findByPk(city.stateId) : null);
+    const newSlug = parentForSlug
+      ? `${parentForSlug.slug}-${slugify(trimmed)}`
+      : slugify(trimmed);
+    if (newSlug !== city.slug) {
+      const dup = await City.findOne({
+        where: { slug: newSlug, id: { [Op.ne]: id } },
+      });
+      if (dup) {
+        throw httpError(
+          409,
+          `City "${trimmed}" already exists under that state.`
+        );
+      }
+      patch.slug = newSlug;
+    }
+  }
+  if (sortOrder !== undefined && Number.isFinite(Number(sortOrder))) {
+    patch.sortOrder = Number(sortOrder);
+  }
+  if (active !== undefined) patch.active = Boolean(active);
+  await city.update(patch);
+  return city.toJSON();
+}
+
 module.exports = {
   listCategoriesAdmin,
   listCategoriesPublic,
@@ -301,4 +573,15 @@ module.exports = {
   createCity,
   updateCity,
   deleteCity,
+  // Locations hierarchy
+  listLocationsAdmin,
+  listLocationsPublic,
+  createCountry,
+  updateCountry,
+  deleteCountry,
+  createState,
+  updateState,
+  deleteState,
+  createCityForState,
+  updateCityHierarchical,
 };

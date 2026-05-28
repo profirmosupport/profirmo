@@ -18,13 +18,6 @@ import { useAuth } from '@/components/AuthProvider';
 import { resendVerification } from '@/services/authService';
 import { validateForm, loginRules } from '@/utils/validators';
 
-const DEMO_ACCOUNTS = [
-  { label: 'Client', email: 'client@demo.com' },
-  { label: 'Professional', email: 'pro@demo.com' },
-  { label: 'Law Firm', email: 'firmadmin@demo.com' },
-  { label: 'Admin', email: 'admin@demo.com' },
-];
-
 export default function LoginPage() {
   const router = useRouter();
   const { login, isAuthenticated, loading } = useAuth();
@@ -52,16 +45,6 @@ export default function LoginPage() {
     const { name, value } = e.target;
     setValues((v) => ({ ...v, [name]: value }));
     setErrors((er) => ({ ...er, [name]: undefined }));
-  }
-
-  function fillDemo(email) {
-    setValues({ email, password: 'password123' });
-    setErrors({});
-    setBanner('');
-    setUnverified(false);
-    setPendingApproval(false);
-    setResendNotice('');
-    setResendError('');
   }
 
   function errorCode(err) {
@@ -324,36 +307,6 @@ export default function LoginPage() {
                 )}
               </button>
             </form>
-
-            {/* Demo accounts helper */}
-            <div className="mt-5 rounded-xl border border-teal-100 bg-teal-50/60 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">
-                Demo accounts
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                Password for all:{' '}
-                <span className="font-mono font-semibold text-slate-700">
-                  password123
-                </span>
-              </p>
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                {DEMO_ACCOUNTS.map((acc) => (
-                  <button
-                    key={acc.email}
-                    type="button"
-                    onClick={() => fillDemo(acc.email)}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs transition hover:border-amber-300 hover:bg-amber-50"
-                  >
-                    <span className="block font-semibold text-slate-700">
-                      {acc.label}
-                    </span>
-                    <span className="block truncate text-slate-500">
-                      {acc.email}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
 
           <p className="mt-6 text-center text-sm text-slate-600">

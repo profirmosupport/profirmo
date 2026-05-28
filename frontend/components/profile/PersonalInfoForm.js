@@ -11,7 +11,7 @@ import Combobox from '@/components/common/Combobox';
 import Button from '@/components/common/Button';
 import PhotoUpload from '@/components/common/PhotoUpload';
 import { updateProfile } from '@/services/profileService';
-import { useCities } from '@/hooks/useAppSettings';
+import { useLocations } from '@/hooks/useLocations';
 
 function buildInitialState(user, address) {
   const u = user || {};
@@ -40,8 +40,37 @@ export default function PersonalInfoForm({ user, address, onSaved }) {
   const [form, setForm] = useState(() => buildInitialState(user, address));
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
-  const { cities } = useCities();
-  const cityOptions = cities.map((c) => ({ value: c.name, label: c.name }));
+  // Cascading Country -> State -> City. We store the human-readable names
+  // on the form state to keep back-compat with the existing PUT /api/profile
+  // payload shape, but use the ids for dropdown selection.
+  const {
+    countries,
+    statesByCountry,
+    citiesByState,
+    countryById,
+    stateById,
+    cityById,
+  } = useLocations();
+  const selectedCountryId =
+    countries.find((c) => c.name === form.country)?.id || '';
+  const stateRows = statesByCountry(selectedCountryId);
+  const selectedStateId =
+    stateRows.find((s) => s.name === form.state)?.id || '';
+  const cityRowsForState = citiesByState(selectedStateId);
+  const selectedCityId =
+    cityRowsForState.find((c) => c.name === form.city)?.id || '';
+  function pickCountry(id) {
+    const c = countryById(id);
+    setForm((f) => ({ ...f, country: c ? c.name : '', state: '', city: '' }));
+  }
+  function pickState(id) {
+    const s = stateById(id);
+    setForm((f) => ({ ...f, state: s ? s.name : '', city: '' }));
+  }
+  function pickCity(id) {
+    const c = cityById(id);
+    setForm((f) => ({ ...f, city: c ? c.name : '' }));
+  }
   const [feedback, setFeedback] = useState(null); // { type, message }
 
   function update(field, value) {
@@ -169,24 +198,37 @@ export default function PersonalInfoForm({ user, address, onSaved }) {
               className="sm:col-span-2"
             />
             <Combobox
-              label="City"
-              name="city"
-              value={form.city}
-              onChange={(e) => update('city', e.target.value)}
-              options={cityOptions}
-              placeholder="Select city…"
-            />
-            <Input
-              label="State"
-              name="state"
-              value={form.state}
-              onChange={(e) => update('state', e.target.value)}
-            />
-            <Input
               label="Country"
               name="country"
-              value={form.country}
-              onChange={(e) => update('country', e.target.value)}
+              value={selectedCountryId}
+              onChange={(e) => pickCountry(e.target.value)}
+              options={countries.map((c) => ({ value: c.id, label: c.name }))}
+              placeholder="Select country…"
+            />
+            <Combobox
+              label="State"
+              name="state"
+              value={selectedStateId}
+              onChange={(e) => pickState(e.target.value)}
+              options={stateRows.map((s) => ({ value: s.id, label: s.name }))}
+              placeholder={
+                selectedCountryId ? 'Select state…' : 'Pick a country first'
+              }
+              disabled={!selectedCountryId}
+            />
+            <Combobox
+              label="City"
+              name="city"
+              value={selectedCityId}
+              onChange={(e) => pickCity(e.target.value)}
+              options={cityRowsForState.map((c) => ({
+                value: c.id,
+                label: c.name,
+              }))}
+              placeholder={
+                selectedStateId ? 'Select city…' : 'Pick a state first'
+              }
+              disabled={!selectedStateId}
             />
             <Input
               label="Postal code"

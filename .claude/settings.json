@@ -64,7 +64,14 @@
       "Bash(curl -sS -o /dev/null -w \"/signup %{http_code} | /profile/edit %{http_code}\\\\n\" http://localhost:3000/signup http://localhost:3000/profile/edit)",
       "Bash(curl -sS -o /dev/null -w \"/signup %{http_code} | /profile/edit %{http_code} | /login %{http_code}\\\\n\" http://localhost:3000/signup http://localhost:3000/profile/edit http://localhost:3000/login)",
       "Bash(curl -sS -o /dev/null -w \"/ %{http_code} | /howitworks.mp4 %{http_code}\\\\n\" http://localhost:3000/ http://localhost:3000/howitworks.mp4)",
-      "Bash(curl -sS -i -H 'Content-Type: application/json' -H 'Origin: http://localhost:3000' -X POST http://localhost:5001/api/auth/register-professional -d '{\"firstName\":\"Test\",\"lastName\":\"Pro\",\"email\":\"__TRACKED_VAR__\",\"mobileNumber\":\"+91-9000000123\",\"password\":\"password123\",\"professionalType\":\"Legal Consultant\",\"country\":\"India\",\"state\":\"Maharashtra\",\"city\":\"Mumbai\"}')"
+      "Bash(curl -sS -i -H 'Content-Type: application/json' -H 'Origin: http://localhost:3000' -X POST http://localhost:5001/api/auth/register-professional -d '{\"firstName\":\"Test\",\"lastName\":\"Pro\",\"email\":\"__TRACKED_VAR__\",\"mobileNumber\":\"+91-9000000123\",\"password\":\"password123\",\"professionalType\":\"Legal Consultant\",\"country\":\"India\",\"state\":\"Maharashtra\",\"city\":\"Mumbai\"}')",
+      "Bash(curl -sS http://localhost:5001/api/app-settings/locations)",
+      "Bash(curl -sS http://localhost:5001/api/professionals?limit=1)",
+      "Bash(curl -sS \"http://localhost:5001/api/app-settings/locations\")",
+      "Bash(curl -s http://localhost:4000/api/app-settings/locations)",
+      "Bash(curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" http://localhost:4000/api/app-settings/locations)",
+      "Bash(lsof -iTCP -sTCP:LISTEN -P -n)",
+      "Bash(curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" http://localhost:5001/api/health)"
     ]
   }
 }

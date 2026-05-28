@@ -11,12 +11,14 @@ import EmptyState from '@/components/common/EmptyState';
 import ProfessionalCard from '@/components/professionals/ProfessionalCard';
 import ProfessionalFilters from '@/components/professionals/ProfessionalFilters';
 import { useProfessionals } from '@/hooks/useProfessionals';
+import { useLocations } from '@/hooks/useLocations';
 import { useLanguage } from '@/components/LanguageProvider';
 
 function ProfessionalsContent() {
   const { t } = useLanguage();
   const searchParams = useSearchParams();
   const { items, meta, loading, error, params, setParams } = useProfessionals();
+  const { flatCities, loading: locLoading } = useLocations();
   const seeded = useRef(false);
 
   const sortOptions = [
@@ -29,16 +31,30 @@ function ProfessionalsContent() {
   // mount. `category` is kept as a back-compat alias for older inbound links —
   // values starting with `subcat-` are treated as ids, everything else is a
   // legacy free-text professionType.
+  //
+  // We wait for the locations tree to load so that a city name in the URL
+  // (?city=Mumbai, used by footer SEO links) can be resolved to its city id
+  // — that's what the side-filter Combobox needs to render the chosen value.
   useEffect(() => {
     if (seeded.current) return;
+    if (locLoading) return;
     seeded.current = true;
     const search = searchParams.get('search');
-    const city = searchParams.get('city');
+    const cityParam = searchParams.get('city');
     const subCategoryId = searchParams.get('subCategoryId');
     const category = searchParams.get('category');
     const seed = {};
     if (search) seed.search = search;
-    if (city) seed.city = city;
+    if (cityParam) {
+      if (cityParam.startsWith('city-')) {
+        seed.city = cityParam;
+      } else {
+        const match = flatCities.find(
+          (c) => c.name.toLowerCase() === cityParam.toLowerCase()
+        );
+        seed.city = match ? match.id : cityParam;
+      }
+    }
     if (subCategoryId) {
       seed.subCategoryId = subCategoryId;
     } else if (category) {
@@ -51,7 +67,7 @@ function ProfessionalsContent() {
     if (Object.keys(seed).length > 0) {
       setParams((prev) => ({ ...prev, ...seed }));
     }
-  }, [searchParams, setParams]);
+  }, [searchParams, setParams, locLoading, flatCities]);
 
   const totalCount = meta && Number.isFinite(meta.total) ? meta.total : items.length;
   const currentPage = meta && meta.page ? meta.page : 1;

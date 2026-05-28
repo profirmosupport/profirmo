@@ -103,6 +103,19 @@ router.post('/cities', appSettings.adminCreateCity);
 router.patch('/cities/:id', appSettings.adminUpdateCity);
 router.delete('/cities/:id', appSettings.adminDeleteCity);
 
+// --- Locations hierarchy (Country -> State -> City) -------------------
+router.get('/locations', appSettings.adminListLocations);
+router.post('/countries', appSettings.adminCreateCountry);
+router.patch('/countries/:id', appSettings.adminUpdateCountry);
+router.delete('/countries/:id', appSettings.adminDeleteCountry);
+router.post('/states', appSettings.adminCreateState);
+router.patch('/states/:id', appSettings.adminUpdateState);
+router.delete('/states/:id', appSettings.adminDeleteState);
+// Hierarchical city writes (stateId required). The flat /cities CRUD
+// above stays for back-compat with the legacy admin cities page.
+router.post('/locations/cities', appSettings.adminCreateCityForState);
+router.patch('/locations/cities/:id', appSettings.adminUpdateCityHierarchical);
+
 // --- Leads pipeline -------------------------------------------------------
 router.get('/leads', leads.adminListLeads);
 router.post('/leads', leads.adminCreateLead);

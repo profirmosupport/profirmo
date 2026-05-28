@@ -17,7 +17,8 @@ import { useProfessionals } from '@/hooks/useProfessionals';
 import { useFirms } from '@/hooks/useFirms';
 import { useAuth } from '@/components/AuthProvider';
 import { EXPERIENCE_RANGES, RATE_RANGES } from '@/utils/constants';
-import { useCities, useSubCategoriesFlat } from '@/hooks/useAppSettings';
+import { useSubCategoriesFlat } from '@/hooks/useAppSettings';
+import { useLocations } from '@/hooks/useLocations';
 import LeadCaptureModal from '@/components/leads/LeadCaptureModal';
 import { fetchMyLeadStatus } from '@/services/leadService';
 
@@ -83,7 +84,7 @@ export default function SearchPage() {
   const resetFilters = () => setFilters(INITIAL_FILTERS);
 
   // Admin-managed taxonomy + cities power both filter dropdowns.
-  const { cities } = useCities();
+  const { flatCities } = useLocations();
   const { subCategories } = useSubCategoriesFlat();
 
   // Translate the UI filter state into API query params for each hook.
@@ -268,7 +269,10 @@ export default function SearchPage() {
                 value={filters.location}
                 onChange={(e) => update({ location: e.target.value })}
                 placeholder={t('searchPage.allCities')}
-                options={cities.map((c) => ({ value: c.name, label: c.name }))}
+                options={flatCities.map((c) => ({
+                  value: c.id,
+                  label: c.label,
+                }))}
               />
               <Select
                 label={t('searchPage.experience')}

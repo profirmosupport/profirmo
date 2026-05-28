@@ -14,7 +14,8 @@ import MultiCombobox from '@/components/common/MultiCombobox';
 import Button from '@/components/common/Button';
 import FileUpload from '@/components/common/FileUpload';
 import { updateProfessionalDetails } from '@/services/profileService';
-import { useCategories, useCities } from '@/hooks/useAppSettings';
+import { useCategories } from '@/hooks/useAppSettings';
+import { useLocations } from '@/hooks/useLocations';
 
 const PROFESSIONAL_TYPES = [
   { value: 'Lawyer', label: 'Lawyer' },
@@ -169,7 +170,7 @@ export default function ProfessionalForm({
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const { categories } = useCategories();
-  const { cities } = useCities();
+  const { flatCities, cityById } = useLocations();
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -406,11 +407,19 @@ export default function ProfessionalForm({
         <MultiCombobox
           label="Practice cities"
           name="practiceCities"
-          value={form.practiceCities || []}
+          value={(form.practiceCities || []).map((v) => {
+            // Older rows may still hold a plain city name; resolve to id
+            // so the chip renders 'State — City' regardless of source.
+            if (cityById(v)) return v;
+            const match = flatCities.find(
+              (c) => c.name.toLowerCase() === String(v).toLowerCase()
+            );
+            return match ? match.id : v;
+          })}
           onChange={(next) => update('practiceCities', next)}
-          options={cities.map((c) => ({ value: c.name, label: c.name }))}
+          options={flatCities.map((c) => ({ value: c.id, label: c.label }))}
           placeholder="Select every city you take clients in…"
-          hint="Clients filtering the listing by city will see you for any of these."
+          hint="Searchable — choose from State — City. Clients filtering the listing by city will see you for any of these."
         />
 
         {/* Primary category — drives which profession-specific fields show
