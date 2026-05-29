@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
-import { UserX, FileText, AlertCircle } from 'lucide-react';
+import { useParams, useRouter } from 'next/navigation';
+import { FileText, AlertCircle } from 'lucide-react';
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
 import Card from '@/components/common/Card';
@@ -43,6 +43,7 @@ function ChipSection({ icon, title, items }) {
 export default function ProfessionalProfilePage() {
   const { t } = useLanguage();
   const { id } = useParams();
+  const router = useRouter();
 
   const [professional, setProfessional] = useState(null);
   const [similar, setSimilar] = useState([]);
@@ -148,27 +149,12 @@ export default function ProfessionalProfilePage() {
     );
   }
 
+  // Not found OR suspended (backend returns 404 for both). The user's spec
+  // is to send the visitor to the home page — there's nothing actionable for
+  // them on this URL. `replace` keeps the broken URL out of browser history.
   if (!professional) {
-    return (
-      <div className="flex min-h-screen flex-col">
-        <Header />
-        <main className="flex-1 bg-slate-50">
-          <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-            <EmptyState
-              icon={<UserX size={24} />}
-              title={t('profDetail.notFoundTitle')}
-              description={t('profDetail.notFoundDesc')}
-              action={
-                <Button href="/professionals" variant="primary">
-                  {t('profDetail.browseAll')}
-                </Button>
-              }
-            />
-          </div>
-        </main>
-        <Footer />
-      </div>
-    );
+    if (typeof window !== 'undefined') router.replace('/');
+    return null;
   }
 
   const aboutText = professional.about || professional.bio;

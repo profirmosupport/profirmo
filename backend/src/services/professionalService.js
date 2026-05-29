@@ -294,7 +294,9 @@ const loadProfileProfessionals = async () => {
   const items = [];
   for (const detail of details) {
     const user = userById.get(detail.userId);
-    if (!user) continue;
+    // Suspended accounts disappear from the listing entirely — same effect
+    // as deleting them, but reversible by toggling status back to 'active'.
+    if (!user || String(user.status).toLowerCase() === 'suspended') continue;
     const item = normalizeProfileProfessional({
       user,
       address: addressByUserId.get(detail.userId) || null,
@@ -622,6 +624,11 @@ const getById = async (id) => {
     }
   }
   if (detail) {
+    // Suspended accounts are not accessible by direct link either. Return
+    // null so the controller responds with 404; the frontend redirects to /.
+    if (user && String(user.status).toLowerCase() === 'suspended') {
+      return null;
+    }
     const address = await Address.findOne({
       where: { userId: detail.userId },
       raw: true,

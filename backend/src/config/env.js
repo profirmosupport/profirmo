@@ -16,6 +16,14 @@ function parseFrontendUrls(value) {
     .map((s) => s.trim())
     .filter(Boolean);
   const set = new Set([...fromEnv, ...PRODUCTION_FRONTEND_ORIGINS]);
+  // Always allow local dev origins in non-production so a copy-pasted
+  // FRONTEND_URL=https://profirmo.com/ doesn't lock localhost out of CORS.
+  // The previous behaviour only added localhost when the set was empty,
+  // which was the trap.
+  if (process.env.NODE_ENV !== 'production') {
+    set.add('http://localhost:3000');
+    set.add('http://127.0.0.1:3000');
+  }
   if (set.size === 0) set.add('http://localhost:3000');
   return [...set];
 }
