@@ -7,7 +7,7 @@
 //    (ProfessionalRegistrationForm) -> registerProfessional() -> a pending-
 //    approval confirmation screen (verify email + awaiting admin approval).
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -120,7 +120,10 @@ function Chrome({ children }) {
   );
 }
 
-export default function SignupPage() {
+// useSearchParams() requires a Suspense boundary in app-router pages so
+// the page can bail out of static prerendering cleanly. Wrapped at the
+// default export below.
+function SignupInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const {
@@ -1197,6 +1200,14 @@ export default function SignupPage() {
         </p>
       </div>
     </Chrome>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignupInner />
+    </Suspense>
   );
 }
 
