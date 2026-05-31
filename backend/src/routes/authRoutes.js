@@ -32,6 +32,21 @@ router.post(
   authController.login
 );
 
+// Firebase Phone Auth login. Client completes SMS-OTP via the Firebase JS
+// SDK, then posts the resulting ID token here. authLimiter still applies —
+// Firebase has its own per-phone rate limits but we keep the IP-level cap.
+router.post(
+  '/firebase',
+  authLimiter,
+  validateBody({ idToken: 'required' }),
+  authController.firebaseLogin
+);
+
+// Public Firebase web-SDK config — apiKey, authDomain, etc. The client
+// fetches this on the login page to initialise the Firebase JS SDK at
+// runtime, so admins can rotate keys via the settings UI without rebuilding.
+router.get('/firebase-config', authController.firebaseConfig);
+
 // Logout + refresh read the httpOnly cookie; no body validation needed.
 router.post('/logout', authController.logout);
 router.post('/refresh', authController.refresh);

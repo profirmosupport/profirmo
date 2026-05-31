@@ -645,6 +645,138 @@ const login = async (email, password, meta = {}) => {
   };
 };
 
+// --- Firebase Phone Auth login --------------------------------------------
+// The frontend completes Firebase's SMS-OTP flow and posts the resulting ID
+// token here. We verify the token via firebase-admin, then map the verified
+// phone number to a local User (creating a thin client stub on first contact)
+// and issue our usual JWT session.
+
+const { verifyIdToken: verifyFirebaseIdToken } =
+  require('../config/firebase');
+
+/**
+ * Normalise candidate phone strings for a lookup against `users.mobileNumber`.
+ * Firebase returns E.164 (e.g. "+919876543210"); the legacy signup validator
+ * stored numbers in a few different shapes, so we try a few variants.
+ *
+ * Returns the set of candidate strings (longest / most-specific first).
+ */
+const phoneLookupCandidates = (phone) => {
+  if (!phone) return [];
+  const trimmed = String(phone).trim();
+  const candidates = new Set([trimmed]);
+  if (trimmed.startsWith('+')) candidates.add(trimmed.slice(1));
+  // 10-digit local form (Indian default)
+  const last10 = trimmed.replace(/[^0-9]/g, '').slice(-10);
+  if (last10.length === 10) candidates.add(last10);
+  return [...candidates];
+};
+
+/**
+ * Look up the user by mobileNumber across all candidate formats above.
+ * Returns the first row matched; null otherwise.
+ */
+const findUserByPhone = async (phone) => {
+  const candidates = phoneLookupCandidates(phone);
+  if (candidates.length === 0) return null;
+  return User.findOne({
+    where: { mobileNumber: { [Op.in]: candidates } },
+  });
+};
+
+/**
+ * Log in (or first-time sign up) with a Firebase Phone Auth ID token.
+ *
+ * Flow:
+ *   1. verifyIdToken via firebase-admin -> decoded { phone_number, uid, ... }
+ *   2. Look up User by mobileNumber. If found, gate by status / approval
+ *      (skipping the EMAIL_NOT_VERIFIED check — the phone is verified).
+ *   3. If not found, create a thin client stub so onboarding can finish later.
+ *   4. Issue an access token + refresh session, same shape as `login`.
+ *
+ * @param {string} idToken - Firebase ID token from signInWithPhoneNumber
+ * @param {{ userAgent?: string, ipAddress?: string }} [meta]
+ * @returns {Promise<{ accessToken, refreshToken, user }>}
+ */
+const loginWithFirebase = async (idToken, meta = {}) => {
+  const decoded = await verifyFirebaseIdToken(idToken);
+  const phone = decoded.phone_number || decoded.phoneNumber;
+  if (!phone) {
+    throw {
+      statusCode: 400,
+      message:
+        'This Firebase token has no phone number — phone sign-in is required.',
+      code: 'FIREBASE_NO_PHONE',
+    };
+  }
+
+  let user = await findUserByPhone(phone);
+  let isNewSignup = false;
+
+  if (!user) {
+    // First contact for this phone — create a client stub. Profile will be
+    // completed by the onboarding flow on first dashboard visit.
+    user = await User.create({
+      role: 'client',
+      mobileNumber: phone,
+      // email is required (NOT NULL + unique) on the existing schema, so we
+      // mint a deterministic placeholder. It can be replaced from the
+      // profile page later. Local-part is the digits of the phone — keeps it
+      // unique without leaking any other PII.
+      email: `${phone.replace(/[^0-9]/g, '')}@phone.profirmo.local`,
+      password: '', // not loginable via email/password
+      name: '',
+      firstName: '',
+      lastName: '',
+      status: 'active',
+      // Phone-OTP is itself the verification channel for these accounts.
+      mobileVerified: true,
+      emailVerified: false,
+      accountVerified: false,
+    });
+    isNewSignup = true;
+  }
+
+  // Same gates as the email login path, MINUS the EMAIL_NOT_VERIFIED check
+  // (phone is the channel of verification for this flow).
+  if (user.status === 'suspended') {
+    throw {
+      statusCode: 403,
+      message: 'Your account has been suspended. Please contact support.',
+      code: 'ACCOUNT_SUSPENDED',
+    };
+  }
+
+  const approvalStatus = await resolveApprovalStatus(user);
+  if (user.role === 'professional' && approvalStatus === 'PENDING_APPROVAL') {
+    throw {
+      statusCode: 403,
+      message: 'Your professional application is under review.',
+      code: 'PENDING_APPROVAL',
+    };
+  }
+
+  // Stamp mobileVerified=true on every successful Firebase login. If the
+  // phone was added via the legacy signup flow without verification, this
+  // flow effectively verifies it.
+  if (!user.mobileVerified) user.mobileVerified = true;
+  user.lastLogin = new Date();
+  user.isOnline = true;
+  if (!user.memberSince) user.memberSince = user.createdAt || new Date();
+  if (!user.uuid) user.uuid = genUuid();
+  await user.save();
+
+  const { refreshToken } = await createSession(user, meta);
+  return {
+    accessToken: signAccessToken(user),
+    refreshToken,
+    user: sanitizeUser(user, approvalStatus, {
+      signupComplete: await resolveSignupComplete(user),
+      isNewSignup,
+    }),
+  };
+};
+
 /**
  * Log out: revoke the session matching the supplied refresh token and mark
  * the user offline.
@@ -1352,6 +1484,7 @@ module.exports = {
   resolveApprovalStatus,
   signup,
   login,
+  loginWithFirebase,
   logout,
   refresh,
   registerClient,

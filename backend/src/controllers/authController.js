@@ -1,4 +1,5 @@
 const authService = require('../services/authService');
+const adminSettingsService = require('../services/adminSettingsService');
 const professionalRegistrationService = require('../services/professionalRegistrationService');
 const asyncHandler = require('../utils/asyncHandler');
 const { successResponse } = require('../utils/responseHandler');
@@ -82,6 +83,87 @@ const signup = asyncHandler(async (req, res) => {
     },
   });
   return sendSignup(res, result);
+});
+
+// GET /api/auth/firebase-config
+// Returns the PUBLIC subset of Firebase settings (the web SDK config — apiKey,
+// authDomain, projectId, storageBucket, messagingSenderId, appId). These are
+// public by design and the client SDK needs them to init at runtime.
+// Service-account fields (clientEmail / privateKey) are NEVER returned here.
+const firebaseConfig = asyncHandler(async (req, res) => {
+  const raw = await adminSettingsService.getPublicConfig();
+  // Project the registry keys onto the names the Firebase Web SDK expects.
+  const out = {
+    apiKey: raw.firebaseApiKey || '',
+    authDomain: raw.firebaseAuthDomain || '',
+    projectId: raw.firebaseProjectId || '',
+    storageBucket: raw.firebaseStorageBucket || '',
+    messagingSenderId: raw.firebaseMessagingSenderId || '',
+    appId: raw.firebaseAppId || '',
+    // Surfaced for informational/debug use on the client; the actual SDK
+    // verification path picks the key up from Firebase backend config,
+    // not from this field.
+    recaptchaEnterpriseSiteKey: raw.firebaseRecaptchaEnterpriseSiteKey || '',
+  };
+  // `configured` is the single flag the client checks — it requires the
+  // four web-SDK fields the auth flow actually uses.
+  const configured = Boolean(
+    out.apiKey && out.authDomain && out.projectId && out.appId
+  );
+  return successResponse(res, 200, 'Firebase web config', {
+    ...out,
+    configured,
+  });
+});
+
+// POST /api/auth/firebase
+// Body: { idToken }. The frontend completes signInWithPhoneNumber on the
+// client and posts the resulting Firebase ID token here. We verify it via
+// firebase-admin, map the phone to a User (creating a stub on first contact),
+// and issue our normal JWT + refresh cookie session.
+const firebaseLogin = asyncHandler(async (req, res) => {
+  const { idToken } = req.body || {};
+  try {
+    const result = await authService.loginWithFirebase(idToken, reqMeta(req));
+    await logAudit({
+      req,
+      userId: result.user && result.user.id,
+      action: 'auth.firebase_login',
+      entity: 'user',
+      entityId: result.user && result.user.id,
+      status: 'success',
+      metadata: {
+        phone: result.user && result.user.mobileNumber,
+        isNewSignup: !!(result.user && result.user.isNewSignup),
+      },
+    });
+    return sendAuth(res, 200, 'Login successful', result);
+  } catch (err) {
+    await logAudit({
+      req,
+      action: 'auth.firebase_login_failed',
+      entity: 'user',
+      status: 'failure',
+      metadata: { code: err && err.code ? err.code : undefined },
+    });
+    // Surface the machine-readable code on the documented rejection paths
+    // (suspended, pending approval, Firebase not configured, bad token, etc.)
+    if (
+      err &&
+      (err.code === 'ACCOUNT_SUSPENDED' ||
+        err.code === 'PENDING_APPROVAL' ||
+        err.code === 'FIREBASE_NOT_CONFIGURED' ||
+        err.code === 'FIREBASE_NO_PHONE')
+    ) {
+      return res.status(err.statusCode || 403).json({
+        success: false,
+        message: err.message,
+        errors: null,
+        code: err.code,
+      });
+    }
+    throw err;
+  }
 });
 
 // POST /api/auth/login
@@ -453,6 +535,8 @@ const resetPassword = asyncHandler(async (req, res) => {
 module.exports = {
   signup,
   login,
+  firebaseLogin,
+  firebaseConfig,
   logout,
   refresh,
   checkAvailability,

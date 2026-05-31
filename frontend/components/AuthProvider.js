@@ -162,6 +162,16 @@ export function AuthProvider({ children }) {
     [applyAuth]
   );
 
+  // Adopt a Firebase Phone Auth session. Caller has already minted the
+  // Firebase ID token via the phone-OTP flow on the login page.
+  const loginWithFirebase = useCallback(
+    async (idToken) => {
+      const data = await authService.loginWithFirebase(idToken);
+      return applyAuth(data);
+    },
+    [applyAuth]
+  );
+
   // Signup no longer logs the user in — email verification is required first.
   // Return the response data ({ user, emailVerificationRequired }) so the
   // signup page can render its "check your email" confirmation screen.
@@ -259,6 +269,7 @@ export function AuthProvider({ children }) {
     loading,
     isAuthenticated: !!user,
     login,
+    loginWithFirebase,
     signup,
     verifyEmail,
     claimAccount,
@@ -287,6 +298,7 @@ export function useAuth() {
     loading: false,
     isAuthenticated: false,
     login: noop,
+    loginWithFirebase: noop,
     signup: noop,
     verifyEmail: noop,
     claimAccount: noop,

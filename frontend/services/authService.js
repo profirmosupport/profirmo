@@ -6,6 +6,7 @@ import { get, post } from '@/services/api';
 
 const ENDPOINTS = {
   login: '/api/auth/login',
+  firebaseLogin: '/api/auth/firebase',
   signup: '/api/auth/signup',
   refresh: '/api/auth/refresh',
   logout: '/api/auth/logout',
@@ -40,6 +41,21 @@ function unwrap(response) {
  */
 export async function login(email, password) {
   const res = await post(ENDPOINTS.login, { email, password });
+  return unwrap(res);
+}
+
+/**
+ * Log in via Firebase Phone Auth.
+ * The frontend completes signInWithPhoneNumber + .confirm() to mint a
+ * Firebase ID token, then posts it here. Backend verifies the token, maps
+ * the phone to a User (auto-creating a client stub on first contact), and
+ * returns our usual { accessToken, token, user } payload.
+ *
+ * @param {string} idToken - Firebase ID token from confirmPhoneOtp()
+ * @returns {Promise<{accessToken,token,user}>}
+ */
+export async function loginWithFirebase(idToken) {
+  const res = await post(ENDPOINTS.firebaseLogin, { idToken });
   return unwrap(res);
 }
 
@@ -251,6 +267,7 @@ export async function registerFirm(data) {
 
 export default {
   login,
+  loginWithFirebase,
   signup,
   verifyEmail,
   resendVerification,
