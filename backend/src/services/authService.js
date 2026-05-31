@@ -685,14 +685,23 @@ const findUserByPhone = async (phone) => {
 };
 
 /**
- * Log in (or first-time sign up) with a Firebase Phone Auth ID token.
+ * Look up whether a phone number has a registered account. Used by the
+ * sign-in flow to decide whether to send an OTP or send the user to signup.
  *
- * Flow:
- *   1. verifyIdToken via firebase-admin -> decoded { phone_number, uid, ... }
- *   2. Look up User by mobileNumber. If found, gate by status / approval
- *      (skipping the EMAIL_NOT_VERIFIED check — the phone is verified).
- *   3. If not found, create a thin client stub so onboarding can finish later.
- *   4. Issue an access token + refresh session, same shape as `login`.
+ * Privacy note: this leaks "is there an account for this phone?" to anyone
+ * who hits the endpoint. Mitigated by an aggressive rate limit in the
+ * route, but it's a known trade-off of phone-first auth UX.
+ */
+const phoneIsRegistered = async (phone) => {
+  const user = await findUserByPhone(phone);
+  return Boolean(user);
+};
+
+/**
+ * Log in with a Firebase Phone Auth ID token. The user must already exist
+ * (matched by mobileNumber). First-time onboarding goes through the
+ * separate signupWithFirebase path so we never silently auto-create users
+ * during a sign-in attempt.
  *
  * @param {string} idToken - Firebase ID token from signInWithPhoneNumber
  * @param {{ userAgent?: string, ipAddress?: string }} [meta]
@@ -710,31 +719,14 @@ const loginWithFirebase = async (idToken, meta = {}) => {
     };
   }
 
-  let user = await findUserByPhone(phone);
-  let isNewSignup = false;
-
+  const user = await findUserByPhone(phone);
   if (!user) {
-    // First contact for this phone — create a client stub. Profile will be
-    // completed by the onboarding flow on first dashboard visit.
-    user = await User.create({
-      role: 'client',
-      mobileNumber: phone,
-      // email is required (NOT NULL + unique) on the existing schema, so we
-      // mint a deterministic placeholder. It can be replaced from the
-      // profile page later. Local-part is the digits of the phone — keeps it
-      // unique without leaking any other PII.
-      email: `${phone.replace(/[^0-9]/g, '')}@phone.profirmo.local`,
-      password: '', // not loginable via email/password
-      name: '',
-      firstName: '',
-      lastName: '',
-      status: 'active',
-      // Phone-OTP is itself the verification channel for these accounts.
-      mobileVerified: true,
-      emailVerified: false,
-      accountVerified: false,
-    });
-    isNewSignup = true;
+    throw {
+      statusCode: 404,
+      message:
+        'No account is registered against this phone number. Please sign up first.',
+      code: 'PHONE_NOT_REGISTERED',
+    };
   }
 
   // Same gates as the email login path, MINUS the EMAIL_NOT_VERIFIED check
@@ -772,9 +764,143 @@ const loginWithFirebase = async (idToken, meta = {}) => {
     refreshToken,
     user: sanitizeUser(user, approvalStatus, {
       signupComplete: await resolveSignupComplete(user),
-      isNewSignup,
     }),
   };
+};
+
+/**
+ * Sign up with a Firebase Phone Auth ID token + the rest of the profile
+ * fields. Used by the phone-first signup wizard once the OTP step has
+ * verified the user's number.
+ *
+ *   1. verifyIdToken -> phone is verified
+ *   2. Reject if a user already exists with that phone OR email
+ *   3. Create the User (role gates: client | professional)
+ *   4. Return our usual JWT + refresh session
+ *
+ * @param {object} payload
+ * @param {string} payload.idToken    Firebase ID token (phone-verified)
+ * @param {string} payload.firstName
+ * @param {string} payload.lastName
+ * @param {string} payload.email
+ * @param {string} payload.role       'client' | 'professional'
+ * @param {{ userAgent?: string, ipAddress?: string }} [meta]
+ * @returns {Promise<{ accessToken, refreshToken, user }>}
+ */
+const signupWithFirebase = async (payload = {}, meta = {}) => {
+  const { idToken, firstName, lastName, email, role } = payload;
+  const decoded = await verifyFirebaseIdToken(idToken);
+  const phone = decoded.phone_number || decoded.phoneNumber;
+  if (!phone) {
+    throw {
+      statusCode: 400,
+      message: 'Firebase token did not contain a verified phone number.',
+      code: 'FIREBASE_NO_PHONE',
+    };
+  }
+
+  const normRole = PUBLIC_ROLE_MAP[String(role || 'client').toLowerCase()];
+  if (!normRole) {
+    throw { statusCode: 422, message: 'Invalid role.', code: 'INVALID_ROLE' };
+  }
+  const normEmail = String(email || '').toLowerCase().trim();
+  if (!normEmail) {
+    throw { statusCode: 422, message: 'Email is required.', code: 'EMAIL_REQUIRED' };
+  }
+
+  // Phone uniqueness — defense in depth (the wizard pre-checks via
+  // /check-phone but a malicious client could skip that step).
+  const existingByPhone = await findUserByPhone(phone);
+  if (existingByPhone) {
+    throw {
+      statusCode: 409,
+      message: 'This phone number is already registered. Please sign in instead.',
+      code: 'PHONE_ALREADY_REGISTERED',
+    };
+  }
+  const existingByEmail = await User.findOne({ where: { email: normEmail } });
+  if (existingByEmail) {
+    throw {
+      statusCode: 409,
+      message: 'An account with this email already exists.',
+      code: 'EMAIL_ALREADY_REGISTERED',
+    };
+  }
+
+  const first = String(firstName || '').trim();
+  const last = String(lastName || '').trim();
+  const fullName = [first, last].filter(Boolean).join(' ') || normEmail;
+
+  const user = await User.create({
+    role: normRole,
+    mobileNumber: phone,
+    email: normEmail,
+    password: '', // not loginable via email/password — phone OTP only
+    name: fullName,
+    firstName: first,
+    lastName: last,
+    fullName,
+    status: 'active',
+    // Phone is verified; email isn't (no link sent in this flow).
+    mobileVerified: true,
+    emailVerified: false,
+    accountVerified: false,
+    memberSince: new Date(),
+    lastLogin: new Date(),
+    isOnline: true,
+    uuid: genUuid(),
+  });
+
+  const { refreshToken } = await createSession(user, meta);
+  return {
+    accessToken: signAccessToken(user),
+    refreshToken,
+    user: sanitizeUser(user, null, { signupComplete: false }),
+  };
+};
+
+/**
+ * Change the logged-in user's mobile number after verifying ownership of
+ * the NEW number via a Firebase Phone Auth ID token. Rejects if the new
+ * number is already attached to another account.
+ *
+ * @param {string} userId          Currently-logged-in user id
+ * @param {string} idToken         Firebase ID token for the new number
+ * @returns {Promise<{ mobileNumber: string }>}
+ */
+const changePhoneWithFirebase = async (userId, idToken) => {
+  const decoded = await verifyFirebaseIdToken(idToken);
+  const phone = decoded.phone_number || decoded.phoneNumber;
+  if (!phone) {
+    throw {
+      statusCode: 400,
+      message: 'Firebase token did not contain a verified phone number.',
+      code: 'FIREBASE_NO_PHONE',
+    };
+  }
+  const user = await User.findByPk(userId);
+  if (!user) {
+    throw { statusCode: 404, message: 'User not found.' };
+  }
+  // Same-number no-op — still treat as success (the OTP just re-verified).
+  if (user.mobileNumber === phone) {
+    return { mobileNumber: phone };
+  }
+  // Reject if another user already holds this number.
+  const taken = await User.findOne({
+    where: { mobileNumber: { [Op.in]: phoneLookupCandidates(phone) } },
+  });
+  if (taken && taken.id !== user.id) {
+    throw {
+      statusCode: 409,
+      message: 'This phone number is already attached to another account.',
+      code: 'PHONE_ALREADY_REGISTERED',
+    };
+  }
+  user.mobileNumber = phone;
+  user.mobileVerified = true;
+  await user.save();
+  return { mobileNumber: phone };
 };
 
 /**
@@ -1485,6 +1611,9 @@ module.exports = {
   signup,
   login,
   loginWithFirebase,
+  signupWithFirebase,
+  changePhoneWithFirebase,
+  phoneIsRegistered,
   logout,
   refresh,
   registerClient,

@@ -4,7 +4,7 @@
 // Used by all roles on the profile edit page. Saves via PUT /api/profile.
 
 import { useState } from 'react';
-import { CheckCircle2, AlertCircle } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Edit3 } from 'lucide-react';
 import Card from '@/components/common/Card';
 import Input from '@/components/common/Input';
 import Combobox from '@/components/common/Combobox';
@@ -12,6 +12,7 @@ import Button from '@/components/common/Button';
 import PhotoUpload from '@/components/common/PhotoUpload';
 import { updateProfile } from '@/services/profileService';
 import { useLocations } from '@/hooks/useLocations';
+import ChangePhoneModal from '@/components/profile/ChangePhoneModal';
 
 function buildInitialState(user, address) {
   const u = user || {};
@@ -72,6 +73,7 @@ export default function PersonalInfoForm({ user, address, onSaved }) {
     setForm((f) => ({ ...f, city: c ? c.name : '' }));
   }
   const [feedback, setFeedback] = useState(null); // { type, message }
+  const [phoneModalOpen, setPhoneModalOpen] = useState(false);
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -81,8 +83,7 @@ export default function PersonalInfoForm({ user, address, onSaved }) {
     const next = {};
     if (!form.firstName.trim()) next.firstName = 'First name is required.';
     if (!form.lastName.trim()) next.lastName = 'Last name is required.';
-    if (!form.mobileNumber.trim())
-      next.mobileNumber = 'Mobile number is required.';
+    // Mobile number is changed via the OTP modal only — not validated here.
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -96,7 +97,8 @@ export default function PersonalInfoForm({ user, address, onSaved }) {
       const payload = {
         firstName: form.firstName.trim(),
         lastName: form.lastName.trim(),
-        mobileNumber: form.mobileNumber.trim(),
+        // mobileNumber is intentionally omitted — it can only be updated
+        // through the OTP-verified change-phone flow (the modal below).
         profilePhoto: form.profilePhoto.trim() || undefined,
         coverPhoto: form.coverPhoto.trim() || undefined,
         address: {
@@ -152,15 +154,54 @@ export default function PersonalInfoForm({ user, address, onSaved }) {
             onChange={(e) => update('lastName', e.target.value)}
             error={errors.lastName}
           />
-          <Input
-            label="Mobile number"
-            name="mobileNumber"
-            required
-            value={form.mobileNumber}
-            onChange={(e) => update('mobileNumber', e.target.value)}
-            error={errors.mobileNumber}
-          />
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">
+              Mobile number
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="tel"
+                value={form.mobileNumber || '(not set)'}
+                readOnly
+                disabled
+                className="flex-1 cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600"
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setPhoneModalOpen(true)}
+              >
+                <Edit3 size={14} />
+                Change
+              </Button>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              Changing your phone number requires verifying the new number
+              via OTP.
+            </p>
+          </div>
         </div>
+        <ChangePhoneModal
+          open={phoneModalOpen}
+          currentPhone={form.mobileNumber}
+          onClose={() => setPhoneModalOpen(false)}
+          onChanged={async (newPhone) => {
+            setForm((f) => ({ ...f, mobileNumber: newPhone }));
+            setFeedback({
+              type: 'success',
+              message: 'Mobile number updated.',
+            });
+            setPhoneModalOpen(false);
+            if (typeof onSaved === 'function') {
+              try {
+                await onSaved(null);
+              } catch {
+                /* ignore — the form has already reflected the change */
+              }
+            }
+          }}
+        />
 
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
           <div>

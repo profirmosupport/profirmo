@@ -116,11 +116,82 @@ const firebaseConfig = asyncHandler(async (req, res) => {
   });
 });
 
+// POST /api/auth/check-phone
+// Body: { phone }. Returns { exists: boolean } so the sign-in UI can route
+// unknown numbers to signup BEFORE burning an OTP. Aggressively rate-limited
+// at the route layer to limit enumeration. Phone is normalised against the
+// same candidate set as login.
+const checkPhone = asyncHandler(async (req, res) => {
+  const phone = String((req.body && req.body.phone) || '').trim();
+  if (!phone) {
+    return res.status(422).json({
+      success: false,
+      message: 'phone is required',
+      errors: { phone: 'phone is required' },
+    });
+  }
+  const exists = await authService.phoneIsRegistered(phone);
+  return successResponse(res, 200, 'Phone check', { exists });
+});
+
+// POST /api/auth/firebase-signup
+// Body: { idToken, firstName, lastName, email, role }
+// Phone-first wizard completes here: idToken proves phone ownership, the
+// rest of the fields are the new profile. Creates the user, returns session.
+const firebaseSignup = asyncHandler(async (req, res) => {
+  const { idToken, firstName, lastName, email, role } = req.body || {};
+  try {
+    const result = await authService.signupWithFirebase(
+      { idToken, firstName, lastName, email, role },
+      reqMeta(req)
+    );
+    await logAudit({
+      req,
+      userId: result.user && result.user.id,
+      action: 'auth.firebase_signup',
+      entity: 'user',
+      entityId: result.user && result.user.id,
+      status: 'success',
+      metadata: {
+        phone: result.user && result.user.mobileNumber,
+        role: result.user && result.user.role,
+      },
+    });
+    return sendAuth(res, 201, 'Account created', result);
+  } catch (err) {
+    await logAudit({
+      req,
+      action: 'auth.firebase_signup_failed',
+      entity: 'user',
+      status: 'failure',
+      metadata: { code: err && err.code ? err.code : undefined },
+    });
+    if (
+      err &&
+      (err.code === 'PHONE_ALREADY_REGISTERED' ||
+        err.code === 'EMAIL_ALREADY_REGISTERED' ||
+        err.code === 'INVALID_ROLE' ||
+        err.code === 'EMAIL_REQUIRED' ||
+        err.code === 'FIREBASE_NO_PHONE' ||
+        err.code === 'FIREBASE_NOT_CONFIGURED')
+    ) {
+      return res.status(err.statusCode || 400).json({
+        success: false,
+        message: err.message,
+        errors: null,
+        code: err.code,
+      });
+    }
+    throw err;
+  }
+});
+
 // POST /api/auth/firebase
 // Body: { idToken }. The frontend completes signInWithPhoneNumber on the
 // client and posts the resulting Firebase ID token here. We verify it via
-// firebase-admin, map the phone to a User (creating a stub on first contact),
-// and issue our normal JWT + refresh cookie session.
+// firebase-admin, map the phone to a User (which must already exist — first-
+// time onboarding goes through /api/auth/firebase-signup), and issue our
+// normal JWT + refresh cookie session.
 const firebaseLogin = asyncHandler(async (req, res) => {
   const { idToken } = req.body || {};
   try {
@@ -385,6 +456,52 @@ const getMe = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'Current user fetched', { user });
 });
 
+// POST /api/auth/change-phone   (requires Bearer access token)
+// Body: { idToken }. The frontend completes a Firebase Phone OTP flow
+// against the NEW number; we verify ownership, ensure no other user holds
+// that number, then update users.mobileNumber for the logged-in user.
+const changePhone = asyncHandler(async (req, res) => {
+  const userId = req.user && (req.user.id || req.user.sub);
+  const { idToken } = req.body || {};
+  try {
+    const result = await authService.changePhoneWithFirebase(userId, idToken);
+    await logAudit({
+      req,
+      userId,
+      action: 'auth.phone_changed',
+      entity: 'user',
+      entityId: userId,
+      status: 'success',
+      metadata: { newPhone: result.mobileNumber },
+    });
+    return successResponse(res, 200, 'Phone number updated', result);
+  } catch (err) {
+    await logAudit({
+      req,
+      userId,
+      action: 'auth.phone_change_failed',
+      entity: 'user',
+      entityId: userId,
+      status: 'failure',
+      metadata: { code: err && err.code ? err.code : undefined },
+    });
+    if (
+      err &&
+      (err.code === 'PHONE_ALREADY_REGISTERED' ||
+        err.code === 'FIREBASE_NO_PHONE' ||
+        err.code === 'FIREBASE_NOT_CONFIGURED')
+    ) {
+      return res.status(err.statusCode || 400).json({
+        success: false,
+        message: err.message,
+        errors: null,
+        code: err.code,
+      });
+    }
+    throw err;
+  }
+});
+
 // --- Client invitation / claim --------------------------------------------
 
 // GET /api/auth/claim-info?token=...
@@ -536,7 +653,10 @@ module.exports = {
   signup,
   login,
   firebaseLogin,
+  firebaseSignup,
   firebaseConfig,
+  checkPhone,
+  changePhone,
   logout,
   refresh,
   checkAvailability,

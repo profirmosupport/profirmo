@@ -42,6 +42,43 @@ router.post(
   authController.firebaseLogin
 );
 
+// Firebase Phone Auth SIGNUP completion. The wizard sends idToken (proves
+// phone ownership) + first/last name + email + role. Rejects on duplicate
+// phone/email.
+router.post(
+  '/firebase-signup',
+  authLimiter,
+  validateBody({
+    idToken: 'required',
+    firstName: 'required',
+    lastName: 'required',
+    email: 'required|email',
+    role: 'required|in:client,professional',
+  }),
+  authController.firebaseSignup
+);
+
+// Phone existence lookup — used by the sign-in flow to route unknown
+// numbers to signup BEFORE burning an OTP. authLimiter keeps enumeration
+// in check; the response only reveals the boolean.
+router.post(
+  '/check-phone',
+  authLimiter,
+  validateBody({ phone: 'required' }),
+  authController.checkPhone
+);
+
+// Change the logged-in user's phone after verifying OTP on the new number.
+// Requires an authenticated session AND a fresh Firebase idToken for the
+// new number.
+router.post(
+  '/change-phone',
+  authenticate,
+  authLimiter,
+  validateBody({ idToken: 'required' }),
+  authController.changePhone
+);
+
 // Public Firebase web-SDK config — apiKey, authDomain, etc. The client
 // fetches this on the login page to initialise the Firebase JS SDK at
 // runtime, so admins can rotate keys via the settings UI without rebuilding.

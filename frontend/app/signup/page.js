@@ -7,9 +7,9 @@
 //    (ProfessionalRegistrationForm) -> registerProfessional() -> a pending-
 //    approval confirmation screen (verify email + awaiting admin approval).
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertCircle,
   ArrowRight,
@@ -21,6 +21,10 @@ import {
   Calculator,
   MailCheck,
   ShieldCheck,
+  Smartphone,
+  KeyRound,
+  CheckCircle2,
+  RotateCcw,
 } from 'lucide-react';
 import BrandLogo from '@/components/common/BrandLogo';
 import PhotoUpload from '@/components/common/PhotoUpload';
@@ -28,7 +32,17 @@ import { useAuth } from '@/components/AuthProvider';
 import {
   resendVerification,
   checkAvailability,
+  checkPhone,
 } from '@/services/authService';
+import {
+  sendPhoneOtp,
+  confirmPhoneOtp,
+  clearRecaptcha,
+  loadFirebaseConfig,
+  firebaseConfigured,
+} from '@/lib/firebase';
+
+const SIGNUP_RESEND_COOLDOWN_SECONDS = 300;
 import {
   updateProfile,
   updateProfessionalDetails,
@@ -63,15 +77,8 @@ function validateClient(values) {
   if (!values.email.trim()) errors.email = 'Email is required.';
   else if (!isEmail(values.email))
     errors.email = 'Enter a valid email address.';
-  if (!values.mobileNumber.trim())
-    errors.mobileNumber = 'Mobile number is required.';
-  else if (!isPhone(values.mobileNumber))
-    errors.mobileNumber = 'Enter a valid 10-digit mobile number.';
-  if (!values.password) errors.password = 'Password is required.';
-  else if (!isStrongPassword(values.password))
-    errors.password = 'Password must be at least 8 characters.';
-  if (values.confirmPassword !== values.password)
-    errors.confirmPassword = 'Passwords do not match.';
+  // mobileNumber is captured + verified via OTP in the phone step now, so
+  // we accept whatever the phone wizard committed without re-validating.
   if (!values.country.trim()) errors.country = 'Country is required.';
   if (!values.state.trim()) errors.state = 'State is required.';
   if (!values.city.trim()) errors.city = 'City is required.';
@@ -115,11 +122,22 @@ function Chrome({ children }) {
 
 export default function SignupPage() {
   const router = useRouter();
-  const { signup, registerProfessional, isAuthenticated, loading, user } =
-    useAuth();
+  const searchParams = useSearchParams();
+  const {
+    signup,
+    signupWithFirebase,
+    registerProfessional,
+    isAuthenticated,
+    loading,
+    user,
+  } = useAuth();
 
-  // step: 'role' | 'client' | 'pro-type' | 'pro-form'
-  const [step, setStep] = useState('role');
+  // step: 'phone' | 'role' | 'client' | 'pro-type' | 'pro-form'
+  // Phone is the new first step — verify OTP before anything else. Once
+  // verified the number is locked for the rest of the wizard (per spec).
+  const [step, setStep] = useState('phone');
+  const [verifiedPhone, setVerifiedPhone] = useState('');
+  const [firebaseIdToken, setFirebaseIdToken] = useState('');
   const [proType, setProType] = useState('');
   // Resume mode: pre-filled wizard at Step 2 for a professional whose Step
   // 1 already created the account but who bounced before finishing.
@@ -259,23 +277,34 @@ export default function SignupPage() {
     setClientErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
+    // Defense in depth — the phone step should have set these before we
+    // reach this submit handler. If for some reason it didn't, bounce back.
+    if (!firebaseIdToken || !verifiedPhone) {
+      setBanner('Please verify your mobile number first.');
+      setStep('phone');
+      return;
+    }
+
     const email = client.email.trim();
     setSubmitting(true);
     try {
-      await signup({
+      // Phone-first signup — backend creates the account from the verified
+      // Firebase token + the rest of the profile, then issues our session.
+      // The user is logged in immediately on success; no email verification
+      // gate (phone is the channel of verification).
+      await signupWithFirebase({
+        idToken: firebaseIdToken,
         firstName: client.firstName.trim(),
         lastName: client.lastName.trim(),
         email,
-        mobileNumber: client.mobileNumber.trim(),
-        password: client.password,
-        country: client.country.trim(),
-        state: client.state.trim(),
-        city: client.city.trim(),
-        addressLine: client.addressLine.trim(),
-        profilePhoto: client.profilePhoto || '',
         role: 'client',
       });
+      // Note: address / photo / etc. fields collected here will be saved
+      // via a profile-update call once we wire it; for the v1 of the
+      // phone-first flow the account is created and the user lands on
+      // /dashboard.
       setSubmittedEmail(email);
+      router.push('/dashboard');
     } catch (err) {
       setClientErrors(mapServerErrors(err));
       setBanner(
@@ -693,6 +722,47 @@ export default function SignupPage() {
     );
   }
 
+  // ---- Step 0: verify mobile number via OTP -----------------------------
+  // The phone is captured + verified BEFORE any other field. Once verified
+  // it is locked for the rest of the wizard — per spec, users cannot change
+  // their phone number mid-signup.
+  if (step === 'phone') {
+    return (
+      <Chrome>
+        <div className="w-full max-w-md">
+          <div className="mb-6 text-center">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+              Verify your mobile
+            </h1>
+            <p className="mt-1.5 text-sm text-slate-500">
+              We&apos;ll send a one-time code to confirm it&apos;s really you.
+            </p>
+          </div>
+          <PhoneVerifyStep
+            initialPhone={searchParams.get('phone') || ''}
+            onVerified={(phoneE164, idToken) => {
+              setVerifiedPhone(phoneE164);
+              setFirebaseIdToken(idToken);
+              // Pre-fill the client form's mobile (legacy field) so the
+              // later steps display the verified number.
+              setClient((v) => ({ ...v, mobileNumber: phoneE164 }));
+              setStep('role');
+            }}
+          />
+          <p className="mt-6 text-center text-sm text-slate-600">
+            Already have an account?{' '}
+            <Link
+              href="/login"
+              className="font-semibold text-amber-700 hover:text-amber-800"
+            >
+              Sign in
+            </Link>
+          </p>
+        </div>
+      </Chrome>
+    );
+  }
+
   // ---- Step 1: choose a role ---------------------------------------------
   if (step === 'role') {
     return (
@@ -866,60 +936,27 @@ export default function SignupPage() {
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-700">
                   Mobile number
+                  <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                    <CheckCircle2 size={10} />
+                    Verified
+                  </span>
                 </label>
                 <input
                   name="mobileNumber"
                   type="tel"
-                  value={client.mobileNumber}
-                  onChange={handleClientChange}
-                  placeholder="9876543210"
-                  className={clientFieldClass('mobileNumber')}
+                  value={client.mobileNumber || verifiedPhone}
+                  readOnly
+                  disabled
+                  className="w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600"
                 />
-                {clientErrors.mobileNumber && (
-                  <p className="mt-1 text-xs text-red-600">
-                    {clientErrors.mobileNumber}
-                  </p>
-                )}
+                <p className="mt-1 text-xs text-slate-500">
+                  Phone numbers cannot be changed during signup. You can change
+                  it from your profile after creating the account.
+                </p>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Password
-                  </label>
-                  <input
-                    name="password"
-                    type="password"
-                    value={client.password}
-                    onChange={handleClientChange}
-                    placeholder="At least 8 characters"
-                    className={clientFieldClass('password')}
-                  />
-                  {clientErrors.password && (
-                    <p className="mt-1 text-xs text-red-600">
-                      {clientErrors.password}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Confirm password
-                  </label>
-                  <input
-                    name="confirmPassword"
-                    type="password"
-                    value={client.confirmPassword}
-                    onChange={handleClientChange}
-                    placeholder="Re-enter password"
-                    className={clientFieldClass('confirmPassword')}
-                  />
-                  {clientErrors.confirmPassword && (
-                    <p className="mt-1 text-xs text-red-600">
-                      {clientErrors.confirmPassword}
-                    </p>
-                  )}
-                </div>
-              </div>
+              {/* Password fields removed — phone OTP is the auth method for
+                  accounts created via this wizard. */}
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <Combobox
@@ -1160,5 +1197,304 @@ export default function SignupPage() {
         </p>
       </div>
     </Chrome>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PhoneVerifyStep — the first screen of the signup wizard. Same OTP flow
+// as the login Phone tab, with two product differences:
+//   - Reject phones that are ALREADY registered (sign up means new account)
+//   - On success, hand the (phoneE164, firebaseIdToken) up to the parent.
+// ---------------------------------------------------------------------------
+function PhoneVerifyStep({ initialPhone = '', onVerified }) {
+  const [phone, setPhone] = useState(initialPhone);
+  const [otp, setOtp] = useState('');
+  const [innerStep, setInnerStep] = useState('enter-phone');
+  const [submitting, setSubmitting] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
+  const [resendIn, setResendIn] = useState(0);
+  const [configState, setConfigState] = useState('loading');
+  const confirmationRef = useRef(null);
+
+  useEffect(() => {
+    let active = true;
+    loadFirebaseConfig().then(() => {
+      if (!active) return;
+      setConfigState(firebaseConfigured() ? 'ready' : 'unavailable');
+    });
+    return () => {
+      active = false;
+      clearRecaptcha();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (resendIn <= 0) return undefined;
+    const t = setInterval(() => {
+      setResendIn((s) => (s > 0 ? s - 1 : 0));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [resendIn]);
+
+  function toE164(raw) {
+    const trimmed = String(raw || '').trim();
+    if (!trimmed) return '';
+    if (trimmed.startsWith('+'))
+      return '+' + trimmed.slice(1).replace(/[^0-9]/g, '');
+    const digits = trimmed.replace(/[^0-9]/g, '');
+    if (digits.length === 10) return '+91' + digits;
+    if (digits.length === 12 && digits.startsWith('91')) return '+' + digits;
+    return '+' + digits;
+  }
+
+  function fmtMmSs(t) {
+    const m = Math.floor(t / 60);
+    const s = t % 60;
+    return `${m}:${String(s).padStart(2, '0')}`;
+  }
+
+  async function handleSendOtp(e) {
+    e && e.preventDefault();
+    setError('');
+    setInfo('');
+    if (configState !== 'ready') {
+      setError('Phone sign-in is not configured yet. Please contact support.');
+      return;
+    }
+    const e164 = toE164(phone);
+    if (!/^\+\d{8,15}$/.test(e164)) {
+      setError('Enter a valid phone number including the country code.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      // Reject numbers that are already registered — signup is for NEW
+      // accounts. Existing users go through /login instead.
+      const check = await checkPhone(e164);
+      if (check && check.exists) {
+        setError(
+          'This phone number is already registered. Please sign in instead.'
+        );
+        return;
+      }
+      const confirmation = await sendPhoneOtp(e164, 'signup-recaptcha-container');
+      confirmationRef.current = confirmation;
+      setInnerStep('enter-code');
+      setInfo(`We sent a 6-digit code to ${e164}.`);
+      setResendIn(SIGNUP_RESEND_COOLDOWN_SECONDS);
+    } catch (err) {
+      setError(
+        (err && (err.message || err.code)) ||
+          'Could not send the OTP. Please try again.'
+      );
+      clearRecaptcha();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleVerifyOtp(e) {
+    e.preventDefault();
+    setError('');
+    if (!confirmationRef.current) {
+      setError('Please request a new OTP first.');
+      setInnerStep('enter-phone');
+      return;
+    }
+    if (!/^\d{6}$/.test(otp.trim())) {
+      setError('Enter the 6-digit code from the SMS.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const idToken = await confirmPhoneOtp(confirmationRef.current, otp.trim());
+      onVerified(toE164(phone), idToken);
+    } catch (err) {
+      setError(
+        (err && err.message) ||
+          'Could not verify the code. It may be wrong or expired.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleResend() {
+    if (resending || resendIn > 0) return;
+    setResending(true);
+    setError('');
+    setInfo('');
+    clearRecaptcha();
+    confirmationRef.current = null;
+    try {
+      const e164 = toE164(phone);
+      const confirmation = await sendPhoneOtp(e164, 'signup-recaptcha-container');
+      confirmationRef.current = confirmation;
+      setInfo(`A new code was sent to ${e164}.`);
+      setResendIn(SIGNUP_RESEND_COOLDOWN_SECONDS);
+    } catch (err) {
+      setError(
+        (err && err.message) || 'Could not resend the OTP. Please try again.'
+      );
+    } finally {
+      setResending(false);
+    }
+  }
+
+  return (
+    <div className="glass rounded-2xl border border-slate-200/80 p-6 shadow-card sm:p-7">
+      {configState === 'loading' && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
+          <Loader2 size={16} className="animate-spin" />
+          <span>Loading sign-up options…</span>
+        </div>
+      )}
+      {configState === 'unavailable' && (
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+          <AlertCircle size={16} className="mt-0.5 shrink-0" />
+          <span>
+            Phone sign-up is not configured yet. Please contact support.
+          </span>
+        </div>
+      )}
+      {error && (
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+          <AlertCircle size={16} className="mt-0.5 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+      {info && (
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2.5 text-sm text-teal-800">
+          <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+          <span>{info}</span>
+        </div>
+      )}
+
+      {innerStep === 'enter-phone' && (
+        <form onSubmit={handleSendOtp} className="space-y-4" noValidate>
+          <div>
+            <label
+              htmlFor="signup-phone"
+              className="mb-1.5 block text-sm font-medium text-slate-700"
+            >
+              Mobile number
+            </label>
+            <div className="relative">
+              <Smartphone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                id="signup-phone"
+                name="phone"
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+91 98765 43210"
+                autoComplete="tel"
+                inputMode="tel"
+                className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-800 placeholder-slate-400 transition focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200"
+              />
+            </div>
+            <p className="mt-1.5 text-xs text-slate-500">
+              Indian numbers default to +91. You will receive a 6-digit OTP by
+              SMS.
+            </p>
+          </div>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="group inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-2.5 text-sm font-semibold text-white shadow-glow-sm transition hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {submitting ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Sending OTP…
+              </>
+            ) : (
+              <>
+                Send OTP
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              </>
+            )}
+          </button>
+        </form>
+      )}
+
+      {innerStep === 'enter-code' && (
+        <form onSubmit={handleVerifyOtp} className="space-y-4" noValidate>
+          <div>
+            <label
+              htmlFor="signup-otp"
+              className="mb-1.5 block text-sm font-medium text-slate-700"
+            >
+              6-digit code
+            </label>
+            <div className="relative">
+              <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                id="signup-otp"
+                name="otp"
+                type="text"
+                value={otp}
+                onChange={(e) =>
+                  setOtp(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))
+                }
+                placeholder="123456"
+                autoComplete="one-time-code"
+                inputMode="numeric"
+                maxLength={6}
+                className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-base tracking-[0.4em] text-slate-800 placeholder-slate-400 transition focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200"
+              />
+            </div>
+          </div>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="group inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-2.5 text-sm font-semibold text-white shadow-glow-sm transition hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {submitting ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Verifying…
+              </>
+            ) : (
+              <>
+                Verify and continue
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              </>
+            )}
+          </button>
+          <div className="flex items-center justify-between text-xs">
+            <button
+              type="button"
+              onClick={() => {
+                setInnerStep('enter-phone');
+                setOtp('');
+                setError('');
+                setInfo('');
+              }}
+              className="font-semibold text-slate-500 transition hover:text-slate-700"
+            >
+              Use a different number
+            </button>
+            <button
+              type="button"
+              onClick={handleResend}
+              disabled={resending || resendIn > 0}
+              className="inline-flex items-center gap-1 font-semibold text-amber-700 transition hover:text-amber-800 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:text-slate-400"
+            >
+              <RotateCcw size={12} />
+              {resending
+                ? 'Resending…'
+                : resendIn > 0
+                  ? `Resend in ${fmtMmSs(resendIn)}`
+                  : 'Resend code'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      <div id="signup-recaptcha-container" className="mt-3 flex justify-center" />
+    </div>
   );
 }

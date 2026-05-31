@@ -72,7 +72,9 @@
       "Bash(curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" http://localhost:4000/api/app-settings/locations)",
       "Bash(lsof -iTCP -sTCP:LISTEN -P -n)",
       "Bash(curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" http://localhost:5001/api/health)",
-      "Bash(curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" http://localhost:5001/api/app-settings/locations -o /dev/null)"
+      "Bash(curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" http://localhost:5001/api/app-settings/locations -o /dev/null)",
+      "Bash(curl -s -o /dev/null -w \"[/login HTTP %{http_code}]\\\\n\" --max-time 8 http://localhost:3000/login)",
+      "Bash(curl -s -o /dev/null -w \"[/signup HTTP %{http_code}]\\\\n\" --max-time 12 http://localhost:3000/signup)"
     ]
   }
 }

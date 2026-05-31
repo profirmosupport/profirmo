@@ -7,6 +7,9 @@ import { get, post } from '@/services/api';
 const ENDPOINTS = {
   login: '/api/auth/login',
   firebaseLogin: '/api/auth/firebase',
+  firebaseSignup: '/api/auth/firebase-signup',
+  checkPhone: '/api/auth/check-phone',
+  changePhone: '/api/auth/change-phone',
   signup: '/api/auth/signup',
   refresh: '/api/auth/refresh',
   logout: '/api/auth/logout',
@@ -56,6 +59,36 @@ export async function login(email, password) {
  */
 export async function loginWithFirebase(idToken) {
   const res = await post(ENDPOINTS.firebaseLogin, { idToken });
+  return unwrap(res);
+}
+
+/**
+ * Phone existence lookup — used before sending an OTP on the sign-in page
+ * to route unregistered numbers to signup instead of burning an SMS.
+ * @param {string} phone E.164 phone string
+ * @returns {Promise<{ exists: boolean }>}
+ */
+export async function checkPhone(phone) {
+  const res = await post(ENDPOINTS.checkPhone, { phone });
+  return unwrap(res);
+}
+
+/**
+ * Complete the phone-first signup wizard. Backend verifies the Firebase
+ * idToken (proves phone ownership), checks no other user holds that phone
+ * or email, then creates the user and returns a session.
+ */
+export async function signupWithFirebase(payload) {
+  const res = await post(ENDPOINTS.firebaseSignup, payload);
+  return unwrap(res);
+}
+
+/**
+ * Change the logged-in user's mobile number. Requires an authenticated
+ * session AND a fresh Firebase idToken for the NEW number.
+ */
+export async function changePhone(idToken) {
+  const res = await post(ENDPOINTS.changePhone, { idToken });
   return unwrap(res);
 }
 
@@ -268,6 +301,9 @@ export async function registerFirm(data) {
 export default {
   login,
   loginWithFirebase,
+  signupWithFirebase,
+  checkPhone,
+  changePhone,
   signup,
   verifyEmail,
   resendVerification,

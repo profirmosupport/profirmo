@@ -172,6 +172,17 @@ export function AuthProvider({ children }) {
     [applyAuth]
   );
 
+  // Complete phone-first signup. Backend creates the user, verifies the
+  // Firebase idToken proves phone ownership, returns a session payload we
+  // adopt the same way loginWithFirebase does.
+  const signupWithFirebase = useCallback(
+    async (payload) => {
+      const data = await authService.signupWithFirebase(payload);
+      return applyAuth(data);
+    },
+    [applyAuth]
+  );
+
   // Signup no longer logs the user in — email verification is required first.
   // Return the response data ({ user, emailVerificationRequired }) so the
   // signup page can render its "check your email" confirmation screen.
@@ -270,6 +281,7 @@ export function AuthProvider({ children }) {
     isAuthenticated: !!user,
     login,
     loginWithFirebase,
+    signupWithFirebase,
     signup,
     verifyEmail,
     claimAccount,
@@ -299,6 +311,7 @@ export function useAuth() {
     isAuthenticated: false,
     login: noop,
     loginWithFirebase: noop,
+    signupWithFirebase: noop,
     signup: noop,
     verifyEmail: noop,
     claimAccount: noop,

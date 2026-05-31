@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import BrandLogo from '@/components/common/BrandLogo';
 import { useAuth } from '@/components/AuthProvider';
-import { resendVerification } from '@/services/authService';
+import { resendVerification, checkPhone } from '@/services/authService';
 import { validateForm, loginRules } from '@/utils/validators';
 import {
   sendPhoneOtp,
@@ -27,6 +27,10 @@ import {
   firebaseConfigured,
   loadFirebaseConfig,
 } from '@/lib/firebase';
+
+// Five minutes between an OTP send and the next allowed Resend. Matches the
+// product spec.
+const RESEND_COOLDOWN_SECONDS = 300;
 
 // Only same-origin paths are honoured as a post-login redirect target — the
 // `next` query param could otherwise be used to redirect users to a phishing
@@ -52,10 +56,25 @@ function PhoneTab({ onAuthenticated, nextPath }) {
   const [resending, setResending] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
+  // Tracks "phone is not registered" separately so the UI can render a
+  // signup CTA instead of a plain error banner.
+  const [unregistered, setUnregistered] = useState(false);
+  // Seconds remaining until the Resend button becomes active again.
+  // Counts down from RESEND_COOLDOWN_SECONDS after each successful send.
+  const [resendIn, setResendIn] = useState(0);
 
   // Persist the ConfirmationResult between renders without re-running the
   // sendOtp flow — Firebase requires this object to call .confirm(code).
   const confirmationRef = useRef(null);
+
+  // Resend cooldown ticker. Runs only while the timer is positive.
+  useEffect(() => {
+    if (resendIn <= 0) return undefined;
+    const t = setInterval(() => {
+      setResendIn((s) => (s > 0 ? s - 1 : 0));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [resendIn]);
 
   // Config is now fetched at runtime from /api/auth/firebase-config, so we
   // can't know synchronously whether phone sign-in is available. Trigger
@@ -92,6 +111,7 @@ function PhoneTab({ onAuthenticated, nextPath }) {
     e && e.preventDefault();
     setError('');
     setInfo('');
+    setUnregistered(false);
     if (configState !== 'ready') {
       setError(
         'Phone sign-in is not configured yet. An admin can enable it under ' +
@@ -106,10 +126,19 @@ function PhoneTab({ onAuthenticated, nextPath }) {
     }
     setSubmitting(true);
     try {
+      // Existence check BEFORE burning an SMS / reCAPTCHA. Avoids any UX
+      // confusion where an unregistered user receives an OTP they then
+      // can't redeem.
+      const check = await checkPhone(e164);
+      if (!check || !check.exists) {
+        setUnregistered(true);
+        return;
+      }
       const confirmation = await sendPhoneOtp(e164, 'recaptcha-container');
       confirmationRef.current = confirmation;
       setStep('enter-code');
       setInfo(`We sent a 6-digit code to ${e164}.`);
+      setResendIn(RESEND_COOLDOWN_SECONDS);
     } catch (err) {
       setError(
         (err && (err.message || err.code)) ||
@@ -151,7 +180,7 @@ function PhoneTab({ onAuthenticated, nextPath }) {
   }
 
   async function handleResend() {
-    if (resending) return;
+    if (resending || resendIn > 0) return;
     setResending(true);
     setError('');
     setInfo('');
@@ -162,6 +191,7 @@ function PhoneTab({ onAuthenticated, nextPath }) {
       const confirmation = await sendPhoneOtp(e164, 'recaptcha-container');
       confirmationRef.current = confirmation;
       setInfo(`A new 6-digit code was sent to ${e164}.`);
+      setResendIn(RESEND_COOLDOWN_SECONDS);
     } catch (err) {
       setError(
         (err && err.message) || 'Could not resend the OTP. Please try again.'
@@ -169,6 +199,13 @@ function PhoneTab({ onAuthenticated, nextPath }) {
     } finally {
       setResending(false);
     }
+  }
+
+  // mm:ss formatting for the cooldown badge.
+  function fmtMmSs(totalSec) {
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${m}:${String(s).padStart(2, '0')}`;
   }
 
   return (
@@ -198,6 +235,26 @@ function PhoneTab({ onAuthenticated, nextPath }) {
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2.5 text-sm text-teal-800">
           <MailCheck size={16} className="mt-0.5 shrink-0" />
           <span>{info}</span>
+        </div>
+      )}
+      {unregistered && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm">
+          <div className="flex items-start gap-2 text-amber-800">
+            <AlertCircle size={16} className="mt-0.5 shrink-0" />
+            <div>
+              <p className="font-semibold">No account found for this number.</p>
+              <p className="mt-0.5 text-amber-700">
+                Sign up first to create an account with this phone number.
+              </p>
+            </div>
+          </div>
+          <Link
+            href={`/signup?phone=${encodeURIComponent(phone)}`}
+            className="mt-2.5 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-100"
+          >
+            Create an account
+            <ArrowRight size={14} />
+          </Link>
         </div>
       )}
 
@@ -310,11 +367,15 @@ function PhoneTab({ onAuthenticated, nextPath }) {
             <button
               type="button"
               onClick={handleResend}
-              disabled={resending}
-              className="inline-flex items-center gap-1 font-semibold text-amber-700 transition hover:text-amber-800 disabled:opacity-60"
+              disabled={resending || resendIn > 0}
+              className="inline-flex items-center gap-1 font-semibold text-amber-700 transition hover:text-amber-800 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:text-slate-400"
             >
               <RotateCcw size={12} />
-              {resending ? 'Resending…' : 'Resend code'}
+              {resending
+                ? 'Resending…'
+                : resendIn > 0
+                  ? `Resend in ${fmtMmSs(resendIn)}`
+                  : 'Resend code'}
             </button>
           </div>
         </form>

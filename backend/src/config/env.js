@@ -52,7 +52,11 @@ module.exports = {
   // Short-lived JWT access token lifetime.
   accessTokenExpiry: process.env.ACCESS_TOKEN_EXPIRY || '15m',
   // Opaque refresh token / session lifetime in days.
-  refreshTokenDays: Number(process.env.REFRESH_TOKEN_DAYS) || 30,
+  // Refresh sessions are intentionally long — the product requirement is
+  // "stay logged in until the user explicitly signs out". The token still
+  // gets rotated on every /refresh call, so a stolen refresh token only
+  // works once before being revoked.
+  refreshTokenDays: Number(process.env.REFRESH_TOKEN_DAYS) || 365,
   // httpOnly refresh-token cookie settings.
   cookie: {
     name: 'pf_refresh',
