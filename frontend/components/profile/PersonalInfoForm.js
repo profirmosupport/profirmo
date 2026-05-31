@@ -127,6 +127,26 @@ export default function PersonalInfoForm({ user, address, onSaved }) {
 
   return (
     <Card>
+      <ChangePhoneModal
+        open={phoneModalOpen}
+        currentPhone={form.mobileNumber}
+        onClose={() => setPhoneModalOpen(false)}
+        onChanged={async (newPhone) => {
+          setForm((f) => ({ ...f, mobileNumber: newPhone }));
+          setFeedback({
+            type: 'success',
+            message: 'Mobile number updated.',
+          });
+          setPhoneModalOpen(false);
+          if (typeof onSaved === 'function') {
+            try {
+              await onSaved(null);
+            } catch {
+              /* ignore — the form has already reflected the change */
+            }
+          }
+        }}
+      />
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
           <h2 className="text-base font-semibold text-slate-900">
@@ -182,27 +202,6 @@ export default function PersonalInfoForm({ user, address, onSaved }) {
             </p>
           </div>
         </div>
-        <ChangePhoneModal
-          open={phoneModalOpen}
-          currentPhone={form.mobileNumber}
-          onClose={() => setPhoneModalOpen(false)}
-          onChanged={async (newPhone) => {
-            setForm((f) => ({ ...f, mobileNumber: newPhone }));
-            setFeedback({
-              type: 'success',
-              message: 'Mobile number updated.',
-            });
-            setPhoneModalOpen(false);
-            if (typeof onSaved === 'function') {
-              try {
-                await onSaved(null);
-              } catch {
-                /* ignore — the form has already reflected the change */
-              }
-            }
-          }}
-        />
-
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
           <div>
             <span className="mb-1.5 block text-sm font-medium text-slate-700">

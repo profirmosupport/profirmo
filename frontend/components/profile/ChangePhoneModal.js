@@ -5,6 +5,7 @@
 // backend rejects if another user already holds the new number.
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X,
   Smartphone,
@@ -22,7 +23,7 @@ import {
   loadFirebaseConfig,
   firebaseConfigured,
 } from '@/lib/firebase';
-import { changePhone } from '@/services/authService';
+import { changePhone, checkPhone } from '@/services/authService';
 
 const RESEND_COOLDOWN_SECONDS = 300;
 
@@ -93,6 +94,10 @@ export default function ChangePhoneModal({
   }, [resendIn]);
 
   if (!open) return null;
+  // SSR guard — createPortal needs `document`, which doesn't exist during
+  // server render. The component is in a 'use client' file so this is only
+  // true on the very first paint before hydration completes.
+  if (typeof document === 'undefined') return null;
 
   async function handleSendOtp(e) {
     e && e.preventDefault();
@@ -113,6 +118,17 @@ export default function ChangePhoneModal({
     }
     setSubmitting(true);
     try {
+      // Pre-flight: reject numbers already attached to ANY account before
+      // burning an OTP. The /api/auth/change-phone endpoint will also reject
+      // on its own — this is defense in depth + faster UX (no SMS round-trip
+      // to discover the conflict).
+      const check = await checkPhone(e164);
+      if (check && check.exists) {
+        setError(
+          'This phone number is already attached to another account. Use a different number.'
+        );
+        return;
+      }
       const confirmation = await sendPhoneOtp(
         e164,
         'change-phone-recaptcha-container'
@@ -190,7 +206,12 @@ export default function ChangePhoneModal({
     }
   }
 
-  return (
+  // Portal the modal to <body>. The PersonalInfoForm / pro form wrap their
+  // content in a <form>; rendering this modal as a DOM descendant of that
+  // form would mean a nested <form>, which the HTML spec doesn't allow and
+  // browsers flatten — pressing Enter in the modal's phone input would
+  // submit the OUTER form and bounce the user. Portalling sidesteps it.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
@@ -362,6 +383,7 @@ export default function ChangePhoneModal({
           />
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

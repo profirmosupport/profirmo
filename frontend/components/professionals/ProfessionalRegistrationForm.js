@@ -875,6 +875,7 @@ export default function ProfessionalRegistrationForm({
   const stepProgress = Math.round((step / 3) * 100);
 
   return (
+    <>
     <form onSubmit={handleSubmit} className="space-y-4" noValidate>
       {/* Progress indicator — wizard chrome with one step visible at a time. */}
       <div className="rounded-2xl border border-slate-200/80 bg-white px-5 py-4 shadow-card">
@@ -1601,20 +1602,23 @@ export default function ProfessionalRegistrationForm({
         )}
       </div>
 
-      {/* Phone-change OTP modal — only relevant in edit/resubmit modes, but
-          mounting it at the form root keeps it usable regardless of which
-          step is currently visible. */}
-      {mode !== 'register' && (
-        <ChangePhoneModal
-          open={phoneModalOpen}
-          currentPhone={values.mobileNumber}
-          onClose={() => setPhoneModalOpen(false)}
-          onChanged={(newPhone) => {
-            setField('mobileNumber', newPhone);
-            setPhoneModalOpen(false);
-          }}
-        />
-      )}
     </form>
+
+    {/* Phone-change OTP modal — rendered as a SIBLING of <form>, not a
+        descendant. Even if the React Portal somehow doesn't apply at
+        runtime, the modal's own <form onSubmit={...}> won't collide with
+        the wizard's outer <form onSubmit={handleSubmit}>. */}
+    {mode !== 'register' && (
+      <ChangePhoneModal
+        open={phoneModalOpen}
+        currentPhone={values.mobileNumber}
+        onClose={() => setPhoneModalOpen(false)}
+        onChanged={(newPhone) => {
+          setField('mobileNumber', newPhone);
+          setPhoneModalOpen(false);
+        }}
+      />
+    )}
+    </>
   );
 }
