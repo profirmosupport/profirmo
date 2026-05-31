@@ -1187,6 +1187,9 @@ function SignupInner() {
           serverErrors={proServerErrors}
           onSubmit={handleProSubmit}
           onStepSave={handleProStepSave}
+          // Phone-first wizard: the mobile was verified in step 'phone'.
+          // Lock the field in the pro form so it can't be edited from here.
+          lockedMobileNumber={verifiedPhone}
         />
 
         <p className="mt-6 text-center text-sm text-slate-600">
@@ -1218,6 +1221,10 @@ export default function SignupPage() {
 //   - On success, hand the (phoneE164, firebaseIdToken) up to the parent.
 // ---------------------------------------------------------------------------
 function PhoneVerifyStep({ initialPhone = '', onVerified }) {
+  // When the wizard was deep-linked with ?phone=… (e.g. from the "create
+  // an account" CTA on the sign-in page), we lock the number — the user
+  // arrived here specifically to verify THAT phone, not pick a new one.
+  const phoneLocked = Boolean(initialPhone);
   const [phone, setPhone] = useState(initialPhone);
   const [otp, setOtp] = useState('');
   const [innerStep, setInnerStep] = useState('enter-phone');
@@ -1403,12 +1410,19 @@ function PhoneVerifyStep({ initialPhone = '', onVerified }) {
                 placeholder="+91 98765 43210"
                 autoComplete="tel"
                 inputMode="tel"
-                className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-800 placeholder-slate-400 transition focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200"
+                readOnly={phoneLocked}
+                disabled={phoneLocked}
+                className={`w-full rounded-lg border py-2.5 pl-9 pr-3 text-sm transition focus:outline-none focus:ring-2 ${
+                  phoneLocked
+                    ? 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-600'
+                    : 'border-slate-300 bg-white text-slate-800 placeholder-slate-400 focus:border-amber-500 focus:ring-amber-200'
+                }`}
               />
             </div>
             <p className="mt-1.5 text-xs text-slate-500">
-              Indian numbers default to +91. You will receive a 6-digit OTP by
-              SMS.
+              {phoneLocked
+                ? 'This phone number was passed in from sign-in. You will receive a 6-digit OTP by SMS to confirm it.'
+                : 'Indian numbers default to +91. You will receive a 6-digit OTP by SMS.'}
             </p>
           </div>
           <button
@@ -1476,18 +1490,22 @@ function PhoneVerifyStep({ initialPhone = '', onVerified }) {
             )}
           </button>
           <div className="flex items-center justify-between text-xs">
-            <button
-              type="button"
-              onClick={() => {
-                setInnerStep('enter-phone');
-                setOtp('');
-                setError('');
-                setInfo('');
-              }}
-              className="font-semibold text-slate-500 transition hover:text-slate-700"
-            >
-              Use a different number
-            </button>
+            {phoneLocked ? (
+              <span />
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setInnerStep('enter-phone');
+                  setOtp('');
+                  setError('');
+                  setInfo('');
+                }}
+                className="font-semibold text-slate-500 transition hover:text-slate-700"
+              >
+                Use a different number
+              </button>
+            )}
             <button
               type="button"
               onClick={handleResend}

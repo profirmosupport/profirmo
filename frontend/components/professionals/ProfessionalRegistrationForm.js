@@ -18,6 +18,7 @@ import {
   CheckCircle2,
   Scale,
   Calculator,
+  Edit3,
 } from 'lucide-react';
 import Input from '@/components/common/Input';
 import Select from '@/components/common/Select';
@@ -25,9 +26,11 @@ import Combobox from '@/components/common/Combobox';
 import MultiCombobox from '@/components/common/MultiCombobox';
 import FileUpload from '@/components/common/FileUpload';
 import PhotoUpload from '@/components/common/PhotoUpload';
+import Button from '@/components/common/Button';
 import { isEmail, isPhone, isStrongPassword } from '@/utils/validators';
 import { useCategories } from '@/hooks/useAppSettings';
 import { useLocations } from '@/hooks/useLocations';
+import ChangePhoneModal from '@/components/profile/ChangePhoneModal';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -644,16 +647,25 @@ export default function ProfessionalRegistrationForm({
   // closed the tab after Step 1 lands directly on Step 2 instead of
   // re-doing Personal info.
   initialStep = 1,
+  // When set, the Mobile number input is pre-filled and disabled. Used by
+  // the phone-first signup wizard, which verifies the phone via OTP before
+  // this form is ever shown.
+  lockedMobileNumber = '',
 }) {
   const [values, setValues] = useState(() => ({
     ...emptyValues(),
     ...(initialValues || {}),
+    ...(lockedMobileNumber ? { mobileNumber: lockedMobileNumber } : {}),
   }));
   const [errors, setErrors] = useState({});
   // 3-step wizard: 1=Personal info, 2=Professional details, 3=Documents.
   const [step, setStep] = useState(initialStep);
   // In-flight indicator for the per-step save.
   const [stepSaving, setStepSaving] = useState(false);
+  // Phone-change modal: only relevant in edit/resubmit modes. In register
+  // mode the mobile is captured directly via the input (or locked via
+  // `lockedMobileNumber` when the parent ran the phone-OTP wizard first).
+  const [phoneModalOpen, setPhoneModalOpen] = useState(false);
 
   const isLegal = professionalType === PROFESSIONAL_TYPES.LEGAL;
 
@@ -981,17 +993,39 @@ export default function ProfessionalRegistrationForm({
               disabled={mode !== 'register'}
               error={allErrors.email}
             />
-            <Input
-              label="Mobile number"
-              name="mobileNumber"
-              type="tel"
-              value={values.mobileNumber}
-              onChange={handleChange}
-              placeholder="9876543210"
-              required={mode === 'register'}
-              disabled={mode !== 'register'}
-              error={allErrors.mobileNumber}
-            />
+            <div>
+              <Input
+                label={
+                  lockedMobileNumber
+                    ? 'Mobile number (verified)'
+                    : 'Mobile number'
+                }
+                name="mobileNumber"
+                type="tel"
+                value={values.mobileNumber}
+                onChange={handleChange}
+                placeholder="9876543210"
+                required={mode === 'register'}
+                disabled={mode !== 'register' || Boolean(lockedMobileNumber)}
+                error={allErrors.mobileNumber}
+              />
+              {mode !== 'register' && (
+                <div className="mt-1.5 flex items-center justify-between">
+                  <p className="text-xs text-slate-500">
+                    Changing your phone number requires verifying the new
+                    number via OTP.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setPhoneModalOpen(true)}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 transition hover:text-amber-800"
+                  >
+                    <Edit3 size={12} />
+                    Change
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           {mode === 'register' && (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -1566,6 +1600,21 @@ export default function ProfessionalRegistrationForm({
       </button>
         )}
       </div>
+
+      {/* Phone-change OTP modal — only relevant in edit/resubmit modes, but
+          mounting it at the form root keeps it usable regardless of which
+          step is currently visible. */}
+      {mode !== 'register' && (
+        <ChangePhoneModal
+          open={phoneModalOpen}
+          currentPhone={values.mobileNumber}
+          onClose={() => setPhoneModalOpen(false)}
+          onChanged={(newPhone) => {
+            setField('mobileNumber', newPhone);
+            setPhoneModalOpen(false);
+          }}
+        />
+      )}
     </form>
   );
 }
