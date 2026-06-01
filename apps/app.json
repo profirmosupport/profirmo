@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "Profirmo",
+    "slug": "profirmo",
+    "scheme": "profirmo",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "backgroundColor": "#0f172a",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.profirmo.app",
+      "backgroundColor": "#0f172a"
+    },
+    "android": {
+      "package": "com.profirmo.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0f172a"
+      }
+    },
+    "web": {
+      "favicon": "./src/assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0f172a",
+          "resizeMode": "contain",
+          "imageWidth": 200
+        }
+      ]
+    ],
+    "extra": {
+      "apiBaseUrl": "https://profirmo.onrender.com"
+    }
+  }
+}
