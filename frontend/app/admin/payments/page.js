@@ -210,6 +210,7 @@ export default function AdminPaymentsPage() {
                   <th className="px-4 py-3 font-semibold">Payer</th>
                   <th className="px-4 py-3 font-semibold">Professional</th>
                   <th className="px-4 py-3 font-semibold">Amount</th>
+                  <th className="px-4 py-3 font-semibold">Commission</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3 font-semibold">Escrow</th>
                   <th className="px-4 py-3 font-semibold text-right">Actions</th>
@@ -237,6 +238,29 @@ export default function AdminPaymentsPage() {
                     </td>
                     <td className="px-4 py-3 font-semibold text-slate-800">
                       {formatINR(p.amount)}
+                    </td>
+                    <td className="px-4 py-3">
+                      {/* Frozen rate charged on this payment + the rate
+                          the pro's current plan would charge today. The
+                          two diverge when the pro upgraded after the
+                          payment cleared. */}
+                      <div className="text-xs">
+                        <div className="font-mono font-semibold text-slate-800">
+                          {(Number(p.chargedCommissionPercent) || 0).toFixed(2)}%{' '}
+                          <span className="font-normal text-slate-400">
+                            ({formatINR(p.platformFee || 0)})
+                          </span>
+                        </div>
+                        {p.currentPlanName ? (
+                          <div className="text-[11px] text-slate-500">
+                            Current plan:{' '}
+                            <span className="font-semibold text-slate-700">
+                              {p.currentPlanName}
+                            </span>{' '}
+                            ({Number(p.currentCommissionPercent || 0).toFixed(2)}%)
+                          </div>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <Badge

@@ -32,6 +32,7 @@ const paymentRoutes = require('./routes/paymentRoutes');
 const walletRoutes = require('./routes/walletRoutes');
 const payoutRoutes = require('./routes/payoutRoutes');
 const blogRoutes = require('./routes/blogRoutes');
+const subscriptionRoutes = require('./routes/subscriptionRoutes');
 const paymentController = require('./controllers/paymentController');
 
 const app = express();
@@ -170,6 +171,9 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/payouts', payoutRoutes);
 app.use('/api/blog', blogRoutes);
+// Subscription routes — /api/subscription-plans is public, the rest are
+// auth-gated inside the router.
+app.use('/api', subscriptionRoutes);
 
 // --- Static uploads --------------------------------------------------------
 // Serve files stored on local disk at /uploads/<storedName>. Stored names

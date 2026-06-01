@@ -19,9 +19,12 @@ import Badge from '@/components/common/Badge';
 import Modal from '@/components/common/Modal';
 import EmptyState from '@/components/common/EmptyState';
 import Avatar from '@/components/common/Avatar';
+import RowMenu from '@/components/common/RowMenu';
 import AddCaseModal from '@/components/cases/AddCaseModal';
+import QuotaBanner from '@/components/common/QuotaBanner';
 import caseService from '@/services/caseService';
 import { getLawFirm } from '@/services/profileService';
+import { getMyUsage } from '@/services/subscriptionService';
 import { ROLES } from '@/utils/constants';
 import { formatDate } from '@/utils/formatters';
 
@@ -64,112 +67,83 @@ function ListSkeleton() {
 }
 
 function CaseActionsMenu({ row, onView, onReassign, onChangeStatus }) {
-  const [open, setOpen] = useState(false);
+  // Nested "Change status" submenu state. The parent RowMenu handles
+  // open/close, click-outside and Esc; we just track which inner row is
+  // expanded.
   const [statusOpen, setStatusOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    function onClick(e) {
-      if (ref.current && !ref.current.contains(e.target)) {
-        setOpen(false);
-        setStatusOpen(false);
-      }
-    }
-    function onKey(e) {
-      if (e.key === 'Escape') {
-        setOpen(false);
-        setStatusOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', onClick);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onClick);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
 
   return (
-    <div ref={ref} className="relative inline-block text-left">
+    <RowMenu
+      onOpen={() => setStatusOpen(false)}
+      trigger={
+        <button
+          type="button"
+          aria-label="Open case actions menu"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:border-amber-300 hover:bg-slate-50"
+        >
+          <MoreVertical size={16} />
+        </button>
+      }
+    >
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label="Open case actions menu"
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:border-amber-300 hover:bg-slate-50"
+        role="menuitem"
+        onClick={onView}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
       >
-        <MoreVertical size={16} />
+        <Eye size={14} /> View
       </button>
-      {open && (
-        <div
-          role="menu"
-          className="absolute right-0 z-20 mt-1 w-56 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-card-lg"
+      <button
+        type="button"
+        role="menuitem"
+        onClick={onReassign}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
+      >
+        <Users size={14} /> Reassign
+      </button>
+      <div className="border-t border-slate-100">
+        <button
+          type="button"
+          onClick={(e) => {
+            // Stop the click from bubbling — RowMenu's auto-close would
+            // otherwise dismiss the whole popover.
+            e.stopPropagation();
+            setStatusOpen((v) => !v);
+          }}
+          className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
         >
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              onView();
-            }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
-          >
-            <Eye size={14} /> View
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              onReassign();
-            }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
-          >
-            <Users size={14} /> Reassign
-          </button>
-          <div className="border-t border-slate-100">
-            <button
-              type="button"
-              onClick={() => setStatusOpen((v) => !v)}
-              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
-            >
-              <span className="flex items-center gap-2">
-                <CircleDashed size={14} /> Change status
-              </span>
-              <span className="text-xs text-slate-400">
-                {STATUS_LABEL[row.status] || row.status || '—'}
-              </span>
-            </button>
-            {statusOpen && (
-              <div className="border-t border-slate-100 bg-slate-50">
-                {STATUS_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => {
-                      setOpen(false);
-                      setStatusOpen(false);
-                      onChangeStatus(opt.value);
-                    }}
-                    disabled={row.status === opt.value}
-                    className="flex w-full items-center justify-between px-3 py-2 text-left text-xs text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:text-slate-400"
-                  >
-                    <span>{opt.label}</span>
-                    {row.status === opt.value && (
-                      <span className="text-[10px] uppercase tracking-wide text-amber-600">
-                        Current
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
+          <span className="flex items-center gap-2">
+            <CircleDashed size={14} /> Change status
+          </span>
+          <span className="text-xs text-slate-400">
+            {STATUS_LABEL[row.status] || row.status || '—'}
+          </span>
+        </button>
+        {statusOpen && (
+          <div className="border-t border-slate-100 bg-slate-50">
+            {STATUS_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => {
+                  setStatusOpen(false);
+                  onChangeStatus(opt.value);
+                }}
+                disabled={row.status === opt.value}
+                className="flex w-full items-center justify-between px-3 py-2 text-left text-xs text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:text-slate-400"
+              >
+                <span>{opt.label}</span>
+                {row.status === opt.value && (
+                  <span className="text-[10px] uppercase tracking-wide text-amber-600">
+                    Current
+                  </span>
+                )}
+              </button>
+            ))}
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </RowMenu>
   );
 }
 
@@ -184,6 +158,22 @@ export default function FirmCasesPage() {
   const [membersLoading, setMembersLoading] = useState(false);
 
   const [addOpen, setAddOpen] = useState(false);
+  // Firm-scoped plan quota. `usage.firmCases` is populated when the
+  // caller owns the firm; otherwise the banner is hidden.
+  const [usage, setUsage] = useState(null);
+
+  const loadUsage = useCallback(async () => {
+    try {
+      const u = await getMyUsage();
+      setUsage(u);
+    } catch {
+      setUsage(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadUsage();
+  }, [loadUsage]);
 
   const [reassignTarget, setReassignTarget] = useState(null);
   const [reassignError, setReassignError] = useState('');
@@ -282,16 +272,39 @@ export default function FirmCasesPage() {
 
   async function saveReassign() {
     if (!reassignTarget) return;
+    // A case must always have at least one assigned professional — reject
+    // an empty selection BEFORE hitting the API.
+    const ids = (reassignIds || []).filter(Boolean);
+    if (ids.length === 0) {
+      setReassignError(
+        'At least one professional must be assigned to the case.'
+      );
+      return;
+    }
     setReassignSaving(true);
     setReassignError('');
     try {
       await caseService.update(reassignTarget.id, {
-        professionalIds: reassignIds,
+        professionalIds: ids,
       });
       setReassignTarget(null);
+      // Per spec: full page reload after a successful reassign so every
+      // quota count + cached state on the page reflects the new
+      // categorisation (single -> firm or firm -> single).
+      if (typeof window !== 'undefined') {
+        window.location.reload();
+        return;
+      }
       await load();
+      await loadUsage();
     } catch (err) {
-      setReassignError(err.message || 'Could not reassign case.');
+      // Surface plan-limit errors with the upgrade-CTA banner shape so the
+      // modal explains why the reassign was rejected.
+      if (err && err.payload && err.payload.code === 'PLAN_LIMIT_REACHED') {
+        setReassignError(err.payload.message || err.message);
+      } else {
+        setReassignError(err.message || 'Could not reassign case.');
+      }
     } finally {
       setReassignSaving(false);
     }
@@ -311,35 +324,80 @@ export default function FirmCasesPage() {
     }
   }
 
+  // Firm-scoped quota — only populated when the caller owns the firm.
+  // When usage.firmCases is missing the banner stays hidden and the
+  // button only respects the legacy !firmId disable.
+  const firmCaseRemaining =
+    usage && usage.firmCases && usage.firmCases.remaining;
+  const firmCaseExhausted = firmCaseRemaining === 0;
+
   return (
     <DashboardLayout role={ROLES.FIRM_ADMIN} title="Cases" subtitle="Firm-wide case list">
       <div className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-slate-500">
-            {loading
-              ? 'Loading cases…'
-              : `${items.length} case${items.length === 1 ? '' : 's'}`}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={load}
-              disabled={loading}
-            >
-              <RefreshCw size={15} />
-              Refresh
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => setAddOpen(true)}
-              disabled={!firmId}
-            >
-              <Plus size={15} />
-              New case
-            </Button>
+        {usage && usage.firmCases ? (
+          <QuotaBanner
+            label="Firm cases"
+            used={usage.firmCases.used}
+            limit={usage.firmCases.limit}
+            remaining={usage.firmCases.remaining}
+            unlimited={usage.firmCases.unlimited}
+            planName={usage.firmCases.planName || usage.planName}
+            helpText="A firm case is any case with two or more assigned professionals from this firm."
+            actions={
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={load}
+                  disabled={loading}
+                >
+                  <RefreshCw size={15} />
+                  Refresh
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setAddOpen(true)}
+                  disabled={!firmId || firmCaseExhausted}
+                  title={
+                    firmCaseExhausted
+                      ? 'Firm case limit reached — upgrade your plan to add more.'
+                      : undefined
+                  }
+                >
+                  <Plus size={15} />
+                  New case
+                </Button>
+              </>
+            }
+          />
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-slate-500">
+              {loading
+                ? 'Loading cases…'
+                : `${items.length} case${items.length === 1 ? '' : 's'}`}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={load}
+                disabled={loading}
+              >
+                <RefreshCw size={15} />
+                Refresh
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => setAddOpen(true)}
+                disabled={!firmId}
+              >
+                <Plus size={15} />
+                New case
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
 
         {actionError && (
           <Card>
@@ -371,7 +429,11 @@ export default function FirmCasesPage() {
             title="No cases yet"
             description="Cases created for your firm will appear here."
             action={
-              <Button size="sm" onClick={() => setAddOpen(true)}>
+              <Button
+                size="sm"
+                onClick={() => setAddOpen(true)}
+                disabled={firmCaseExhausted}
+              >
                 <Plus size={15} />
                 New case
               </Button>
@@ -504,6 +566,7 @@ export default function FirmCasesPage() {
         onCreated={() => {
           setAddOpen(false);
           load();
+          loadUsage();
         }}
         defaults={firmId ? { firmId } : undefined}
         firmMembers={members}
@@ -531,7 +594,15 @@ export default function FirmCasesPage() {
               variant="primary"
               size="sm"
               onClick={saveReassign}
-              disabled={reassignSaving}
+              disabled={
+                reassignSaving ||
+                (reassignIds || []).filter(Boolean).length === 0
+              }
+              title={
+                (reassignIds || []).filter(Boolean).length === 0
+                  ? 'At least one professional must be assigned.'
+                  : undefined
+              }
             >
               {reassignSaving ? 'Saving…' : 'Save assignments'}
             </Button>

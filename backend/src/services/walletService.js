@@ -66,12 +66,30 @@ async function getSummary(userId) {
     }).then((n) => Number(n) || 0),
   ]);
 
-  // Snapshot the current admin-managed markup so the wallet UI can render
-  // "Current platform markup: 10%" alongside the cumulative-deducted total.
+  // Snapshot the rate that WOULD apply to a new payment for this user
+  // RIGHT NOW. Read fresh from their active subscription's plan so
+  // post-upgrade Premium users immediately see "Current platform markup:
+  // 5%" alongside the cumulative-deducted total from older 10% payments.
+  // Falls back to the admin-setting global rate, then env default.
   let currentMarkupBps = 1000;
   try {
-    const adminSettingsService = require('./adminSettingsService');
-    currentMarkupBps = await adminSettingsService.getNumber('bookingMarkupBps');
+    const { ProfessionalSubscription, SubscriptionPlan } = require('../models');
+    const sub = await ProfessionalSubscription.findOne({
+      where: { userId, status: 'active' },
+      order: [['startDate', 'DESC']],
+      raw: true,
+    });
+    if (sub && sub.subscriptionPlanId) {
+      const plan = await SubscriptionPlan.findByPk(sub.subscriptionPlanId, {
+        raw: true,
+      });
+      if (plan && plan.commissionPercent !== null && plan.commissionPercent !== undefined) {
+        currentMarkupBps = Math.round(Number(plan.commissionPercent) * 100);
+      }
+    } else {
+      const adminSettingsService = require('./adminSettingsService');
+      currentMarkupBps = await adminSettingsService.getNumber('bookingMarkupBps');
+    }
   } catch {
     /* fall back to default */
   }

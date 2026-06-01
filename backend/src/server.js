@@ -89,6 +89,13 @@ const SYNC_ORDER = [
   db.BlogCategory,
   db.BlogTag,
   db.BlogPost,
+  // --- Subscription management ---------------------------------------
+  // Plan must exist before the per-plan feature rules and per-professional
+  // subscription rows that reference it; subscriptions before payments.
+  db.SubscriptionPlan,
+  db.SubscriptionFeatureRule,
+  db.ProfessionalSubscription,
+  db.SubscriptionPayment,
 ];
 
 // Boot the Profirmo HTTP server.

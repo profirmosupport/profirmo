@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, X, ChevronDown, Users } from 'lucide-react';
 import Modal from '@/components/common/Modal';
 import Button from '@/components/common/Button';
+import PlanLimitBanner from '@/components/common/PlanLimitBanner';
 import Input from '@/components/common/Input';
 import Select from '@/components/common/Select';
 import Avatar from '@/components/common/Avatar';
@@ -66,6 +67,10 @@ export default function AddCaseModal({
   defaults,
   firmMembers,
   mode = 'create',
+  // When true the assignee picker is read-only — used when an individual
+  // professional opens the Edit modal so they can't reassign the case or
+  // promote it to a firm case by adding pros.
+  lockAssignees = false,
 }) {
   const isEdit = mode === 'edit' && defaults && defaults.id;
   const firmId = defaults && defaults.firmId;
@@ -73,6 +78,9 @@ export default function AddCaseModal({
   const [form, setForm] = useState(() => emptyForm(defaults));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  // Holds the raw error so PlanLimitBanner can read `payload.code` /
+  // `payload.limit` etc. when the backend returned a plan-limit failure.
+  const [errorObj, setErrorObj] = useState(null);
   const [clients, setClients] = useState([]);
   const [clientsLoading, setClientsLoading] = useState(false);
 
@@ -262,6 +270,20 @@ export default function AddCaseModal({
       setError('Category is required.');
       return;
     }
+    // Spec: a case must have at least one client and one assigned
+    // professional. The picker prevents removing the last entry but a
+    // user can also reach this state by clearing during edit, so we
+    // re-validate on submit.
+    const clientIds = (form.clientIds || []).filter(Boolean);
+    if (clientIds.length === 0) {
+      setError('At least one client is required.');
+      return;
+    }
+    const proIds = (form.professionalIds || []).filter(Boolean);
+    if (proIds.length === 0) {
+      setError('At least one professional must be assigned to the case.');
+      return;
+    }
 
     setError('');
     setSubmitting(true);
@@ -298,7 +320,14 @@ export default function AddCaseModal({
       }
       if (typeof onClose === 'function') onClose();
     } catch (err) {
-      setError(err.message || 'Could not save case.');
+      // Plan-limit failures render a richer banner with an upgrade CTA —
+      // keep the raw error object so PlanLimitBanner can read the payload.
+      setErrorObj(err);
+      // Suppress the plain-text fallback when the limit banner is going
+      // to handle it; otherwise show the generic message.
+      const isPlanLimit =
+        err && err.payload && err.payload.code === 'PLAN_LIMIT_REACHED';
+      setError(isPlanLimit ? '' : err.message || 'Could not save case.');
     } finally {
       setSubmitting(false);
     }
@@ -520,6 +549,11 @@ export default function AddCaseModal({
               className="mb-1.5 block text-sm font-medium text-slate-700"
             >
               Assign to professionals
+              {lockAssignees && (
+                <span className="ml-2 text-xs font-normal text-slate-500">
+                  (locked — only the firm admin can change assignees)
+                </span>
+              )}
             </label>
             {selectedMembers.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-1.5">
@@ -534,14 +568,16 @@ export default function AddCaseModal({
                       size="xs"
                     />
                     {m.name || m.email || m.publicId}
-                    <button
-                      type="button"
-                      onClick={() => removeAssignee(m.publicId)}
-                      className="text-emerald-400 hover:text-red-600"
-                      aria-label={`Remove ${m.name || 'assignee'}`}
-                    >
-                      <X size={12} />
-                    </button>
+                    {!lockAssignees && (
+                      <button
+                        type="button"
+                        onClick={() => removeAssignee(m.publicId)}
+                        className="text-emerald-400 hover:text-red-600"
+                        aria-label={`Remove ${m.name || 'assignee'}`}
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
                   </span>
                 ))}
               </div>
@@ -553,17 +589,28 @@ export default function AddCaseModal({
                 type="text"
                 value={assigneeQuery}
                 onChange={(e) => {
+                  if (lockAssignees) return;
                   setAssigneeQuery(e.target.value);
                   setAssigneeOpen(true);
                 }}
-                onFocus={() => setAssigneeOpen(true)}
+                onFocus={() => {
+                  if (!lockAssignees) setAssigneeOpen(true);
+                }}
                 placeholder={
-                  memberOptions.length === 0
-                    ? 'No professionals in your firm yet'
-                    : 'Search by name, email, or type…'
+                  lockAssignees
+                    ? 'Assignees locked'
+                    : memberOptions.length === 0
+                      ? 'No professionals in your firm yet'
+                      : 'Search by name, email, or type…'
                 }
                 autoComplete="off"
-                className="w-full rounded-lg border border-slate-300 py-2.5 pl-9 pr-9 text-sm text-slate-800 placeholder-slate-400 transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                readOnly={lockAssignees}
+                disabled={lockAssignees}
+                className={`w-full rounded-lg border py-2.5 pl-9 pr-9 text-sm transition-colors focus:outline-none focus:ring-2 ${
+                  lockAssignees
+                    ? 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-500'
+                    : 'border-slate-300 text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:ring-blue-200'
+                }`}
               />
               <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             </div>
@@ -620,6 +667,7 @@ export default function AddCaseModal({
         )}
 
         <button type="submit" className="hidden" aria-hidden="true" />
+        <PlanLimitBanner err={errorObj} />
         {error && <p className="text-xs text-red-600">{error}</p>}
       </form>
     </Modal>

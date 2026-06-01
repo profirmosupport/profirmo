@@ -14,6 +14,7 @@ import PhotoUpload from '@/components/common/PhotoUpload';
 import FileUpload from '@/components/common/FileUpload';
 import { createLawFirm, updateLawFirm } from '@/services/profileService';
 import { useLocations } from '@/hooks/useLocations';
+import PlanLimitBanner from '@/components/common/PlanLimitBanner';
 
 function toArray(str) {
   if (!str) return [];
@@ -77,6 +78,7 @@ export default function LawFirmForm({ lawFirm, onSaved }) {
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState(null);
+  const [errorObj, setErrorObj] = useState(null);
   const { flatCities, cityById } = useLocations();
   // The firm's headquarters is stored as a city name for back-compat. We
   // resolve to id for the Combobox and write the name back on pick.
@@ -163,11 +165,19 @@ export default function LawFirmForm({ lawFirm, onSaved }) {
         type: 'success',
         message: isNew ? 'Law firm created.' : 'Law firm details saved.',
       });
+      setErrorObj(null);
       if (typeof onSaved === 'function') await onSaved(saved);
     } catch (err) {
+      setErrorObj(err);
+      const isPlanLimit =
+        err && err.payload && err.payload.code === 'PLAN_LIMIT_REACHED';
       setFeedback({
         type: 'error',
-        message: err.message || 'Could not save your law firm.',
+        // Suppress the generic banner when PlanLimitBanner is going to
+        // render the richer one with an Upgrade CTA.
+        message: isPlanLimit
+          ? ''
+          : err.message || 'Could not save your law firm.',
       });
     } finally {
       setSaving(false);
@@ -396,7 +406,8 @@ export default function LawFirmForm({ lawFirm, onSaved }) {
           </div>
         </div>
 
-        {feedback && (
+        <PlanLimitBanner err={errorObj} />
+        {feedback && feedback.message && (
           <div
             className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm ${
               feedback.type === 'success'

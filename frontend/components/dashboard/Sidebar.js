@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -57,11 +57,6 @@ const PROFESSIONAL_NAV = [
     icon: CalendarClock,
   },
   {
-    labelKey: 'dash.nav.onlineBookings',
-    href: '/dashboard/professional/availability',
-    icon: CalendarClock,
-  },
-  {
     labelKey: 'dash.nav.myReviews',
     href: '/dashboard/professional/reviews',
     icon: Star,
@@ -95,9 +90,9 @@ const PROFESSIONAL_NAV = [
     icon: Building2,
   },
   {
-    labelKey: 'dash.nav.findProfessionals',
-    href: '/professionals',
-    icon: Search,
+    labelKey: 'dash.nav.subscription',
+    href: '/dashboard/professional/subscription',
+    icon: CreditCard,
   },
   {
     labelKey: 'dash.nav.profile',
@@ -184,23 +179,31 @@ const NAV_BY_ROLE = {
       icon: Building2,
     },
   ],
+  // ---------------------------------------------------------------------
+  // Platform admin sidebar — grouped by functional area so the 20+ admin
+  // surfaces don't sprawl as a flat list. Each top-level entry except the
+  // Overview link is a collapsible group; SidebarGroup auto-opens when
+  // any of its children matches the current path, so deep links still
+  // surface the right section.
+  // ---------------------------------------------------------------------
   [ROLES.PLATFORM_ADMIN]: [
     {
       labelKey: 'dash.nav.overview',
       href: '/dashboard/admin',
       icon: LayoutDashboard,
     },
+    // Everything that touches an account record — users, professional-
+    // approval queue, firm CRUD + firm-approval queue.
     {
-      labelKey: 'dash.nav.professionalApprovals',
-      href: '/admin/professionals',
-      icon: ShieldCheck,
-    },
-    // Firms is a collapsible group — both the CRUD list and the approval
-    // workflow live under it.
-    {
-      labelKey: 'dash.nav.firms',
-      icon: Building2,
+      labelKey: 'dash.nav.userManagement',
+      icon: Users,
       children: [
+        {
+          labelKey: 'dash.nav.professionalApprovals',
+          href: '/admin/professionals',
+          icon: ShieldCheck,
+        },
+        { labelKey: 'dash.nav.users', href: '/admin/users', icon: Users },
         {
           labelKey: 'dash.nav.firms',
           href: '/admin/law-firms',
@@ -213,18 +216,12 @@ const NAV_BY_ROLE = {
         },
       ],
     },
-    { labelKey: 'dash.nav.users', href: '/admin/users', icon: Users },
-    // Sales pipeline: Lead -> Opportunity -> Client. The two screens are
-    // grouped so admin can flip between them quickly.
+    // Sales pipeline: Lead -> Opportunity -> Client.
     {
       labelKey: 'dash.nav.pipeline',
       icon: TrendingUp,
       children: [
-        {
-          labelKey: 'dash.nav.leads',
-          href: '/admin/leads',
-          icon: Inbox,
-        },
+        { labelKey: 'dash.nav.leads', href: '/admin/leads', icon: Inbox },
         {
           labelKey: 'dash.nav.opportunities',
           href: '/admin/opportunities',
@@ -232,36 +229,46 @@ const NAV_BY_ROLE = {
         },
       ],
     },
+    // Reviews + appeals — quality-control surfaces.
     {
-      labelKey: 'dash.nav.reviews',
-      href: '/admin/reviews',
+      labelKey: 'dash.nav.reviewManagement',
       icon: Star,
+      children: [
+        { labelKey: 'dash.nav.reviews', href: '/admin/reviews', icon: Star },
+        {
+          labelKey: 'dash.nav.reviewAppeals',
+          href: '/admin/review-appeals',
+          icon: Flag,
+        },
+      ],
     },
+    // Money flows — Razorpay reconciliation, the payout queue and the
+    // subscription tier registry.
     {
-      labelKey: 'dash.nav.reviewAppeals',
-      href: '/admin/review-appeals',
-      icon: Flag,
-    },
-    // Payments + payouts — Razorpay reconciliation and the payout queue.
-    {
-      labelKey: 'dash.nav.payments',
-      href: '/admin/payments',
-      icon: CreditCard,
-    },
-    {
-      labelKey: 'dash.nav.payouts',
-      href: '/admin/payouts',
-      icon: ArrowDownToLine,
-    },
-    {
-      labelKey: 'dash.nav.auditLogs',
-      href: '/admin/audit-logs',
-      icon: ScrollText,
+      labelKey: 'dash.nav.finance',
+      icon: Wallet,
+      children: [
+        {
+          labelKey: 'dash.nav.payments',
+          href: '/admin/payments',
+          icon: CreditCard,
+        },
+        {
+          labelKey: 'dash.nav.payouts',
+          href: '/admin/payouts',
+          icon: ArrowDownToLine,
+        },
+        {
+          labelKey: 'dash.nav.subscriptions',
+          href: '/admin/subscriptions',
+          icon: CreditCard,
+        },
+      ],
     },
     // Blog / journal — admin-managed. The three children mirror the
     // backend's posts / categories / tags split.
     {
-      labelKey: 'dash.nav.blog',
+      labelKey: 'dash.nav.content',
       icon: Newspaper,
       children: [
         {
@@ -281,12 +288,17 @@ const NAV_BY_ROLE = {
         },
       ],
     },
-    // App settings: admin-managed taxonomy + city list that drive every
-    // dropdown across the platform.
+    // System: audit logs + the admin-managed taxonomy/city list that
+    // drives every dropdown across the platform.
     {
-      labelKey: 'dash.nav.appSettings',
+      labelKey: 'dash.nav.system',
       icon: Settings,
       children: [
+        {
+          labelKey: 'dash.nav.auditLogs',
+          href: '/admin/audit-logs',
+          icon: ScrollText,
+        },
         {
           labelKey: 'dash.nav.platformSettings',
           href: '/admin/settings',
@@ -388,7 +400,52 @@ function SidebarGroup({ item, isActive }) {
 export default function Sidebar({ role }) {
   const pathname = usePathname();
   const { t } = useLanguage();
-  const items = NAV_BY_ROLE[role] || NAV_BY_ROLE[ROLES.CLIENT];
+  const baseItems = NAV_BY_ROLE[role] || NAV_BY_ROLE[ROLES.CLIENT];
+
+  // Firm-owner / co-owner extension: when a professional owns or
+  // co-owns a firm, surface a "Manage firm" link to the firm admin
+  // dashboard so they don't have to leave the pro UI to switch contexts.
+  // Fetched once per Sidebar mount; null until we know.
+  const [firmRole, setFirmRole] = useState(null);
+  useEffect(() => {
+    const usesProNav = role === ROLES.PROFESSIONAL || role === ROLES.FIRM_PROFESSIONAL;
+    if (!usesProNav) return undefined;
+    let active = true;
+    (async () => {
+      try {
+        // Lazy import so the firm-join service isn't loaded on roles
+        // that never need it.
+        const mod = await import('@/services/firmJoinService');
+        const res = await mod.getMyMembership();
+        if (!active) return;
+        const role = res && res.member && res.member.role;
+        setFirmRole(role || null);
+      } catch {
+        if (active) setFirmRole(null);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [role]);
+
+  // Inject the "Manage firm" item right after "My Firm" so the two firm-
+  // related entries sit together in the pro sidebar. Only visible to
+  // owner / co-owner — regular members can't see the firm-admin
+  // dashboard anyway, so showing it would just 403 them.
+  const items = useMemo(() => {
+    if (firmRole !== 'owner' && firmRole !== 'co-owner') return baseItems;
+    const idx = baseItems.findIndex((it) => it.labelKey === 'dash.nav.myFirm');
+    const manage = {
+      labelKey: 'dash.nav.manageFirm',
+      href: '/dashboard/firm',
+      icon: Building2,
+    };
+    if (idx < 0) return [...baseItems, manage];
+    const copy = [...baseItems];
+    copy.splice(idx + 1, 0, manage);
+    return copy;
+  }, [baseItems, firmRole]);
 
   function isActive(href) {
     return pathname === href;

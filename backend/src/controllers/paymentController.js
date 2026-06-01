@@ -124,7 +124,7 @@ const getPayment = asyncHandler(async (req, res) => {
 const webhook = asyncHandler(async (req, res) => {
   const signature = req.headers['x-razorpay-signature'];
   const raw = req.rawBody || JSON.stringify(req.body || {});
-  const ok = paymentsService.verifyWebhookSignature(raw, signature);
+  const ok = await paymentsService.verifyWebhookSignature(raw, signature);
   if (!ok) {
     return res.status(400).json({ success: false, message: 'Invalid signature' });
   }

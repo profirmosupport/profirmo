@@ -18,6 +18,8 @@ const {
   User,
   WalletTransaction,
   ProfessionalClient,
+  ProfessionalSubscription,
+  SubscriptionPlan,
 } = require('../models');
 const env = require('../config/env');
 const { logAudit } = require('../utils/auditLogger');
@@ -26,48 +28,129 @@ const notificationService = require('./notificationService');
 const adminSettingsService = require('./adminSettingsService');
 
 let _client = null;
+let _clientFingerprint = null;
 
 /**
- * Lazily build the Razorpay SDK client so the backend can boot even when
- * keys aren't configured (the create-order endpoint will return a clear
- * error instead of crashing at startup).
+ * Resolve Razorpay credentials, admin-settings first, env fallback. Lets
+ * the admin rotate keys from /admin/settings without a redeploy.
  */
-function razorpay() {
-  if (!env.razorpay.keyId || !env.razorpay.keySecret) {
+async function resolveRazorpayCreds() {
+  let keyId = '';
+  let keySecret = '';
+  try {
+    keyId = (await adminSettingsService.getString('razorpayKeyId')) || '';
+    keySecret =
+      (await adminSettingsService.getString('razorpayKeySecret')) || '';
+  } catch {
+    /* DB unreachable — fall back to env */
+  }
+  if (!keyId) keyId = env.razorpay.keyId || '';
+  if (!keySecret) keySecret = env.razorpay.keySecret || '';
+  return { keyId, keySecret };
+}
+
+async function resolveRazorpayWebhookSecret() {
+  try {
+    const v = await adminSettingsService.getString('razorpayWebhookSecret');
+    if (v) return v;
+  } catch {
+    /* fall back */
+  }
+  return env.razorpay.webhookSecret || '';
+}
+
+/**
+ * Lazily build the Razorpay SDK client. Now async — credentials come from
+ * the admin-settings DB row (preferred) or env (fallback). The cached
+ * client is invalidated when the credentials fingerprint changes, so an
+ * admin who rotates the keys gets a fresh client on the next call.
+ */
+async function razorpay() {
+  const { keyId, keySecret } = await resolveRazorpayCreds();
+  if (!keyId || !keySecret) {
     throw {
       statusCode: 500,
       message:
-        'Razorpay is not configured. Set RAZORPAY_KEY_ID + RAZORPAY_KEY_SECRET in backend/.env.',
+        'Razorpay is not configured. Set the Razorpay keys in /admin/settings (or RAZORPAY_KEY_ID + RAZORPAY_KEY_SECRET in backend/.env).',
     };
   }
-  if (!_client) {
-    _client = new Razorpay({
-      key_id: env.razorpay.keyId,
-      key_secret: env.razorpay.keySecret,
-    });
+  const fp = `${keyId}|${keySecret.length}`;
+  if (!_client || _clientFingerprint !== fp) {
+    _client = new Razorpay({ key_id: keyId, key_secret: keySecret });
+    _clientFingerprint = fp;
   }
   return _client;
 }
 
+// Sync getter for the public key id — used by /api/auth/razorpay-config so
+// the browser can open Checkout without baking the key into the build.
+async function getPublicKeyId() {
+  const { keyId } = await resolveRazorpayCreds();
+  return keyId || '';
+}
+
 /**
- * Compute the platform fee + net payout for a gross paise amount. The bps
- * comes from the admin-managed AdminSetting row (key=bookingMarkupBps) so
- * the rate can be updated from the dashboard without a redeploy. Falls back
- * to env.platformFeeBps when nothing is stored.
+ * Compute the platform fee + net payout for a gross paise amount.
+ *
+ * Source of the rate, in priority order:
+ *   1. The professional's active subscription plan's commissionPercent.
+ *      Read fresh on every payment, so a plan-level change applies to
+ *      future payments immediately — and ONLY to future payments (this
+ *      function is called at verify time; past Payment rows keep their
+ *      frozen `platformFee` column unchanged).
+ *   2. AdminSetting key=bookingMarkupBps (legacy global override).
+ *   3. env.platformFeeBps default (10%).
+ *
+ * `bps` is basis points (1% = 100 bps). The plan's commissionPercent is
+ * a decimal percentage — multiplied by 100 to convert.
+ *
  * @param {number} grossPaise
- * @returns {Promise<{ platformFee: number, netAmount: number, bps: number }>}
+ * @param {string} [payeeUserId] - the receiving professional's user id.
+ *   Optional for back-compat callers that have no payee context.
+ * @returns {Promise<{ platformFee: number, netAmount: number, bps: number, source: string }>}
  */
-async function splitFee(grossPaise) {
-  let bps;
-  try {
-    bps = await adminSettingsService.getNumber('bookingMarkupBps');
-  } catch {
-    bps = Number(env.platformFeeBps) || 1000;
+async function splitFee(grossPaise, payeeUserId = null) {
+  let bps = null;
+  let source = 'env';
+
+  // 1. Subscription-plan-driven commission — preferred path.
+  if (payeeUserId) {
+    try {
+      const sub = await ProfessionalSubscription.findOne({
+        where: { userId: payeeUserId, status: 'active' },
+        order: [['startDate', 'DESC']],
+        raw: true,
+      });
+      if (sub && sub.subscriptionPlanId) {
+        const plan = await SubscriptionPlan.findByPk(sub.subscriptionPlanId, {
+          raw: true,
+        });
+        if (plan && plan.commissionPercent !== null && plan.commissionPercent !== undefined) {
+          // commissionPercent is a DECIMAL like 10 or 5.5; convert to bps.
+          bps = Math.round(Number(plan.commissionPercent) * 100);
+          source = `plan:${plan.slug || plan.id}`;
+        }
+      }
+    } catch {
+      // Fall through to the admin-setting path.
+    }
   }
+
+  // 2. Admin-setting override (legacy / per-platform global rate).
+  if (bps === null) {
+    try {
+      bps = await adminSettingsService.getNumber('bookingMarkupBps');
+      source = 'admin_setting';
+    } catch {
+      bps = Number(env.platformFeeBps) || 1000;
+      source = 'env';
+    }
+  }
+
   bps = Math.max(0, Math.min(10000, bps));
   const platformFee = Math.floor((grossPaise * bps) / 10000);
   const netAmount = grossPaise - platformFee;
-  return { platformFee, netAmount, bps };
+  return { platformFee, netAmount, bps, source };
 }
 
 /**
@@ -133,7 +216,8 @@ async function createOrderForBooking({ bookingId, user }) {
   }
   const receipt = `bk_${booking.id.slice(-32)}`;
 
-  const order = await razorpay().orders.create({
+  const rzp = await razorpay();
+  const order = await rzp.orders.create({
     amount: paise,
     currency: 'INR',
     receipt,
@@ -169,10 +253,11 @@ async function createOrderForBooking({ bookingId, user }) {
     metadata: { bookingId: booking.id, razorpayOrderId: order.id, amount: paise },
   });
 
+  const { keyId } = await resolveRazorpayCreds();
   return {
     order,
     payment: payment.get({ plain: true }),
-    keyId: env.razorpay.keyId,
+    keyId,
   };
 }
 
@@ -180,9 +265,10 @@ async function createOrderForBooking({ bookingId, user }) {
  * HMAC SHA-256 over `${orderId}|${paymentId}` with the Razorpay secret.
  * Re-used by both the verify endpoint and the webhook handler.
  */
-function expectedSignature(orderId, paymentId) {
+async function expectedSignature(orderId, paymentId) {
+  const { keySecret } = await resolveRazorpayCreds();
   return crypto
-    .createHmac('sha256', env.razorpay.keySecret)
+    .createHmac('sha256', keySecret)
     .update(`${orderId}|${paymentId}`)
     .digest('hex');
 }
@@ -205,7 +291,8 @@ async function verifyAndRecordPayment({
       message: 'razorpay_order_id, razorpay_payment_id and razorpay_signature are required.',
     };
   }
-  if (!env.razorpay.keySecret) {
+  const { keySecret } = await resolveRazorpayCreds();
+  if (!keySecret) {
     throw {
       statusCode: 500,
       message: 'Razorpay is not configured on the server.',
@@ -225,7 +312,10 @@ async function verifyAndRecordPayment({
     };
   }
 
-  const expected = expectedSignature(razorpay_order_id, razorpay_payment_id);
+  const expected = await expectedSignature(
+    razorpay_order_id,
+    razorpay_payment_id
+  );
   if (expected !== razorpay_signature) {
     await payment.update({
       status: 'failed',
@@ -256,7 +346,14 @@ async function verifyAndRecordPayment({
     };
   }
 
-  const { platformFee, netAmount } = await splitFee(payment.amount);
+  // Pass the payee user id so splitFee reads their current subscription's
+  // commission. payment.professionalUserId is frozen on the row at
+  // checkout-creation time, so a mid-flight subscription upgrade between
+  // create-order and verify is captured correctly here.
+  const { platformFee, netAmount } = await splitFee(
+    payment.amount,
+    payment.professionalUserId
+  );
 
   let escrowSnapshot = null;
   await sequelize.transaction(async (t) => {
@@ -405,6 +502,14 @@ async function verifyAndRecordPayment({
 async function handleWebhookEvent(event) {
   if (!event || !event.event) return { ignored: true };
 
+  // subscription.* events → delegate to the subscription webhook handler.
+  // Lazy require to avoid the circular import (subscriptionRazorpayService
+  // → paymentsService.razorpay).
+  if (String(event.event).startsWith('subscription.')) {
+    const subWebhook = require('./subscriptionWebhookService');
+    return subWebhook.handleSubscriptionEvent(event);
+  }
+
   // payment.failed → record the failure if we still have a Payment row.
   if (event.event === 'payment.failed') {
     const ent = (event.payload && event.payload.payment && event.payload.payment.entity) || {};
@@ -473,7 +578,8 @@ async function refundPayment(paymentId, { amount, reason, adminId, source }) {
   // events already mean Razorpay processed the refund themselves.
   if (source !== 'webhook' && payment.razorpayPaymentId) {
     try {
-      await razorpay().payments.refund(payment.razorpayPaymentId, {
+      const rzp = await razorpay();
+      await rzp.payments.refund(payment.razorpayPaymentId, {
         amount: refundPaise,
         notes: { reason: reason || 'Admin refund', paymentId: payment.id },
       });
@@ -532,12 +638,14 @@ async function refundPayment(paymentId, { amount, reason, adminId, source }) {
 
 /**
  * Verify a Razorpay webhook signature header. Returns true / false; the
- * route handler responds with 400 on false.
+ * route handler responds with 400 on false. Async because the webhook
+ * secret can now live in admin settings (rotated without a redeploy).
  */
-function verifyWebhookSignature(rawBody, signatureHeader) {
-  if (!env.razorpay.webhookSecret) return false;
+async function verifyWebhookSignature(rawBody, signatureHeader) {
+  const secret = await resolveRazorpayWebhookSecret();
+  if (!secret) return false;
   const expected = crypto
-    .createHmac('sha256', env.razorpay.webhookSecret)
+    .createHmac('sha256', secret)
     .update(rawBody)
     .digest('hex');
   try {
@@ -557,4 +665,10 @@ module.exports = {
   handleWebhookEvent,
   verifyWebhookSignature,
   splitFee,
+  // Internals exposed so the subscription service can reuse the same
+  // credential-resolution chain.
+  razorpay,
+  resolveRazorpayCreds,
+  resolveRazorpayWebhookSecret,
+  getPublicKeyId,
 };

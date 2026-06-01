@@ -2,9 +2,26 @@ const lawFirmService = require('../services/lawFirmService');
 const invitationService = require('../services/invitationService');
 const leadService = require('../services/leadService');
 const clientService = require('../services/clientService');
+const gates = require('../services/subscriptionGateService');
 const { Lead } = require('../models');
 const asyncHandler = require('../utils/asyncHandler');
 const { successResponse } = require('../utils/responseHandler');
+
+// Catch plan-limit errors locally so the response body carries the
+// machine-readable `code` field. The shared error handler would otherwise
+// strip everything beyond {statusCode, message, errors}.
+function planLimitJson(res, err) {
+  return res.status(err.statusCode || 403).json({
+    success: false,
+    message: err.message,
+    errors: null,
+    code: err.code,
+    feature: err.feature,
+    planName: err.planName,
+    limit: err.limit,
+    currentCount: err.currentCount,
+  });
+}
 
 // GET /api/law-firm/mine — the caller's firm + members + role + approval.
 const getMyFirm = asyncHandler(async (req, res) => {
@@ -14,6 +31,14 @@ const getMyFirm = asyncHandler(async (req, res) => {
 
 // POST /api/law-firm — create the caller's firm (gated on approved pro).
 const createFirm = asyncHandler(async (req, res) => {
+  // Subscription gate — firm_creation_allowed + firm_limit on the user's
+  // active plan.
+  try {
+    await gates.enforceCanCreateFirm(req.user.id);
+  } catch (err) {
+    if (err && err.code === 'PLAN_LIMIT_REACHED') return planLimitJson(res, err);
+    throw err;
+  }
   const result = await lawFirmService.createFirm(req.user, req.body);
   return successResponse(res, 201, 'Law firm submitted for approval', result);
 });
@@ -143,6 +168,17 @@ const searchProfessionals = asyncHandler(async (req, res) => {
 
 // POST /api/law-firm/mine/invitations — owner / co-owner.
 const createInvitation = asyncHandler(async (req, res) => {
+  // Subscription gate: cap firm size at the owner's professionals_allowed
+  // limit. Resolve the caller's firm first so the gate knows which roster
+  // to count against.
+  try {
+    const my = await lawFirmService.getMyFirm(req.user.id);
+    const firmId = my && my.lawFirm && my.lawFirm.id;
+    if (firmId) await gates.enforceCanAddFirmMember(firmId);
+  } catch (err) {
+    if (err && err.code === 'PLAN_LIMIT_REACHED') return planLimitJson(res, err);
+    throw err;
+  }
   const invitation = await invitationService.createInvitation(
     req.user.id,
     req.body

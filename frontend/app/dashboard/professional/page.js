@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Briefcase, CheckCircle2, Users, Star } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import StatsCard from '@/components/dashboard/StatsCard';
+import CurrentPlanCard from '@/components/dashboard/CurrentPlanCard';
 import AvailabilityManager from '@/components/dashboard/AvailabilityManager';
 import OnlineBookingToggle from '@/components/dashboard/OnlineBookingToggle';
 import Card from '@/components/common/Card';
@@ -109,6 +110,11 @@ export default function ProfessionalDashboardPage() {
       }
     >
       <div className="space-y-8">
+        {/* Current subscription plan — top of dashboard with quick upgrade
+            CTA. Renders nothing for users without an active subscription
+            (e.g. unbackfilled accounts). */}
+        <CurrentPlanCard />
+
         {/* Profile completion */}
         <Card>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

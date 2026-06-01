@@ -82,12 +82,13 @@ export default function PaymentHistoryTable({
       ) : (
         <Card padding={false}>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-sm">
+            <table className="w-full min-w-[860px] text-left text-sm">
               <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-3 font-semibold">When</th>
+                  <th className="px-4 py-3 font-semibold">Kind</th>
                   <th className="px-4 py-3 font-semibold">{counterpartyLabel}</th>
-                  <th className="px-4 py-3 font-semibold">Booking</th>
+                  <th className="px-4 py-3 font-semibold">Detail</th>
                   <th className="px-4 py-3 font-semibold">Amount</th>
                   {side === 'professional' && (
                     <>
@@ -100,58 +101,72 @@ export default function PaymentHistoryTable({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {payments.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 text-slate-600">
-                      {formatDate(p.capturedAt || p.createdAt)}
-                    </td>
-                    <td className="px-4 py-3 text-slate-700">
-                      {p.counterpartyName || '—'}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {p.booking
-                        ? `${p.booking.date || ''}${
-                            p.booking.time ? ` ${p.booking.time}` : ''
-                          } · ${p.booking.duration || 0} min`
-                        : '—'}
-                    </td>
-                    <td className="px-4 py-3 font-semibold text-slate-800">
-                      {formatINR(p.amount)}
-                    </td>
-                    {side === 'professional' && (
-                      <>
-                        <td className="px-4 py-3 text-slate-600">
-                          {p.platformFee > 0 ? (
-                            <>
-                              <span className="font-medium text-rose-600">
-                                −{formatINR(p.platformFee)}
-                              </span>
-                              <span className="ml-1 text-xs text-slate-400">
-                                ({p.amount
-                                  ? Math.round((p.platformFee / p.amount) * 100)
-                                  : 0}
-                                %)
-                              </span>
-                            </>
-                          ) : (
-                            <span className="text-xs text-slate-400">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-emerald-700">
-                          {formatINR(p.netAmount || 0)}
-                        </td>
-                      </>
-                    )}
-                    <td className="px-4 py-3">
-                      <Badge variant={STATUS_VARIANT[p.status] || 'gray'}>
-                        {p.status}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-[11px] text-slate-500">
-                      {p.razorpayPaymentId || '—'}
-                    </td>
-                  </tr>
-                ))}
+                {payments.map((p) => {
+                  const isSubscription = p.kind === 'subscription';
+                  return (
+                    <tr key={p.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 text-slate-600">
+                        {formatDate(p.capturedAt || p.createdAt)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge variant={isSubscription ? 'violet' : 'amber'}>
+                          {isSubscription ? 'Subscription' : 'Booking'}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {p.counterpartyName || '—'}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {isSubscription
+                          ? p.subscriptionLabel || 'Subscription charge'
+                          : p.booking
+                            ? `${p.booking.date || ''}${
+                                p.booking.time ? ` ${p.booking.time}` : ''
+                              } · ${p.booking.duration || 0} min`
+                            : '—'}
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-slate-800">
+                        {formatINR(p.amount)}
+                      </td>
+                      {side === 'professional' && (
+                        <>
+                          <td className="px-4 py-3 text-slate-600">
+                            {!isSubscription && p.platformFee > 0 ? (
+                              <>
+                                <span className="font-medium text-rose-600">
+                                  −{formatINR(p.platformFee)}
+                                </span>
+                                <span className="ml-1 text-xs text-slate-400">
+                                  ({p.amount
+                                    ? Math.round((p.platformFee / p.amount) * 100)
+                                    : 0}
+                                  %)
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-xs text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-emerald-700">
+                            {isSubscription ? (
+                              <span className="text-xs text-slate-400">—</span>
+                            ) : (
+                              formatINR(p.netAmount || 0)
+                            )}
+                          </td>
+                        </>
+                      )}
+                      <td className="px-4 py-3">
+                        <Badge variant={STATUS_VARIANT[p.status] || 'gray'}>
+                          {p.status}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-[11px] text-slate-500">
+                        {p.razorpayPaymentId || '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

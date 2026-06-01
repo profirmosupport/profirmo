@@ -218,6 +218,29 @@ export async function getUser(id) {
   return unwrap(res);
 }
 
+/**
+ * Fetch a user's full transaction history: booking payments (both as
+ * payer and payee), subscription payments, and payout requests, plus
+ * pre-aggregated totals.
+ */
+export async function getUserTransactions(id) {
+  const res = await get(`/api/admin/users/${id}/transactions`);
+  return unwrap(res);
+}
+
+/**
+ * Admin: grant a user a subscription manually for a fixed time window.
+ * Body shape:
+ *   { planId | planSlug, billingCycle, endDate?, amountPaid?, adminNotes? }
+ * Cancels the user's prior active subscription (including any Razorpay
+ * mandate) before recording the new active row.
+ */
+export async function adminActivateUserSubscription(userId, body) {
+  const res = await post(`/api/admin/users/${userId}/subscription`, body);
+  const data = unwrap(res);
+  return (data && data.subscription) || null;
+}
+
 /** Create a user. Body: { email, password, role, firstName, lastName, mobileNumber? }. */
 export async function createUser(data) {
   const res = await post('/api/admin/users', data);

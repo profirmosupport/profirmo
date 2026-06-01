@@ -1,14 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Briefcase, Plus, RefreshCw, Eye } from 'lucide-react';
+import { Briefcase, Plus, RefreshCw, Eye, Building2 } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import Card from '@/components/common/Card';
 import Button from '@/components/common/Button';
 import Badge from '@/components/common/Badge';
 import EmptyState from '@/components/common/EmptyState';
 import AddCaseModal from '@/components/cases/AddCaseModal';
+import QuotaBanner from '@/components/common/QuotaBanner';
 import caseService from '@/services/caseService';
+import { getMyUsage } from '@/services/subscriptionService';
 import { useAuth } from '@/components/AuthProvider';
 import firmJoinService from '@/services/firmJoinService';
 import { ROLES } from '@/utils/constants';
@@ -53,6 +55,21 @@ export default function ProfessionalCasesPage() {
   const [error, setError] = useState('');
   const [addOpen, setAddOpen] = useState(false);
   const [firmIdForCreate, setFirmIdForCreate] = useState(null);
+  // Plan quota snapshot — drives the QuotaBanner + button-disable below.
+  const [usage, setUsage] = useState(null);
+
+  const loadUsage = useCallback(async () => {
+    try {
+      const u = await getMyUsage();
+      setUsage(u);
+    } catch {
+      setUsage(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadUsage();
+  }, [loadUsage]);
 
   // If the caller belongs to a firm, surface its id so cases created from
   // the professional dashboard are tagged with the firm and surface in the
@@ -101,28 +118,70 @@ export default function ProfessionalCasesPage() {
       subtitle="Matters assigned to you"
     >
       <div className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-slate-500">
-            {loading
-              ? 'Loading cases…'
-              : `${cases.length} case${cases.length === 1 ? '' : 's'}`}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={load}
-              disabled={loading}
-            >
-              <RefreshCw size={15} />
-              Refresh
-            </Button>
-            <Button size="sm" onClick={() => setAddOpen(true)}>
-              <Plus size={15} />
-              New case
-            </Button>
+        {/* Plan quota + page actions live on the same card. When the user
+            has no subscription on file (usage===null) we still want the
+            Refresh + New case toolbar to exist, so we render a minimal
+            row underneath. */}
+        {usage && usage.cases ? (
+          <QuotaBanner
+            label="Cases"
+            used={usage.cases.used}
+            limit={usage.cases.limit}
+            remaining={usage.cases.remaining}
+            unlimited={usage.cases.unlimited}
+            planName={usage.planName}
+            helpText="A case with two or more assigned professionals counts toward your firm's case limit instead."
+            actions={
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={load}
+                  disabled={loading}
+                >
+                  <RefreshCw size={15} />
+                  Refresh
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setAddOpen(true)}
+                  disabled={usage.cases.remaining === 0}
+                  title={
+                    usage.cases.remaining === 0
+                      ? 'Case limit reached — upgrade your plan to add more.'
+                      : undefined
+                  }
+                >
+                  <Plus size={15} />
+                  New case
+                </Button>
+              </>
+            }
+          />
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-slate-500">
+              {loading
+                ? 'Loading cases…'
+                : `${cases.length} case${cases.length === 1 ? '' : 's'}`}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={load}
+                disabled={loading}
+              >
+                <RefreshCw size={15} />
+                Refresh
+              </Button>
+              <Button size="sm" onClick={() => setAddOpen(true)}>
+                <Plus size={15} />
+                New case
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
 
         {loading ? (
           <ListSkeleton />
@@ -142,7 +201,11 @@ export default function ProfessionalCasesPage() {
             title="No cases yet"
             description="Cases assigned to you will appear here."
             action={
-              <Button size="sm" onClick={() => setAddOpen(true)}>
+              <Button
+                size="sm"
+                onClick={() => setAddOpen(true)}
+                disabled={usage && usage.cases && usage.cases.remaining === 0}
+              >
                 <Plus size={15} />
                 New case
               </Button>
@@ -166,12 +229,32 @@ export default function ProfessionalCasesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {cases.map((c) => (
+                {cases.map((c) => {
+                  // A case with 2+ assignees is a firm case per the
+                  // current spec — surface a small badge inline with the
+                  // title so the pro can tell at a glance which of their
+                  // cases roll up to the firm's quota instead of theirs.
+                  const assignees = Array.isArray(c.professionalIds)
+                    ? c.professionalIds.filter(Boolean)
+                    : [];
+                  const isFirmCase = assignees.length >= 2;
+                  return (
                   <tr key={c.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3">
-                      <p className="font-medium text-slate-800">
-                        {c.title || '—'}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium text-slate-800">
+                          {c.title || '—'}
+                        </p>
+                        {isFirmCase && (
+                          <span
+                            title={`Firm case — ${assignees.length} professionals assigned`}
+                            className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700"
+                          >
+                            <Building2 size={10} />
+                            Firm case
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-slate-600">
                       {c.category || '—'}
@@ -221,7 +304,8 @@ export default function ProfessionalCasesPage() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -234,6 +318,7 @@ export default function ProfessionalCasesPage() {
         onCreated={() => {
           setAddOpen(false);
           load();
+          loadUsage();
         }}
         defaults={{
           // Auto-assign the creator (so cases land on their dashboard).

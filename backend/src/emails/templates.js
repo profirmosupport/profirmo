@@ -632,9 +632,10 @@ const TEMPLATES = {
 
   /**
    * Firm-invitation message sent to a prospective firm member. When the
-   * invitee already has a Profirmo account, the CTA links to /invitations;
-   * for a not-yet-registered address it links to /signup with an invite to
-   * register first.
+   * invitee already has a Profirmo account, the CTA links to
+   * /dashboard/professional/firm where the invitations list renders with
+   * Accept / Reject buttons. For a not-yet-registered address it links to
+   * /signup with an invite to register first.
    * vars: { inviteeName, email, firmName, inviterName, role, acceptUrl,
    *         isRegistered }
    */

@@ -31,6 +31,10 @@ import {
 import { searchProfessionals } from '@/services/firmService';
 import Input from '@/components/common/Input';
 import Select from '@/components/common/Select';
+import PlanLimitBanner from '@/components/common/PlanLimitBanner';
+import QuotaBanner from '@/components/common/QuotaBanner';
+import RowMenu from '@/components/common/RowMenu';
+import { getMyUsage } from '@/services/subscriptionService';
 import { ROLES } from '@/utils/constants';
 
 function roleBadgeVariant(role) {
@@ -52,82 +56,37 @@ function roleLabel(role) {
  * Mirrors the pattern used in app/admin/users/page.js.
  */
 function MemberActionsMenu({ role, onPromote, onDemote, onRemove }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    function onClick(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    }
-    function onKey(e) {
-      if (e.key === 'Escape') setOpen(false);
-    }
-    document.addEventListener('mousedown', onClick);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onClick);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-
   return (
-    <div ref={ref} className="relative inline-block text-left">
+    <RowMenu width="w-52">
+      {role === 'member' && (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={onPromote}
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
+        >
+          <ArrowUp size={14} /> Promote to co-owner
+        </button>
+      )}
+      {role === 'co-owner' && (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={onDemote}
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
+        >
+          <ArrowDown size={14} /> Demote to member
+        </button>
+      )}
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label="Open actions menu"
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:border-amber-300 hover:bg-slate-50"
+        role="menuitem"
+        onClick={onRemove}
+        className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-left text-sm text-red-600 transition hover:bg-red-50"
       >
-        <MoreVertical size={16} />
+        <Trash2 size={14} /> Remove from firm
       </button>
-      {open && (
-        <div
-          role="menu"
-          className="absolute right-0 z-20 mt-1 w-52 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-card-lg"
-        >
-          {role === 'member' && (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                onPromote();
-              }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
-            >
-              <ArrowUp size={14} /> Promote to co-owner
-            </button>
-          )}
-          {role === 'co-owner' && (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                onDemote();
-              }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
-            >
-              <ArrowDown size={14} /> Demote to member
-            </button>
-          )}
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              onRemove();
-            }}
-            className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-left text-sm text-red-600 transition hover:bg-red-50"
-          >
-            <Trash2 size={14} /> Remove from firm
-          </button>
-        </div>
-      )}
-    </div>
+    </RowMenu>
   );
 }
 
@@ -137,6 +96,23 @@ export default function FirmProfessionalsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [members, setMembers] = useState([]);
+  // Subscription quota snapshot — drives the per-firm member cap card.
+  // null while loading; once resolved, `usage.firmMembers` is populated
+  // for firm owners (members/non-owners get null for that slice).
+  const [usage, setUsage] = useState(null);
+
+  const loadUsage = useCallback(async () => {
+    try {
+      const u = await getMyUsage();
+      setUsage(u);
+    } catch {
+      setUsage(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadUsage();
+  }, [loadUsage]);
 
   const [actingId, setActingId] = useState(null);
   const [actionError, setActionError] = useState('');
@@ -154,6 +130,7 @@ export default function FirmProfessionalsPage() {
   });
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState('');
+  const [inviteErrorObj, setInviteErrorObj] = useState(null);
   const [inviteSuccess, setInviteSuccess] = useState('');
   const [emailSuggestions, setEmailSuggestions] = useState([]);
   const [emailSearching, setEmailSearching] = useState(false);
@@ -286,7 +263,12 @@ export default function FirmProfessionalsPage() {
       );
       setInviteForm({ email: '', role: 'member', message: '' });
     } catch (err) {
-      setInviteError(err.message || 'Failed to send the invitation.');
+      setInviteErrorObj(err);
+      const isPlanLimit =
+        err && err.payload && err.payload.code === 'PLAN_LIMIT_REACHED';
+      setInviteError(
+        isPlanLimit ? '' : err.message || 'Failed to send the invitation.'
+      );
     } finally {
       setInviting(false);
     }
@@ -314,18 +296,68 @@ export default function FirmProfessionalsPage() {
       subtitle={t('dashFirm.team.desc')}
     >
       <section>
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-base font-semibold text-slate-900">
-              {t('dashFirm.team.title')}
-            </h2>
-            <p className="text-sm text-slate-500">{t('dashFirm.team.desc')}</p>
+        <div className="mb-3">
+          <h2 className="text-base font-semibold text-slate-900">
+            {t('dashFirm.team.title')}
+          </h2>
+          <p className="text-sm text-slate-500">{t('dashFirm.team.desc')}</p>
+        </div>
+
+        {/* Plan quota card — when the caller owns the firm. Hosts both the
+            Refresh and Invite member buttons inline. Invite button is
+            disabled when the firm's professional cap is reached. Refresh
+            does a full window reload per spec so every cached quota / row
+            is fetched fresh. */}
+        {usage && usage.firmMembers ? (
+          <div className="mb-3">
+            <QuotaBanner
+              label="Professionals"
+              used={usage.firmMembers.used}
+              limit={usage.firmMembers.limit}
+              remaining={usage.firmMembers.remaining}
+              unlimited={usage.firmMembers.unlimited}
+              planName={usage.firmMembers.planName || usage.planName}
+              helpText="Cap is on additional professionals only — the firm owner is not included in the count."
+              actions={
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (typeof window !== 'undefined') window.location.reload();
+                    }}
+                    disabled={loading}
+                  >
+                    <RefreshCw size={15} />
+                    Refresh
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => setInviteOpen(true)}
+                    disabled={usage.firmMembers.remaining === 0}
+                    title={
+                      usage.firmMembers.remaining === 0
+                        ? 'Professional limit reached — upgrade the firm owner’s plan to add more.'
+                        : undefined
+                    }
+                  >
+                    <UserPlus size={15} />
+                    Invite member
+                  </Button>
+                </>
+              }
+            />
           </div>
-          <div className="flex items-center gap-2">
+        ) : (
+          // Fallback toolbar — non-owner roles (or unbackfilled accounts)
+          // still need the page-level buttons to function.
+          <div className="mb-3 flex items-center justify-end gap-2">
             <Button
               variant="outline"
               size="sm"
-              onClick={load}
+              onClick={() => {
+                if (typeof window !== 'undefined') window.location.reload();
+              }}
               disabled={loading}
             >
               <RefreshCw size={15} />
@@ -336,7 +368,7 @@ export default function FirmProfessionalsPage() {
               Invite member
             </Button>
           </div>
-        </div>
+        )}
 
         {actionError && (
           <div className="mb-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
@@ -633,6 +665,7 @@ export default function FirmProfessionalsPage() {
             />
           </div>
           <button type="submit" className="hidden" aria-hidden="true" />
+          <PlanLimitBanner err={inviteErrorObj} />
           {inviteError && (
             <p className="text-xs text-red-600">{inviteError}</p>
           )}

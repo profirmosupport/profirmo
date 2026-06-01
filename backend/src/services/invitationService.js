@@ -139,7 +139,10 @@ async function createInvitation(userId, body = {}) {
         type: 'firm_invitation',
         title: `You've been invited to join ${lawFirm.firmName}`,
         message: `${inviterName} invited you to join ${lawFirm.firmName} as a ${role}.`,
-        link: '/invitations',
+        // Lands on the pro's "My Firm" page where the new invitations
+        // section renders Accept / Reject inline. Replaces the old
+        // standalone /invitations route which is being deprecated.
+        link: '/dashboard/professional/firm',
         metadata: { invitationId: invitation.id, firmId: lawFirm.id },
       });
     } catch (err) {
@@ -162,7 +165,7 @@ async function createInvitation(userId, body = {}) {
       role,
       isRegistered,
       acceptUrl: isRegistered
-        ? `${env.appUrl}/invitations`
+        ? `${env.appUrl}/dashboard/professional/firm`
         : `${env.appUrl}/signup`,
     },
   });

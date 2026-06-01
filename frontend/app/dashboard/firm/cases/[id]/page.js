@@ -14,7 +14,11 @@ export default function FirmCaseDetailPage({ params }) {
       title="Case details"
       subtitle="Manage notes, status and activity for this case"
     >
-      <CaseDetail caseId={id} />
+      {/* viewedAsFirmAdmin tells CaseDetail to bypass the
+          individual-pro lock on firm cases — anyone reaching this route
+          is acting as a firm admin (the legacy 'professional' role users
+          can also own a firm). */}
+      <CaseDetail caseId={id} viewedAsFirmAdmin />
     </DashboardLayout>
   );
 }

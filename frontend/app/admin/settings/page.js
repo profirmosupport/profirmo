@@ -14,6 +14,7 @@ import {
   Lock,
   Eye,
   EyeOff,
+  ChevronDown,
 } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import Card from '@/components/common/Card';
@@ -35,6 +36,12 @@ export default function AdminSettingsPage() {
   const [items, setItems] = useState([]);
   const [drafts, setDrafts] = useState({});
   const [revealed, setRevealed] = useState({});
+  // Per-group collapsed state. Defaults to undefined for each group;
+  // `groupCollapsed()` below treats undefined as COLLAPSED so the page
+  // starts compact. Admins expand only the groups they're editing.
+  const [collapsedGroups, setCollapsedGroups] = useState({});
+  const groupCollapsed = (g) =>
+    collapsedGroups[g] === undefined ? true : !!collapsedGroups[g];
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [savingKey, setSavingKey] = useState('');
@@ -131,30 +138,57 @@ export default function AdminSettingsPage() {
             ))}
           </div>
         ) : (
-          groups.map(([groupName, rows]) => (
-            <section key={groupName} className="space-y-3">
-              <h2 className="text-xs font-bold uppercase tracking-widest text-slate-500">
-                {groupName}
-              </h2>
-              {rows.map((s) => (
-                <SettingRow
-                  key={s.key}
-                  setting={s}
-                  draft={drafts[s.key] ?? ''}
-                  onDraftChange={(v) =>
-                    setDrafts((d) => ({ ...d, [s.key]: v }))
+          groups.map(([groupName, rows]) => {
+            const collapsed = groupCollapsed(groupName);
+            return (
+              <section key={groupName} className="space-y-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCollapsedGroups((c) => ({
+                      ...c,
+                      [groupName]: !c[groupName],
+                    }))
                   }
-                  onSave={() => save(s.key)}
-                  saving={savingKey === s.key}
-                  saved={savedKey === s.key}
-                  revealed={!!revealed[s.key]}
-                  onToggleReveal={() =>
-                    setRevealed((r) => ({ ...r, [s.key]: !r[s.key] }))
-                  }
-                />
-              ))}
-            </section>
-          ))
+                  aria-expanded={!collapsed}
+                  className="group flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left transition hover:border-amber-300 hover:bg-amber-50/50"
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="text-xs font-bold uppercase tracking-widest text-slate-700">
+                      {groupName}
+                    </span>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                      {rows.length}
+                    </span>
+                  </span>
+                  <ChevronDown
+                    size={16}
+                    className={`text-slate-400 transition-transform duration-200 group-hover:text-amber-600 ${
+                      collapsed ? '-rotate-90' : 'rotate-0'
+                    }`}
+                  />
+                </button>
+                {!collapsed &&
+                  rows.map((s) => (
+                    <SettingRow
+                      key={s.key}
+                      setting={s}
+                      draft={drafts[s.key] ?? ''}
+                      onDraftChange={(v) =>
+                        setDrafts((d) => ({ ...d, [s.key]: v }))
+                      }
+                      onSave={() => save(s.key)}
+                      saving={savingKey === s.key}
+                      saved={savedKey === s.key}
+                      revealed={!!revealed[s.key]}
+                      onToggleReveal={() =>
+                        setRevealed((r) => ({ ...r, [s.key]: !r[s.key] }))
+                      }
+                    />
+                  ))}
+              </section>
+            );
+          })
         )}
       </div>
     </DashboardLayout>

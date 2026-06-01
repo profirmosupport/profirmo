@@ -18,6 +18,7 @@ import {
   Phone,
   Mail,
   MapPin,
+  Building2,
 } from 'lucide-react';
 import Card from '@/components/common/Card';
 import Button from '@/components/common/Button';
@@ -101,9 +102,13 @@ function Skeleton() {
 
 /**
  * CaseDetail — shared body for the professional and firm case detail pages.
- * Props: { caseId }
+ * Props:
+ *  - caseId            (required) the case to load
+ *  - viewedAsFirmAdmin (optional) set by the /dashboard/firm/cases/[id]
+ *    route. When true, the firm-case edit lock is bypassed — the viewer
+ *    is acting as a firm admin and can edit firm cases / reassign pros.
  */
-export default function CaseDetail({ caseId }) {
+export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
   const router = useRouter();
   const { user } = useAuth();
   const [data, setData] = useState(null);
@@ -148,6 +153,14 @@ export default function CaseDetail({ caseId }) {
 
   // Read-only role gating — clients can view + post/edit notes only.
   const isClient = user && user.role === 'client';
+  // Individual professional = role 'professional' (firm admins use role
+  // 'firm'). Used below to block firm-case edits + the assignee picker.
+  // When the page is rendered under the firm dashboard route
+  // (viewedAsFirmAdmin), the viewer is acting as a firm admin — bypass
+  // the lock entirely, since legacy firm owners often have role
+  // 'professional' too.
+  const isIndividualPro =
+    user && user.role === 'professional' && !viewedAsFirmAdmin;
 
   // Notes popup state — `viewingNote` shows one note's full content;
   // `allNotesOpen` shows every note in a scrollable list.
@@ -389,9 +402,25 @@ export default function CaseDetail({ caseId }) {
       <Card>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <h2 className="text-lg font-semibold text-slate-900">
-              {data.title || 'Untitled case'}
-            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold text-slate-900">
+                {data.title || 'Untitled case'}
+              </h2>
+              {/* Firm-case tag — surfaced inline with the title so the
+                  pro can immediately tell this case rolls up to the
+                  firm's quota, not theirs. Same rule as the listing
+                  badge: 2+ assignees. */}
+              {Array.isArray(data.professionalIds) &&
+                data.professionalIds.filter(Boolean).length >= 2 && (
+                  <span
+                    title={`Firm case — ${data.professionalIds.filter(Boolean).length} professionals assigned`}
+                    className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700"
+                  >
+                    <Building2 size={10} />
+                    Firm case
+                  </span>
+                )}
+            </div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <Badge variant={STATUS_VARIANT[data.status] || 'gray'}>
                 {STATUS_LABEL[data.status] || data.status || 'Open'}
@@ -412,12 +441,32 @@ export default function CaseDetail({ caseId }) {
               <RefreshCw size={15} />
               Refresh
             </Button>
-            {!isClient && (
-              <Button size="sm" onClick={() => setEditOpen(true)}>
-                <Pencil size={15} />
-                Edit
-              </Button>
-            )}
+            {!isClient && (() => {
+              // A firm case (2+ assignees) is owned by the firm, not any
+              // individual member — only the firm admin can edit it.
+              // Individual pros see the button disabled with an
+              // explanatory tooltip.
+              const assignees = Array.isArray(data && data.professionalIds)
+                ? data.professionalIds.filter(Boolean)
+                : [];
+              const isFirmCase = assignees.length >= 2;
+              const editLocked = isIndividualPro && isFirmCase;
+              return (
+                <Button
+                  size="sm"
+                  onClick={() => setEditOpen(true)}
+                  disabled={editLocked}
+                  title={
+                    editLocked
+                      ? 'This is a firm case — only the firm admin can edit it.'
+                      : undefined
+                  }
+                >
+                  <Pencil size={15} />
+                  Edit
+                </Button>
+              );
+            })()}
           </div>
         </div>
       </Card>
@@ -1146,6 +1195,10 @@ export default function CaseDetail({ caseId }) {
           await Promise.all([loadCase(), loadLog()]);
         }}
         firmMembers={firmMembers}
+        // Individual pros can't change the assignee list — adding a second
+        // pro would turn this into a firm case which only the firm admin
+        // is allowed to create/edit.
+        lockAssignees={isIndividualPro}
       />
 
       {/* Add-update modal */}

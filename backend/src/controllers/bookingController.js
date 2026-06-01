@@ -1,6 +1,7 @@
 const bookingService = require('../services/bookingService');
 const bookingDetailService = require('../services/bookingDetailService');
 const caseService = require('../services/caseService');
+const gates = require('../services/subscriptionGateService');
 const { Case, ProfessionalClient } = require('../models');
 const asyncHandler = require('../utils/asyncHandler');
 const {
@@ -130,6 +131,32 @@ const convertBookingToCase = asyncHandler(async (req, res) => {
       bookingId: detail.booking.id,
       alreadyExisted: true,
     });
+  }
+
+  // Subscription gate — the new case will be assigned to a single
+  // professional (the booking's pro), so it counts as an individual case
+  // against THEIR plan. Returns 403 + code='PLAN_LIMIT_REACHED' if they
+  // are at their caseLimit so the frontend can show the upgrade CTA.
+  try {
+    // detail.booking.professionalId is the legacy professional id
+    // (User.linkedId), which is what canAssignCaseToProfessional expects.
+    await gates.enforceCanAssignCaseToProfessional(
+      detail.booking.professionalId
+    );
+  } catch (err) {
+    if (err && err.code === 'PLAN_LIMIT_REACHED') {
+      return res.status(err.statusCode || 403).json({
+        success: false,
+        message: err.message,
+        errors: null,
+        code: err.code,
+        feature: err.feature,
+        planName: err.planName,
+        limit: err.limit,
+        currentCount: err.currentCount,
+      });
+    }
+    throw err;
   }
 
   const body = req.body || {};

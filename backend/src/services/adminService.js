@@ -12,6 +12,11 @@ const {
   LawFirm,
   FirmApproval,
   FirmInvitation,
+  Payment,
+  SubscriptionPayment,
+  SubscriptionPlan,
+  ProfessionalSubscription,
+  PayoutRequest,
 } = require('../models');
 const { hashPassword } = require('../utils/password');
 
@@ -797,6 +802,196 @@ const deleteUser = async ({ targetUserId, actingUserId } = {}) => {
   return { id: targetUserId };
 };
 
+/**
+ * Aggregate every monetary record tied to a single user for the admin
+ * user-detail page. Surfaces:
+ *   - booking payments where the user is either payer or payee,
+ *   - subscription payments the user has made,
+ *   - payout requests the user has raised,
+ * each with light counterparty / plan decoration so the table can render
+ * without a second roundtrip per row.
+ *
+ * Returns separate arrays so the UI can show them as tabs / sections.
+ */
+const getUserTransactions = async (userId) => {
+  if (!userId) {
+    throw { statusCode: 400, message: 'userId is required' };
+  }
+  const user = await User.findByPk(userId);
+  if (!user) {
+    throw { statusCode: 404, message: `User not found: ${userId}` };
+  }
+
+  // 1. Booking payments — caller may be payer OR payee.
+  const bookingPayments = await Payment.findAll({
+    where: {
+      [Op.or]: [{ userId }, { professionalUserId: userId }],
+    },
+    order: [['createdAt', 'DESC']],
+    limit: 200,
+    raw: true,
+  });
+  const counterIds = [
+    ...new Set(
+      bookingPayments
+        .flatMap((r) => [r.userId, r.professionalUserId])
+        .filter((id) => id && id !== userId)
+    ),
+  ];
+  const counterUsers = counterIds.length
+    ? await User.findAll({
+        where: { id: { [Op.in]: counterIds } },
+        attributes: ['id', 'fullName', 'firstName', 'lastName', 'email'],
+        raw: true,
+      })
+    : [];
+  const userById = new Map(counterUsers.map((u) => [u.id, u]));
+  const display = (u) =>
+    u
+      ? u.fullName ||
+        [u.firstName, u.lastName].filter(Boolean).join(' ').trim() ||
+        u.email ||
+        ''
+      : '';
+  const bookingIds = [
+    ...new Set(bookingPayments.map((r) => r.bookingId).filter(Boolean)),
+  ];
+  const bookings = bookingIds.length
+    ? await Booking.findAll({
+        where: { id: { [Op.in]: bookingIds } },
+        attributes: ['id', 'date', 'time', 'duration'],
+        raw: true,
+      })
+    : [];
+  const bookingById = new Map(bookings.map((b) => [b.id, b]));
+  const bookingPaymentsDecorated = bookingPayments.map((r) => ({
+    ...r,
+    role: r.userId === userId ? 'payer' : 'payee',
+    counterpartyName:
+      r.userId === userId
+        ? display(userById.get(r.professionalUserId))
+        : display(userById.get(r.userId)),
+    booking: r.bookingId ? bookingById.get(r.bookingId) || null : null,
+  }));
+
+  // 2. Subscription payments — only the user themselves.
+  const subscriptionPayments = await SubscriptionPayment.findAll({
+    where: { userId },
+    order: [['paymentDate', 'DESC'], ['createdAt', 'DESC']],
+    limit: 200,
+    raw: true,
+  });
+  const planIds = [
+    ...new Set(
+      subscriptionPayments.map((r) => r.subscriptionPlanId).filter(Boolean)
+    ),
+  ];
+  const plans = planIds.length
+    ? await SubscriptionPlan.findAll({
+        where: { id: { [Op.in]: planIds } },
+        attributes: ['id', 'name', 'slug'],
+        raw: true,
+      })
+    : [];
+  const planById = new Map(plans.map((p) => [p.id, p]));
+  const subscriptionPaymentsDecorated = subscriptionPayments.map((r) => ({
+    ...r,
+    plan: r.subscriptionPlanId ? planById.get(r.subscriptionPlanId) || null : null,
+  }));
+
+  // 3. Subscription state — current (active first, else most recent
+  //    pending/expired/cancelled) + the full history so admins can see
+  //    plan changes over time.
+  const subscriptionRows = await ProfessionalSubscription.findAll({
+    where: { userId },
+    order: [['startDate', 'DESC'], ['createdAt', 'DESC']],
+    limit: 50,
+    raw: true,
+  });
+  const subPlanIds = [
+    ...new Set(subscriptionRows.map((s) => s.subscriptionPlanId).filter(Boolean)),
+  ];
+  const subPlansList = subPlanIds.length
+    ? await SubscriptionPlan.findAll({
+        where: { id: { [Op.in]: subPlanIds } },
+        attributes: [
+          'id',
+          'name',
+          'slug',
+          'planType',
+          'monthlyPrice',
+          'annualPrice',
+          'currency',
+          'commissionPercent',
+        ],
+        raw: true,
+      })
+    : [];
+  const subPlanById = new Map(subPlansList.map((p) => [p.id, p]));
+  const subscriptionHistory = subscriptionRows.map((s) => ({
+    ...s,
+    plan: s.subscriptionPlanId ? subPlanById.get(s.subscriptionPlanId) || null : null,
+  }));
+  // Active first; otherwise the newest pending; otherwise the newest row.
+  const currentSubscription =
+    subscriptionHistory.find((s) => s.status === 'active') ||
+    subscriptionHistory.find((s) => s.status === 'pending') ||
+    subscriptionHistory[0] ||
+    null;
+
+  // 4. Payout requests raised by the user.
+  let payoutRequests = [];
+  try {
+    const rows = await PayoutRequest.findAll({
+      where: { professionalUserId: userId },
+      order: [['createdAt', 'DESC']],
+      limit: 200,
+      raw: true,
+    });
+    payoutRequests = rows;
+  } catch {
+    /* table may not exist on fresh installs */
+  }
+
+  // Totals — cheap to compute alongside the lists, useful for the
+  // summary cards at the top of the detail page.
+  const sumPaise = (rows, predicate) =>
+    rows
+      .filter(predicate)
+      .reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
+  const totals = {
+    bookingPaidIn: sumPaise(
+      bookingPaymentsDecorated,
+      (r) => r.role === 'payee' && r.status === 'paid'
+    ),
+    bookingSpent: sumPaise(
+      bookingPaymentsDecorated,
+      (r) => r.role === 'payer' && r.status === 'paid'
+    ),
+    // Subscription amounts are stored as rupee DECIMAL — convert to
+    // paise so all summary totals share one unit.
+    subscriptionSpent: Math.round(
+      subscriptionPaymentsDecorated
+        .filter((r) => r.paymentStatus === 'paid')
+        .reduce((acc, r) => acc + Number(r.totalAmount || r.amount || 0), 0) *
+        100
+    ),
+    payoutPaid: payoutRequests
+      .filter((r) => r.status === 'paid' || r.status === 'PAID')
+      .reduce((acc, r) => acc + (Number(r.amount) || 0), 0),
+  };
+
+  return {
+    user: sanitizeUser(user),
+    currentSubscription,
+    subscriptionHistory,
+    bookingPayments: bookingPaymentsDecorated,
+    subscriptionPayments: subscriptionPaymentsDecorated,
+    payoutRequests,
+    totals,
+  };
+};
+
 module.exports = {
   getStats,
   listUsers,
@@ -808,6 +1003,7 @@ module.exports = {
   getOverview,
   updateUserStatus,
   getUserById,
+  getUserTransactions,
   createUser,
   updateUser,
   deleteUser,

@@ -7,7 +7,14 @@ const {
   successResponse,
   paginatedResponse,
 } = require('../utils/responseHandler');
-const { Payment, EscrowEntry, User, Booking } = require('../models');
+const {
+  Payment,
+  EscrowEntry,
+  User,
+  Booking,
+  ProfessionalSubscription,
+  SubscriptionPlan,
+} = require('../models');
 const paymentsService = require('../services/paymentsService');
 
 // GET /api/admin/payments?status=&escrowStatus=&search=&page=&limit=
@@ -77,9 +84,44 @@ const list = asyncHandler(async (req, res) => {
     : [];
   const bookingById = new Map(bookings.map((b) => [b.id, b]));
 
+  // Resolve the active subscription plan for each payee professional, so
+  // the admin row can show "Current plan: Premium · 5%" alongside the
+  // historical platformFee captured on the Payment row. We surface BOTH:
+  //   - the rate the payment was actually charged at (frozen), and
+  //   - the rate any NEW payment to this pro would use today.
+  const proUserIds = [
+    ...new Set(rows.map((r) => r.professionalUserId).filter(Boolean)),
+  ];
+  const subs = proUserIds.length
+    ? await ProfessionalSubscription.findAll({
+        where: { userId: { [Op.in]: proUserIds }, status: 'active' },
+        raw: true,
+      })
+    : [];
+  const planIds = [...new Set(subs.map((s) => s.subscriptionPlanId).filter(Boolean))];
+  const plans = planIds.length
+    ? await SubscriptionPlan.findAll({
+        where: { id: { [Op.in]: planIds } },
+        raw: true,
+      })
+    : [];
+  const planById = new Map(plans.map((p) => [p.id, p]));
+  const planByUserId = new Map();
+  for (const s of subs) {
+    const p = planById.get(s.subscriptionPlanId);
+    if (p) planByUserId.set(s.userId, p);
+  }
+
   let items = rows.map((r) => {
     const escrow = escrowByPaymentId.get(r.id) || null;
     const booking = r.bookingId ? bookingById.get(r.bookingId) : null;
+    // Effective commission ON THIS PAYMENT (frozen at verify time). Used
+    // for display + reconciliation; never use for new-payment math.
+    const chargedBps =
+      r.amount > 0
+        ? Math.round(((Number(r.platformFee) || 0) / Number(r.amount)) * 10000)
+        : 0;
+    const currentPlan = planByUserId.get(r.professionalUserId) || null;
     return {
       ...r,
       payerName: displayName(userById.get(r.userId)),
@@ -89,6 +131,15 @@ const list = asyncHandler(async (req, res) => {
       escrowStatus: escrow ? escrow.status : null,
       escrowId: escrow ? escrow.id : null,
       booking,
+      // Historical (frozen on the row).
+      chargedCommissionBps: chargedBps,
+      chargedCommissionPercent: chargedBps / 100,
+      // Current plan context — what a new payment to this pro would use.
+      currentPlanName: currentPlan ? currentPlan.name : null,
+      currentPlanSlug: currentPlan ? currentPlan.slug : null,
+      currentCommissionPercent: currentPlan
+        ? Number(currentPlan.commissionPercent) || 0
+        : null,
     };
   });
 

@@ -30,6 +30,7 @@ import Select from '@/components/common/Select';
 import Modal from '@/components/common/Modal';
 import EmptyState from '@/components/common/EmptyState';
 import Avatar from '@/components/common/Avatar';
+import RowMenu from '@/components/common/RowMenu';
 import { useAuth } from '@/components/AuthProvider';
 import { ROLES } from '@/utils/constants';
 import { formatDate } from '@/utils/formatters';
@@ -109,78 +110,33 @@ const EMPTY_CREATE_FORM = {
  * table stays compact across widths.
  */
 function FirmActionsMenu({ onView, onEdit, onDelete }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    function onClick(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    }
-    function onKey(e) {
-      if (e.key === 'Escape') setOpen(false);
-    }
-    document.addEventListener('mousedown', onClick);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onClick);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-
   return (
-    <div ref={ref} className="relative inline-block text-left">
+    <RowMenu width="w-44">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label="Open actions menu"
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:border-amber-300 hover:bg-slate-50"
+        role="menuitem"
+        onClick={onView}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
       >
-        <MoreVertical size={16} />
+        <Eye size={14} /> View details
       </button>
-      {open && (
-        <div
-          role="menu"
-          className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-card-lg"
-        >
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              onView();
-            }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
-          >
-            <Eye size={14} /> View details
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              onEdit();
-            }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
-          >
-            <Pencil size={14} /> Edit
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              onDelete();
-            }}
-            className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-left text-sm text-red-600 transition hover:bg-red-50"
-          >
-            <Trash2 size={14} /> Delete
-          </button>
-        </div>
-      )}
-    </div>
+      <button
+        type="button"
+        role="menuitem"
+        onClick={onEdit}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
+      >
+        <Pencil size={14} /> Edit
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        onClick={onDelete}
+        className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-left text-sm text-red-600 transition hover:bg-red-50"
+      >
+        <Trash2 size={14} /> Delete
+      </button>
+    </RowMenu>
   );
 }
 

@@ -141,6 +141,43 @@ const SETTINGS = {
     coerce: stringCoerce,
     format: stringCoerce,
   },
+
+  // --- Razorpay payments + subscriptions --------------------------------
+  // keyId is public (embedded in the Razorpay Checkout iframe URL anyway).
+  // keySecret + webhookSecret are server-only — masked on the listing.
+  razorpayKeyId: {
+    label: 'Razorpay Key ID',
+    description:
+      'Razorpay test/live key ID (rzp_test_… / rzp_live_…). From Razorpay Dashboard > Settings > API Keys. Used to mint Checkout sessions for booking payments and subscription mandates.',
+    defaultGetter: () => process.env.RAZORPAY_KEY_ID || '',
+    type: 'string',
+    group: 'Razorpay',
+    isPublic: true,
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  razorpayKeySecret: {
+    label: 'Razorpay Key Secret',
+    description:
+      'Razorpay key secret — server-only. Used to sign API calls + verify Checkout signatures. Generated alongside the Key ID in the Razorpay Dashboard. Never sent to the browser.',
+    defaultGetter: () => process.env.RAZORPAY_KEY_SECRET || '',
+    type: 'string',
+    group: 'Razorpay',
+    secret: true,
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  razorpayWebhookSecret: {
+    label: 'Razorpay Webhook Secret',
+    description:
+      'Secret used to verify Razorpay webhook signatures. Set in Razorpay Dashboard > Settings > Webhooks. Required for subscription state updates (subscription.activated, subscription.charged, etc.) to be trusted.',
+    defaultGetter: () => process.env.RAZORPAY_WEBHOOK_SECRET || '',
+    type: 'string',
+    group: 'Razorpay',
+    secret: true,
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
 };
 
 const KNOWN_KEYS = Object.keys(SETTINGS);

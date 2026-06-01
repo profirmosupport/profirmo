@@ -296,6 +296,14 @@ const getUser = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'User fetched', user);
 });
 
+// GET /api/admin/users/:id/transactions
+// Returns booking payments + subscription payments + payout requests for
+// the user, decorated with counterparty / plan info and summary totals.
+const getUserTransactions = asyncHandler(async (req, res) => {
+  const result = await adminService.getUserTransactions(req.params.id);
+  return successResponse(res, 200, 'User transactions', result);
+});
+
 // POST /api/admin/users
 const createUser = asyncHandler(async (req, res) => {
   const adminId = req.user.id || req.user.sub;
@@ -529,6 +537,7 @@ module.exports = {
   listReviewAppeals,
   resolveReviewAppeal,
   getUser,
+  getUserTransactions,
   createUser,
   updateUser,
   deleteUser,

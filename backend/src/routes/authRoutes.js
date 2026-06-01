@@ -84,6 +84,11 @@ router.post(
 // runtime, so admins can rotate keys via the settings UI without rebuilding.
 router.get('/firebase-config', authController.firebaseConfig);
 
+// Public Razorpay config — just the key_id. Used by booking checkout and
+// subscription checkout to open Razorpay without baking a key into the
+// frontend build.
+router.get('/razorpay-config', authController.razorpayConfig);
+
 // Logout + refresh read the httpOnly cookie; no body validation needed.
 router.post('/logout', authController.logout);
 router.post('/refresh', authController.refresh);

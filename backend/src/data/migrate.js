@@ -856,6 +856,46 @@ async function runMigrations() {
   //     migrate practiceCities city-names to city-ids. Idempotent.
   await runLocationsSeed();
 
+  // 19. Razorpay subscription columns. SubscriptionPlan gains the
+  //     plan_xxx ids that Razorpay needs to create recurring
+  //     subscriptions; ProfessionalSubscription gains the mandate ids we
+  //     get back. All additive + nullable so the tables don't need
+  //     existing rows to be touched.
+  for (const [col, type] of [
+    ['razorpayPlanIdMonthly', 'VARCHAR(64) NULL'],
+    ['razorpayPlanIdAnnual', 'VARCHAR(64) NULL'],
+  ]) {
+    try {
+      await sequelize.query(
+        `ALTER TABLE \`subscription_plans\` ADD COLUMN IF NOT EXISTS \`${col}\` ${type}`
+      );
+    } catch (err) {
+      if (!/doesn'?t exist|Unknown table/i.test(err.message)) {
+        console.warn(
+          `[Migrate] Could not add subscription_plans.${col}: ${err.message}`
+        );
+      }
+    }
+  }
+  for (const [col, type] of [
+    ['razorpaySubscriptionId', 'VARCHAR(64) NULL'],
+    ['razorpayCustomerId', 'VARCHAR(64) NULL'],
+    ['razorpaySubscriptionStatus', 'VARCHAR(24) NULL'],
+    ['razorpayShortUrl', 'VARCHAR(500) NULL'],
+  ]) {
+    try {
+      await sequelize.query(
+        `ALTER TABLE \`professional_subscriptions\` ADD COLUMN IF NOT EXISTS \`${col}\` ${type}`
+      );
+    } catch (err) {
+      if (!/doesn'?t exist|Unknown table/i.test(err.message)) {
+        console.warn(
+          `[Migrate] Could not add professional_subscriptions.${col}: ${err.message}`
+        );
+      }
+    }
+  }
+
   console.log('[Migrate] Migrations finished successfully.');
 }
 

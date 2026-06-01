@@ -11,6 +11,11 @@ import Input from '@/components/common/Input';
 import Avatar from '@/components/common/Avatar';
 import EmptyState from '@/components/common/EmptyState';
 import firmJoinService from '@/services/firmJoinService';
+import {
+  getMyInvitations,
+  acceptInvitation,
+  rejectInvitation,
+} from '@/services/firmService';
 import { ROLES } from '@/utils/constants';
 import { formatDate } from '@/utils/formatters';
 
@@ -35,6 +40,12 @@ export default function ProfessionalFirmPage() {
   const [membership, setMembership] = useState(null);
   const [requests, setRequests] = useState([]);
   const [joinableFirms, setJoinableFirms] = useState([]);
+  // Firm invitations sent TO the caller. Surfaced at the top so the
+  // notification + email deep-link lands the user right next to the
+  // Accept / Reject controls.
+  const [invitations, setInvitations] = useState([]);
+  const [invitationBusyId, setInvitationBusyId] = useState(null);
+  const [invitationError, setInvitationError] = useState('');
 
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -52,12 +63,18 @@ export default function ProfessionalFirmPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [membershipData, requestsData] = await Promise.all([
+      const [membershipData, requestsData, invitationsData] = await Promise.all([
         firmJoinService.getMyMembership(),
         firmJoinService.listMyRequests(),
+        // Pending firm invitations addressed to this user. Failure is
+        // silently swallowed so the rest of the page still renders.
+        getMyInvitations().catch(() => []),
       ]);
       setMembership(membershipData || null);
       setRequests(Array.isArray(requestsData) ? requestsData : []);
+      setInvitations(
+        Array.isArray(invitationsData) ? invitationsData : []
+      );
 
       if (!membershipData) {
         const firmsData = await firmJoinService.listJoinableFirms();
@@ -68,11 +85,43 @@ export default function ProfessionalFirmPage() {
     } catch {
       setMembership(null);
       setRequests([]);
+      setInvitations([]);
       setJoinableFirms([]);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  async function handleAcceptInvitation(inv) {
+    if (invitationBusyId) return;
+    setInvitationBusyId(inv.id);
+    setInvitationError('');
+    try {
+      await acceptInvitation(inv.id);
+      // Accepting joins a firm — reload so membership state, the
+      // join-firm browse list, and the requests list all reflect it.
+      await load();
+    } catch (err) {
+      setInvitationError(err.message || 'Could not accept the invitation.');
+    } finally {
+      setInvitationBusyId(null);
+    }
+  }
+
+  async function handleRejectInvitation(inv) {
+    if (invitationBusyId) return;
+    setInvitationBusyId(inv.id);
+    setInvitationError('');
+    try {
+      await rejectInvitation(inv.id);
+      // Drop the row from the list locally — no need to refetch.
+      setInvitations((prev) => prev.filter((i) => i.id !== inv.id));
+    } catch (err) {
+      setInvitationError(err.message || 'Could not reject the invitation.');
+    } finally {
+      setInvitationBusyId(null);
+    }
+  }
 
   useEffect(() => {
     load();
@@ -154,6 +203,78 @@ export default function ProfessionalFirmPage() {
           </div>
         ) : (
           <>
+            {/* Pending firm invitations sent TO this user. Notification +
+                email deep-links land on this page, so the section is
+                rendered first so the Accept / Reject CTAs are above the
+                fold. Hidden when there are none. */}
+            {invitations.length > 0 && (
+              <section>
+                <SectionTitle
+                  title={`New invitation${invitations.length === 1 ? '' : 's'}`}
+                  description="A firm has invited you to join. Accept to become a member, or reject to decline."
+                />
+                {invitationError && (
+                  <div className="mb-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                    {invitationError}
+                  </div>
+                )}
+                <div className="space-y-3">
+                  {invitations.map((inv) => {
+                    const firmRow = inv.firm || {};
+                    const busy = invitationBusyId === inv.id;
+                    return (
+                      <Card key={inv.id}>
+                        <div className="flex flex-wrap items-start gap-4">
+                          <Avatar
+                            src={firmRow.logo}
+                            name={firmRow.firmName}
+                            size="lg"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="text-base font-semibold text-slate-900">
+                                {firmRow.firmName || 'A firm'}
+                              </h3>
+                              {inv.role && (
+                                <Badge variant="amber">{inv.role}</Badge>
+                              )}
+                            </div>
+                            <p className="mt-1 text-sm text-slate-500">
+                              You&apos;ve been invited to join as a{' '}
+                              {String(inv.role || 'member').toLowerCase()}.
+                            </p>
+                            {inv.createdAt && (
+                              <p className="mt-0.5 text-xs text-slate-400">
+                                Invited on {formatDate(inv.createdAt)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={busy}
+                            onClick={() => handleRejectInvitation(inv)}
+                          >
+                            Reject
+                          </Button>
+                          <Button
+                            size="sm"
+                            disabled={busy}
+                            className="bg-amber-600 hover:bg-amber-700"
+                            onClick={() => handleAcceptInvitation(inv)}
+                          >
+                            {busy ? 'Accepting…' : 'Accept'}
+                          </Button>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
             {/* Current membership */}
             {membership ? (
               <section>

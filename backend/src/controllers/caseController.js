@@ -1,4 +1,5 @@
 const caseService = require('../services/caseService');
+const gates = require('../services/subscriptionGateService');
 const asyncHandler = require('../utils/asyncHandler');
 const {
   successResponse,
@@ -26,12 +27,95 @@ const getCase = asyncHandler(async (req, res) => {
 
 // POST /api/cases
 const createCase = asyncHandler(async (req, res) => {
+  // Subscription gate: reject before we hit the DB if the user has
+  // exhausted their plan's case_limit. We catch the structured error
+  // locally so the response body carries `code: 'PLAN_LIMIT_REACHED'`
+  // and the per-feature metadata — the global error handler would
+  // otherwise strip these fields.
+  try {
+    // Categorise the case-in-progress by assignee count:
+    //   * 1 assignee  -> individual case, gated against the ASSIGNEE's plan
+    //                    (not the creator's). The form may let a firm admin
+    //                    create cases on behalf of a member — we cap by
+    //                    whoever the case is actually assigned to.
+    //   * 2+ assignees -> firm case, gated against firmCaseLimit on the
+    //                     firm OWNER's plan.
+    const ids = Array.isArray(req.body && req.body.professionalIds)
+      ? req.body.professionalIds.filter(Boolean)
+      : [];
+    const single = req.body && req.body.professionalId ? 1 : 0;
+    const assigneeCount = ids.length || single;
+    const userId = req.user && (req.user.id || req.user.sub);
+
+    if (assigneeCount >= 2 && req.body && req.body.firmId) {
+      await gates.enforceCanCreateFirmCase(req.body.firmId);
+    } else if (assigneeCount === 1) {
+      const assignee = ids[0] || req.body.professionalId;
+      await gates.enforceCanAssignCaseToProfessional(assignee);
+    } else {
+      // Fallback when no assignee yet — gate by the caller's plan.
+      await gates.enforceCanCreateCase(userId);
+    }
+  } catch (err) {
+    if (err && err.code === 'PLAN_LIMIT_REACHED') {
+      return res.status(err.statusCode || 403).json({
+        success: false,
+        message: err.message,
+        errors: null,
+        code: err.code,
+        feature: err.feature,
+        planName: err.planName,
+        limit: err.limit,
+        currentCount: err.currentCount,
+      });
+    }
+    throw err;
+  }
   const created = await caseService.create(req.body, req.user);
   return successResponse(res, 201, 'Case created', created);
 });
 
 // PATCH /api/cases/:id
 const updateCase = asyncHandler(async (req, res) => {
+  // If the update is changing the assignee list, re-run the assignee-based
+  // gate before persisting. We exclude this case's id from the counts so
+  // reassigning to the same pro (or keeping them in a shrinking list)
+  // doesn't double-count.
+  const ids = Array.isArray(req.body && req.body.professionalIds)
+    ? req.body.professionalIds.filter(Boolean)
+    : null;
+  if (ids !== null) {
+    try {
+      if (ids.length >= 2) {
+        // Multi-assignee: gate against firm-case limit. Use firmId from the
+        // payload if provided, otherwise from the existing case row.
+        let firmId = req.body && req.body.firmId;
+        if (!firmId) {
+          const existing = await caseService.getById(req.params.id);
+          firmId = existing && existing.firmId;
+        }
+        if (firmId) {
+          await gates.enforceCanCreateFirmCase(firmId, req.params.id);
+        }
+      } else if (ids.length === 1) {
+        await gates.enforceCanAssignCaseToProfessional(ids[0], req.params.id);
+      }
+    } catch (err) {
+      if (err && err.code === 'PLAN_LIMIT_REACHED') {
+        return res.status(err.statusCode || 403).json({
+          success: false,
+          message: err.message,
+          errors: null,
+          code: err.code,
+          feature: err.feature,
+          planName: err.planName,
+          limit: err.limit,
+          currentCount: err.currentCount,
+        });
+      }
+      throw err;
+    }
+  }
   const updated = await caseService.update(req.params.id, req.body, req.user);
   if (!updated) throw notFound(req.params.id);
   return successResponse(res, 200, 'Case updated', updated);

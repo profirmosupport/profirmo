@@ -6,6 +6,7 @@ const adminPayments = require('../controllers/adminPaymentsController');
 const payoutController = require('../controllers/payoutController');
 const adminSettings = require('../controllers/adminSettingsController');
 const blog = require('../controllers/blogController');
+const subscription = require('../controllers/subscriptionController');
 const { uploadSingle, handleUploadErrors } = require('../middleware/uploadMiddleware');
 const { authenticate } = require('../middleware/authMiddleware');
 const { authorize } = require('../middleware/roleMiddleware');
@@ -20,9 +21,16 @@ router.get('/overview', adminController.getOverview);
 router.get('/users', adminController.listUsers);
 router.post('/users', adminController.createUser);
 router.get('/users/:id', adminController.getUser);
+router.get('/users/:id/transactions', adminController.getUserTransactions);
 router.patch('/users/:id', adminController.updateUser);
 router.delete('/users/:id', adminController.deleteUser);
 router.patch('/users/:id/status', adminController.updateUserStatus);
+// Admin-only manual subscription grant. Bypasses Razorpay; the body
+// picks a plan and an end date and the service records an active row.
+router.post(
+  '/users/:id/subscription',
+  subscription.adminActivateSubscription
+);
 
 // --- Phase 7: professional approval workflow ------------------------------
 // /pending and the legacy-Professional approve route are declared BEFORE the
@@ -182,6 +190,22 @@ router.post(
   uploadSingle,
   handleUploadErrors,
   blog.adminUploadImage
+);
+
+// --- Subscription management --------------------------------------------
+// CRUD over subscription plans + feature rules. /feature-keys must come
+// BEFORE /:id so the static route isn't shadowed by the param route.
+router.get('/subscription-plans/feature-keys', subscription.adminFeatureKeys);
+router.get('/subscription-plans', subscription.adminList);
+router.post('/subscription-plans', subscription.adminCreate);
+router.get('/subscription-plans/:id', subscription.adminGet);
+router.patch('/subscription-plans/:id', subscription.adminUpdate);
+router.delete('/subscription-plans/:id', subscription.adminDelete);
+router.patch('/subscription-plans/:id/status', subscription.adminSetStatus);
+router.post('/subscription-plans/:id/duplicate', subscription.adminDuplicate);
+router.get(
+  '/subscription-plans/:id/subscribers',
+  subscription.adminListSubscribers
 );
 
 module.exports = router;

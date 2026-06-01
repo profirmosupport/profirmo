@@ -32,6 +32,7 @@ import Modal from '@/components/common/Modal';
 import Input from '@/components/common/Input';
 import ConnectChips from '@/components/booking/ConnectChips';
 import ReviewForm from '@/components/reviews/ReviewForm';
+import PlanLimitBanner from '@/components/common/PlanLimitBanner';
 import bookingService from '@/services/bookingService';
 import { formatINR } from '@/services/paymentService';
 import { uploadFile, resolveFileUrl } from '@/services/fileService';
@@ -74,6 +75,9 @@ export default function BookingDetailView({ detail, viewer, onReload }) {
   const [convertDescription, setConvertDescription] = useState('');
   const [convertSubmitting, setConvertSubmitting] = useState(false);
   const [convertError, setConvertError] = useState('');
+  // Holds the raw error from a failed convert so PlanLimitBanner can read
+  // err.payload.code + limit metadata and render the upgrade CTA.
+  const [convertErrorObj, setConvertErrorObj] = useState(null);
   const [convertSuccess, setConvertSuccess] = useState('');
 
   if (!detail) return null;
@@ -184,7 +188,14 @@ export default function BookingDetailView({ detail, viewer, onReload }) {
         if (onReload) await onReload();
       }
     } catch (err) {
-      setConvertError(err.message || 'Could not convert to a case.');
+      setConvertErrorObj(err);
+      // Suppress the plain-text fallback when PlanLimitBanner is going to
+      // render the richer upgrade card; otherwise show the generic msg.
+      const isPlanLimit =
+        err && err.payload && err.payload.code === 'PLAN_LIMIT_REACHED';
+      setConvertError(
+        isPlanLimit ? '' : err.message || 'Could not convert to a case.'
+      );
     } finally {
       setConvertSubmitting(false);
     }
@@ -701,6 +712,7 @@ export default function BookingDetailView({ detail, viewer, onReload }) {
               className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
             />
           </div>
+          <PlanLimitBanner err={convertErrorObj} />
           {convertError && (
             <p className="text-xs text-red-600">{convertError}</p>
           )}

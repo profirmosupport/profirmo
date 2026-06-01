@@ -85,6 +85,21 @@ const signup = asyncHandler(async (req, res) => {
   return sendSignup(res, result);
 });
 
+// GET /api/auth/razorpay-config
+// Returns the Razorpay key_id needed by Checkout. The key_id is public by
+// design (it's in every Checkout iframe URL); the key_secret stays
+// server-side. Exposed via /api/auth/* so frontends can read it at
+// runtime without rebuilding when the admin rotates keys.
+const razorpayConfig = asyncHandler(async (req, res) => {
+  // Lazy require to avoid pulling Razorpay SDK on routes that don't need it.
+  const paymentsService = require('../services/paymentsService');
+  const keyId = await paymentsService.getPublicKeyId();
+  return successResponse(res, 200, 'Razorpay config', {
+    keyId: keyId || '',
+    configured: Boolean(keyId),
+  });
+});
+
 // GET /api/auth/firebase-config
 // Returns the PUBLIC subset of Firebase settings (the web SDK config — apiKey,
 // authDomain, projectId, storageBucket, messagingSenderId, appId). These are
@@ -655,6 +670,7 @@ module.exports = {
   firebaseLogin,
   firebaseSignup,
   firebaseConfig,
+  razorpayConfig,
   checkPhone,
   changePhone,
   logout,

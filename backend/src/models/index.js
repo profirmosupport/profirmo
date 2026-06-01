@@ -87,6 +87,12 @@ const BlogCategory = require('./BlogCategory');
 const BlogTag = require('./BlogTag');
 const BlogPost = require('./BlogPost');
 
+// --- Subscription management ---------------------------------------------
+const SubscriptionPlan = require('./SubscriptionPlan');
+const SubscriptionFeatureRule = require('./SubscriptionFeatureRule');
+const ProfessionalSubscription = require('./ProfessionalSubscription');
+const SubscriptionPayment = require('./SubscriptionPayment');
+
 // Optional relationship — clearing the parent nulls the foreign key.
 const fkSetNull = (foreignKey) => ({
   foreignKey,
@@ -404,4 +410,8 @@ module.exports = {
   BlogCategory,
   BlogTag,
   BlogPost,
+  SubscriptionPlan,
+  SubscriptionFeatureRule,
+  ProfessionalSubscription,
+  SubscriptionPayment,
 };

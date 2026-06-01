@@ -10,6 +10,7 @@ import { useAuth } from '@/components/AuthProvider';
 import BrandLogo from '@/components/common/BrandLogo';
 import ProfileDropdown from '@/components/common/ProfileDropdown';
 import NotificationBell from '@/components/common/NotificationBell';
+import CurrentPlanBadge from '@/components/common/CurrentPlanBadge';
 
 const NAV_KEYS = {
   '/professionals': 'nav.professionals',
@@ -112,6 +113,7 @@ export default function Header() {
             />
           ) : isAuthenticated ? (
             <>
+              <CurrentPlanBadge />
               <NotificationBell />
               <ProfileDropdown />
             </>
