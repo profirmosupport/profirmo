@@ -24,12 +24,10 @@ export default function AuthShell({
   subtitle,
   footer,
   illustration,
+  topRight,
   children,
 }) {
   const insets = useSafeAreaInsets();
-  // Drop the headline block entirely when no title is provided — the
-  // pro-form wizard skips it so the step-progress widget anchors to
-  // the top of the card.
   const hasHeadline = Boolean(title);
   return (
     <View style={styles.root}>
@@ -39,6 +37,7 @@ export default function AuthShell({
         style={styles.bg}
       >
         <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
+          {topRight ? <View style={styles.topRight}>{topRight}</View> : null}
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={{ flex: 1 }}
@@ -120,4 +119,10 @@ const styles = StyleSheet.create({
   },
   footer: { marginTop: spacing.lg, alignItems: 'center' },
   illustration: { marginTop: spacing.xl, alignItems: 'center' },
+  topRight: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.lg,
+    zIndex: 10,
+  },
 });

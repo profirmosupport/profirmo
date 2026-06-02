@@ -12,6 +12,7 @@ import SearchableSelect from '../../components/auth/SearchableSelect';
 import SearchableMultiSelect from '../../components/auth/SearchableMultiSelect';
 import ChipGroup from '../../components/auth/ChipGroup';
 import CheckboxRow from '../../components/auth/CheckboxRow';
+import SkipButton from '../../components/auth/SkipButton';
 import { registerProfessional } from '../../services/authService';
 import {
   listCategories,
@@ -100,6 +101,7 @@ function categoryForType(cats, professionalType) {
 // ===========================================================================
 
 export default function SignupScreen({ navigation }) {
+  const { enterGuest } = useAuth();
   const [step, setStep] = useState('role'); // role | client | pro-type | pro-form
   const [proType, setProType] = useState(null);
 
@@ -123,6 +125,9 @@ export default function SignupScreen({ navigation }) {
           : step === 'pro-type'
             ? 'Pick the kind of practice you run.'
             : null
+      }
+      topRight={
+        step === 'role' ? <SkipButton onPress={enterGuest} /> : null
       }
       footer={
         <Text style={styles.footerText}>

@@ -15,16 +15,20 @@ import { getItem, removeItem, setItem, STORAGE_KEYS } from '../utils/storage';
 
 const AuthContext = createContext({
   user: null,
+  isGuest: false,
   loading: true,
   isAuthenticated: false,
   login: async () => {},
   signup: async () => {},
   logout: async () => {},
   refresh: async () => {},
+  enterGuest: () => {},
+  exitGuest: () => {},
 });
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
+  const [isGuest, setIsGuest] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -50,14 +54,19 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  // Cold start: hydrate cached user first (so the role-aware tabs can
-  // render immediately) then revalidate against /me in the background.
+  // Cold start: hydrate cached user + guest flag first (so the role-aware
+  // tabs can render immediately) then revalidate against /me in the
+  // background.
   useEffect(() => {
     let active = true;
     (async () => {
       try {
-        const cached = await getItem(STORAGE_KEYS.user, true);
+        const [cached, guestFlag] = await Promise.all([
+          getItem(STORAGE_KEYS.user, true),
+          getItem(STORAGE_KEYS.guest),
+        ]);
         if (active && cached) setUser(cached);
+        if (active && guestFlag === '1') setIsGuest(true);
         await refresh();
       } finally {
         if (active) setLoading(false);
@@ -107,20 +116,39 @@ export function AuthProvider({ children }) {
     await logoutApi();
     await removeItem(STORAGE_KEYS.accessToken);
     await removeItem(STORAGE_KEYS.user);
+    await removeItem(STORAGE_KEYS.guest);
     setUser(null);
+    setIsGuest(false);
+  }, []);
+
+  // Skip → enter the app as a guest. RootNavigator renders the client
+  // tabs and the Profile screen surfaces a "Sign in to your account"
+  // prompt. The flag survives cold-starts so a guest who closed the
+  // app doesn't see the welcome screen every time.
+  const enterGuest = useCallback(async () => {
+    await setItem(STORAGE_KEYS.guest, '1');
+    setIsGuest(true);
+  }, []);
+
+  const exitGuest = useCallback(async () => {
+    await removeItem(STORAGE_KEYS.guest);
+    setIsGuest(false);
   }, []);
 
   const value = useMemo(
     () => ({
       user,
+      isGuest,
       loading,
       isAuthenticated: !!user,
       login,
       signup,
       logout,
       refresh,
+      enterGuest,
+      exitGuest,
     }),
-    [user, loading, login, signup, logout, refresh]
+    [user, isGuest, loading, login, signup, logout, refresh, enterGuest, exitGuest]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

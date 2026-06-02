@@ -6,6 +6,7 @@ import AuthShell from '../../components/auth/AuthShell';
 import AuthInput, { InlineLink } from '../../components/auth/AuthInput';
 import GradientButton from '../../components/auth/GradientButton';
 import AuthIllustration from '../../components/auth/AuthIllustration';
+import SkipButton from '../../components/auth/SkipButton';
 import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
 
 // LoginScreen — email + password only. Matches the web's Email tab
@@ -13,7 +14,7 @@ import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
 // reCAPTCHA which doesn't work inside Expo Go).
 
 export default function LoginScreen({ navigation }) {
-  const { login } = useAuth();
+  const { login, enterGuest } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState({});
@@ -42,6 +43,7 @@ export default function LoginScreen({ navigation }) {
     <AuthShell
       title="Welcome back"
       subtitle="Sign in to your Profirmo account."
+      topRight={<SkipButton onPress={enterGuest} />}
       footer={
         <Text style={styles.footerText}>
           New to Profirmo?{' '}

@@ -28,4 +28,7 @@ export async function removeItem(key) {
 export const STORAGE_KEYS = {
   accessToken: 'access_token',
   user: 'user',
+  // Guest flag — persists "Skip" choice across cold starts so the user
+  // doesn't see the welcome screen every launch.
+  guest: 'guest',
 };

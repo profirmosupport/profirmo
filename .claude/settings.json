@@ -81,7 +81,11 @@
       "Bash(curl -s -o /dev/null -w \"[plans list %{http_code}]\\\\n\" --max-time 5 http://localhost:5001/api/admin/subscription-plans)",
       "Bash(curl -s -o /dev/null -w \"[usage %{http_code}]\\\\n\" --max-time 5 http://localhost:5001/api/subscriptions/usage)",
       "Bash(curl -s -o /dev/null -w \"[/dashboard/professional/cases %{http_code}]\\\\n\" --max-time 10 http://localhost:3000/dashboard/professional/cases)",
-      "Bash(curl -s -o /dev/null -w \"[/dashboard/firm/cases %{http_code}]\\\\n\" --max-time 10 http://localhost:3000/dashboard/firm/cases)"
+      "Bash(curl -s -o /dev/null -w \"[/dashboard/firm/cases %{http_code}]\\\\n\" --max-time 10 http://localhost:3000/dashboard/firm/cases)",
+      "Bash(curl -s \"https://profirmo.onrender.com/api/blog/posts?limit=1\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); p=d['data'][0]; print\\('image fields:', {k:v for k,v in p.items\\(\\) if 'image' in k.lower\\(\\) or 'cover' in k.lower\\(\\) or 'photo' in k.lower\\(\\) or 'thumb' in k.lower\\(\\)}\\)\")",
+      "Bash(curl -s \"https://profirmo.onrender.com/api/professionals?limit=2\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); items=d['data']['items'] if isinstance\\(d.get\\('data'\\), dict\\) else d.get\\('data', []\\); [print\\(p.get\\('name'\\),'·photo:', p.get\\('profilePhoto'\\),'·fee:', p.get\\('consultationFee'\\)\\) for p in items]\")"
     ]
   }
 }

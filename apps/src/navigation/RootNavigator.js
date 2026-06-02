@@ -15,16 +15,28 @@ import { useAuth } from '../contexts/AuthContext';
 import AuthStack from './AuthStack';
 import ProfessionalTabs from './ProfessionalTabs';
 import ClientTabs from './ClientTabs';
+import GuestTabs from './GuestTabs';
 import AdminUnsupportedScreen from '../screens/auth/AdminUnsupportedScreen';
 import SplashView from '../components/common/SplashView';
 import { ROLES } from '../config/constants';
+import { ensureAssetsReady } from '../utils/assetPreloader';
 
-const MIN_SPLASH_MS = 3000;
+const MIN_SPLASH_MS = 4000;
 
 export default function RootNavigator() {
-  const { user, loading } = useAuth();
+  const { user, isGuest, loading } = useAuth();
   const [minSplashElapsed, setMinSplashElapsed] = useState(false);
   const [nativeSplashHidden, setNativeSplashHidden] = useState(false);
+  const [assetsLoaded, setAssetsLoaded] = useState(false);
+
+  // Wait for the hero photo (and any other gated assets) to be
+  // decoded before transitioning off the splash. Without this the
+  // welcome screen mounts → empty dark frame → image pops in late.
+  useEffect(() => {
+    ensureAssetsReady()
+      .catch(() => {})
+      .finally(() => setAssetsLoaded(true));
+  }, []);
 
   // Hand off from the native splash to the JS splash as soon as React
   // mounts. From here on the animated JS SplashView owns the visual
@@ -43,27 +55,32 @@ export default function RootNavigator() {
     return () => clearTimeout(t);
   }, []);
 
-  const showSplash = loading || !minSplashElapsed;
+  const showSplash = loading || !minSplashElapsed || !assetsLoaded;
 
   if (showSplash) {
-    return (
-      <SplashView
-        message={loading ? 'Getting things ready' : 'Almost there'}
-      />
-    );
+    return <SplashView />;
   }
 
   return (
     <View style={{ flex: 1 }}>
       <NavigationContainer>
-        {!user ? (
-          <AuthStack />
-        ) : user.role === ROLES.PROFESSIONAL ? (
-          <ProfessionalTabs />
-        ) : user.role === ROLES.CLIENT ? (
-          <ClientTabs />
+        {/* Decision tree:
+              authenticated  → role-based tabs (admin → unsupported)
+              guest mode     → client tabs (no auth data; Profile shows
+                               a Sign-in CTA)
+              otherwise      → AuthStack (Welcome → Signup / Login) */}
+        {user ? (
+          user.role === ROLES.PROFESSIONAL ? (
+            <ProfessionalTabs />
+          ) : user.role === ROLES.CLIENT ? (
+            <ClientTabs />
+          ) : (
+            <AdminUnsupportedScreen />
+          )
+        ) : isGuest ? (
+          <GuestTabs />
         ) : (
-          <AdminUnsupportedScreen />
+          <AuthStack />
         )}
       </NavigationContainer>
     </View>
