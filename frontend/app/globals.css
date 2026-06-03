@@ -32,6 +32,35 @@ a {
   background-color: rgba(217, 119, 6, 0.16); /* primary */
 }
 
+/* Brand-orange scrollbars — primary #d97706, hover #b45309, track #fff7ed. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #d97706 #fff7ed;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #fff7ed;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: #d97706;
+  border-radius: 999px;
+  border: 2px solid #fff7ed;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #b45309;
+}
+
+*::-webkit-scrollbar-corner {
+  background: #fff7ed;
+}
+
 @layer components {
   /* Light glassmorphism surface — use on light sections */
   .glass {

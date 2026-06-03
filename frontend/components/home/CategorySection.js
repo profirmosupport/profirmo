@@ -80,7 +80,7 @@ export default function CategorySection() {
             return (
               <Link
                 key={category.id}
-                href={`/search?category=${encodeURIComponent(category.id)}`}
+                href={`/search?category=${encodeURIComponent(category.name)}`}
                 className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-card transition-all duration-300 hover:-translate-y-1 hover:border-teal-300 hover:shadow-glow-cyan"
               >
                 <span

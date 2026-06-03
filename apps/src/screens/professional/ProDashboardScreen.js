@@ -59,9 +59,7 @@ export default function ProDashboardScreen({ navigation }) {
         title={greeting()}
         subtitle="Here's your day at a glance."
         trailingIcon="bell"
-        onTrailingPress={() =>
-          navigation.navigate('HomeTab', { screen: 'Notifications' })
-        }
+        onTrailingPress={() => navigation.navigate('AccountNotifications')}
       />
 
       <Card style={{ marginTop: spacing.lg }}>
@@ -85,9 +83,7 @@ export default function ProDashboardScreen({ navigation }) {
           ) : null}
         </View>
         <Pressable
-          onPress={() =>
-            navigation.navigate('MoneyTab', { screen: 'Subscription' })
-          }
+          onPress={() => navigation.navigate('AccountSubscription')}
           style={({ pressed }) => [styles.ctaRow, { opacity: pressed ? 0.7 : 1 }]}
         >
           <Text style={styles.ctaText}>Manage subscription</Text>
@@ -142,9 +138,7 @@ export default function ProDashboardScreen({ navigation }) {
         subtitle={`${upcoming.length} on your calendar`}
         action={
           <Pressable
-            onPress={() =>
-              navigation.navigate('BookingsTab', { screen: 'BookingsList' })
-            }
+            onPress={() => navigation.navigate('AccountBookings')}
           >
             <Text style={styles.linkText}>See all</Text>
           </Pressable>
@@ -161,9 +155,8 @@ export default function ProDashboardScreen({ navigation }) {
             <Pressable
               key={b.id}
               onPress={() =>
-                navigation.navigate('BookingsTab', {
-                  screen: 'BookingDetail',
-                  params: { bookingId: b.id },
+                navigation.navigate('AccountBookingDetail', {
+                  bookingId: b.id,
                 })
               }
               style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}

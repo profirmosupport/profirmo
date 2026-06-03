@@ -2,6 +2,7 @@
 // FlatList carousels. Avatar + headline meta on top, "View profile"
 // + "Book now" CTAs anchored to the bottom.
 
+import { useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,24 +16,41 @@ export default function ProfessionalHorizontalCard({
   pro,
   onPressProfile,
   onPressBook,
+  // Default fixed-width for horizontal carousels. Pass `width="100%"`
+  // or any other size when reusing the card in a vertical list (e.g.
+  // search results).
+  width = PRO_CARD_WIDTH,
 }) {
   const photoUrl = imageUrl(pro.profilePhoto);
-  const initials = (pro.name || '?').trim().slice(0, 1).toUpperCase();
+  // Track image load failures so a broken/404 photo URL still falls
+  // through to the initials placeholder instead of rendering as an
+  // empty box.
+  const [photoFailed, setPhotoFailed] = useState(false);
   const subtitle = pro.designation || pro.professionalType || 'Professional';
+  const categories = Array.isArray(pro.subCategories) ? pro.subCategories : [];
+  // Some legacy rows carry a separate `perMinuteRate`; fall back to
+  // `consultationFee` (which on the new model is already a per-minute
+  // number for pros who price by the minute).
+  const perMinuteRate = pro.perMinuteRate ?? pro.consultationFee;
+  const initials = computeInitials(pro.name);
+  // Only show the "Book now" CTA when the professional has opted into
+  // online booking. Otherwise we show a single full-width "View profile"
+  // button — the visitor can still see the profile but won't be
+  // promised an instant booking flow.
+  const canBook = Boolean(
+    pro.acceptsOnlineBooking ?? pro.acceptOnlineBooking ?? pro.bookable
+  );
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, { width }]}>
       <View style={styles.head}>
-        {photoUrl ? (
-          <Image source={{ uri: photoUrl }} style={styles.avatar} />
-        ) : (
-          <LinearGradient
-            colors={['#fde68a', '#f59e0b']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+        {photoUrl && !photoFailed ? (
+          <Image
+            source={{ uri: photoUrl }}
             style={styles.avatar}
-          >
-            <Text style={styles.initials}>{initials}</Text>
-          </LinearGradient>
+            onError={() => setPhotoFailed(true)}
+          />
+        ) : (
+          <PlaceholderAvatar initials={initials} />
         )}
         <View style={{ flex: 1 }}>
           <View style={styles.nameRow}>
@@ -51,6 +69,23 @@ export default function ProfessionalHorizontalCard({
         </View>
       </View>
 
+      {categories.length > 0 ? (
+        <View style={styles.catRow}>
+          {categories.slice(0, 2).map((c) => (
+            <View key={c.id} style={styles.catChip}>
+              <Text style={styles.catChipText} numberOfLines={1}>
+                {c.name}
+              </Text>
+            </View>
+          ))}
+          {categories.length > 2 ? (
+            <View style={[styles.catChip, styles.catChipMore]}>
+              <Text style={styles.catChipText}>+{categories.length - 2}</Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
       <View style={styles.metaRow}>
         {pro.city ? <MetaPill icon="map-pin" label={pro.city} /> : null}
         {pro.rating ? <MetaPill icon="star" label={String(pro.rating)} /> : null}
@@ -62,17 +97,15 @@ export default function ProfessionalHorizontalCard({
         ) : null}
       </View>
 
-      {pro.consultationFee ? (
+      {perMinuteRate ? (
         <View style={styles.feeRow}>
           <Text style={styles.feeLabel}>From</Text>
-          <Text style={styles.feeAmount}>
-            {formatRupees(pro.consultationFee)}
-          </Text>
-          <Text style={styles.feeUnit}>/ consult</Text>
+          <Text style={styles.feeAmount}>{formatRupees(perMinuteRate)}</Text>
+          <Text style={styles.feeUnit}>/ min</Text>
         </View>
       ) : (
         <View style={styles.feeRow}>
-          <Text style={styles.feeLabel}>Discuss to confirm fee</Text>
+          <Text style={styles.feeLabel}>Discuss to confirm rate</Text>
         </View>
       )}
 
@@ -81,31 +114,70 @@ export default function ProfessionalHorizontalCard({
           onPress={onPressProfile}
           style={({ pressed }) => [
             styles.secondaryBtn,
+            !canBook && styles.secondaryBtnSolo,
             { opacity: pressed ? 0.85 : 1 },
           ]}
         >
           <Text style={styles.secondaryText}>View profile</Text>
+          {!canBook ? (
+            <Feather
+              name="arrow-right"
+              size={12}
+              color={colors.textPrimary}
+              style={{ marginLeft: 4 }}
+            />
+          ) : null}
         </Pressable>
-        <Pressable
-          onPress={onPressBook}
-          style={({ pressed }) => [
-            styles.primaryBtn,
-            { opacity: pressed ? 0.92 : 1 },
-          ]}
-        >
-          <LinearGradient
-            colors={['#f59e0b', '#d97706']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.primaryFill}
+        {canBook ? (
+          <Pressable
+            onPress={onPressBook}
+            style={({ pressed }) => [
+              styles.primaryBtn,
+              { opacity: pressed ? 0.92 : 1 },
+            ]}
           >
-            <Text style={styles.primaryText}>Book now</Text>
-            <Feather name="arrow-right" size={12} color={colors.textInverse} />
-          </LinearGradient>
-        </Pressable>
+            <LinearGradient
+              colors={['#f59e0b', '#d97706']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.primaryFill}
+            >
+              <Text style={styles.primaryText}>Book now</Text>
+              <Feather name="arrow-right" size={12} color={colors.textInverse} />
+            </LinearGradient>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
+}
+
+// PlaceholderAvatar — shown when the professional has no profile
+// photo. Renders the person's initials over an amber gradient so
+// the spot still reads as their identity, not a missing image.
+function PlaceholderAvatar({ initials }) {
+  return (
+    <LinearGradient
+      colors={['#fde68a', '#f59e0b']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.avatar}
+    >
+      <Text style={styles.avatarInitials}>{initials || '?'}</Text>
+    </LinearGradient>
+  );
+}
+
+// computeInitials — first letter of first + last word, capitalised.
+// "Vishal Singh" → "VS"; single-word names get a single letter.
+export function computeInitials(name) {
+  const parts = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 function MetaPill({ icon, label }) {
@@ -121,7 +193,6 @@ function MetaPill({ icon, label }) {
 
 const styles = StyleSheet.create({
   card: {
-    width: PRO_CARD_WIDTH,
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -142,10 +213,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.primarySoft,
   },
-  initials: {
-    fontSize: 20,
+  avatarInitials: {
+    fontSize: 18,
     fontWeight: fontWeight.bold,
-    color: colors.primarySoftText,
+    color: colors.textInverse,
+    letterSpacing: 0.5,
   },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   name: {
@@ -167,7 +239,32 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     color: colors.textSecondary,
   },
-  metaRow: { marginTop: spacing.sm, flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
+  catRow: {
+    marginTop: spacing.sm,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  catChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: 'rgba(217,119,6,0.3)',
+    maxWidth: 130,
+  },
+  catChipMore: {
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+  },
+  catChipText: {
+    fontSize: 10,
+    fontWeight: fontWeight.bold,
+    color: colors.primarySoftText,
+    letterSpacing: 0.1,
+  },
+  metaRow: { marginTop: 6, flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
   metaPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -200,6 +297,14 @@ const styles = StyleSheet.create({
     borderColor: colors.borderStrong,
     backgroundColor: colors.surface,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  // Solo variant — when "Book now" is hidden the View profile button
+  // takes the whole row and gets an amber accent border.
+  secondaryBtnSolo: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
   },
   secondaryText: {
     fontSize: 12,

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import ScreenContainer from '../../components/common/ScreenContainer';
 import EmptyState from '../../components/common/EmptyState';
-import { CardSkeleton } from '../../components/common/Skeleton';
+import { BlogCardSkeleton } from '../../components/common/Skeleton';
 import BlogCard from '../../components/guest/BlogCard';
 import { listBlogPosts } from '../../services/blogService';
 import { colors, fontSize, fontWeight, spacing } from '../../theme';
@@ -56,19 +56,19 @@ export default function BlogListScreen({ navigation }) {
 
   if (loadingFirst) {
     return (
-      <ScreenContainer>
+      <ScreenContainer hasNavHeader>
         <Text style={styles.title}>Blog & News</Text>
         <View style={{ gap: spacing.md }}>
-          <CardSkeleton />
-          <CardSkeleton />
-          <CardSkeleton />
+          <BlogCardSkeleton />
+          <BlogCardSkeleton />
+          <BlogCardSkeleton />
         </View>
       </ScreenContainer>
     );
   }
 
   return (
-    <ScreenContainer scroll={false}>
+    <ScreenContainer scroll={false} hasNavHeader>
       <FlatList
         data={items}
         keyExtractor={(item) => item.id}
@@ -91,7 +91,7 @@ export default function BlogListScreen({ navigation }) {
         ListFooterComponent={
           loadingMore ? (
             <View style={{ paddingVertical: spacing.md }}>
-              <CardSkeleton />
+              <BlogCardSkeleton />
             </View>
           ) : null
         }

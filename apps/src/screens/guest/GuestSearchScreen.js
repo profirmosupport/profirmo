@@ -1,11 +1,11 @@
-// GuestSearchScreen — public catalog browser. Mirrors the web's
-// advanced search: text query + searchable city and profession
-// dropdowns + featured-category chips. Results render in a unified
-// FlatList that toggles between Professionals and Firms via a top
-// pill toggle.
+// GuestSearchScreen — public catalog browser. The filter form lives
+// as the FlatList header so it scrolls away as the user moves down
+// the results. Pagination is driven by onEndReached — every
+// additional page is appended to the list as the user scrolls.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Pressable,
   StyleSheet,
@@ -14,51 +14,61 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import ScreenContainer from '../../components/common/ScreenContainer';
-import Card from '../../components/common/Card';
-import Badge from '../../components/common/Badge';
 import EmptyState from '../../components/common/EmptyState';
-import { CardSkeleton } from '../../components/common/Skeleton';
+import {
+  FirmCardSkeleton,
+  ProfessionalCardSkeleton,
+} from '../../components/common/Skeleton';
 import AuthInput from '../../components/auth/AuthInput';
 import SearchableSelect from '../../components/auth/SearchableSelect';
-import { listLocations, listCategories } from '../../services/appSettingsService';
+import SearchableMultiSelect from '../../components/auth/SearchableMultiSelect';
+import ProfessionalHorizontalCard from '../../components/guest/ProfessionalHorizontalCard';
+import FirmCard from '../../components/guest/FirmCard';
+import {
+  listCategories,
+  listLocations,
+} from '../../services/appSettingsService';
 import {
   listFirmsPublic,
   listProfessionals,
 } from '../../services/professionalService';
-import { formatRupees } from '../../utils/formatters';
 import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
 
 const KIND = { PRO: 'pro', FIRM: 'firm' };
-const PRO_TYPES = [
-  { value: 'Legal Consultant', label: 'Legal Consultant' },
-  { value: 'Tax Consultant', label: 'Tax Consultant' },
-];
+const PAGE_SIZE = 12;
 
 export default function GuestSearchScreen({ navigation, route }) {
-  // Allow deep-link from home: navigation.navigate('GuestSearch',{categoryId})
-  const initialCategoryId = (route && route.params && route.params.categoryId) || '';
+  const initialCategoryId =
+    (route && route.params && route.params.categoryId) || '';
 
   const [kind, setKind] = useState(KIND.PRO);
   const [query, setQuery] = useState('');
   const [cityId, setCityId] = useState('');
-  const [professionalType, setProfessionalType] = useState('');
-  const [categoryId, setCategoryId] = useState(initialCategoryId);
+  const [subCategoryIds, setSubCategoryIds] = useState(
+    initialCategoryId ? [initialCategoryId] : []
+  );
 
   const [countries, setCountries] = useState([]);
   const [categories, setCategories] = useState([]);
 
+  // Paginated list state. `page` is what we just successfully loaded;
+  // `hasMore` is computed from the response meta. `loadingMore` keeps
+  // multiple end-reached events from kicking off duplicate fetches.
   const [items, setItems] = useState([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  // Load static lookups once.
+  // Ref guards against the debounce timer firing AFTER a newer fetch
+  // has started — only the latest request gets to write to state.
+  const requestIdRef = useRef(0);
+
   useEffect(() => {
     listLocations().then(setCountries).catch(() => {});
     listCategories().then(setCategories).catch(() => {});
   }, []);
 
-  // Flatten {country → state → city} to a single searchable list of
-  // cities, labelled "Mumbai — Maharashtra".
   const cityOptions = useMemo(() => {
     const out = [];
     for (const c of countries) {
@@ -70,208 +80,238 @@ export default function GuestSearchScreen({ navigation, route }) {
     }
     return out;
   }, [countries]);
-  const cityName = useMemo(() => {
-    for (const c of countries) {
-      for (const s of c.states || []) {
-        for (const city of s.cities || []) {
-          if (city.id === cityId) return city.name;
-        }
-      }
-    }
-    return '';
-  }, [countries, cityId]);
 
-  // Category chip options — flatten sub-categories.
-  const subOptions = useMemo(() => {
+  const professionOptions = useMemo(() => {
     const out = [];
     for (const c of categories) {
       for (const s of c.subCategories || []) {
-        out.push({ id: s.id, name: s.name, parent: c.name });
+        out.push({
+          value: s.id,
+          label: `${s.name} — ${c.name}`,
+          parent: c.name,
+        });
       }
     }
     return out;
   }, [categories]);
 
-  const search = useCallback(async () => {
-    setLoading(true);
-    try {
-      if (kind === KIND.PRO) {
-        const res = await listProfessionals({
-          search: query.trim() || undefined,
-          city: cityName || undefined,
-          professionalType: professionalType || undefined,
-          category: categoryId || undefined,
-        });
-        setItems((res && res.items) || []);
-      } else {
-        const res = await listFirmsPublic({
-          search: query.trim() || undefined,
-          city: cityName || undefined,
-        });
-        setItems((res && res.items) || []);
+  // Fetch a specific page. When `append=false` we replace items;
+  // otherwise we append. The shared `requestIdRef` discriminator
+  // means a slow first-page request can never overwrite a fresher
+  // result that arrived first.
+  const fetchPage = useCallback(
+    async (nextPage, append) => {
+      const myRequest = ++requestIdRef.current;
+      if (append) setLoadingMore(true);
+      else setLoading(true);
+      try {
+        const fetcher =
+          kind === KIND.PRO
+            ? () =>
+                listProfessionals({
+                  search: query.trim() || undefined,
+                  city: cityId || undefined,
+                  subCategoryIds: subCategoryIds.length
+                    ? subCategoryIds
+                    : undefined,
+                  page: nextPage,
+                  limit: PAGE_SIZE,
+                })
+            : () =>
+                listFirmsPublic({
+                  search: query.trim() || undefined,
+                  city: cityId || undefined,
+                  page: nextPage,
+                  limit: PAGE_SIZE,
+                });
+        const res = await fetcher();
+        if (requestIdRef.current !== myRequest) return;
+        const incoming = (res && res.items) || [];
+        const meta = (res && res.meta) || {};
+        setItems((prev) => (append ? [...prev, ...incoming] : incoming));
+        setPage(nextPage);
+        const totalPages = Number(meta.totalPages);
+        const knownTotal = Number.isFinite(totalPages) && totalPages > 0;
+        setHasMore(
+          knownTotal
+            ? nextPage < totalPages
+            : incoming.length === PAGE_SIZE
+        );
+      } catch {
+        if (requestIdRef.current === myRequest && !append) setItems([]);
+        setHasMore(false);
+      } finally {
+        if (requestIdRef.current === myRequest) {
+          if (append) setLoadingMore(false);
+          else setLoading(false);
+        }
       }
-    } catch {
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [kind, query, cityName, professionalType, categoryId]);
+    },
+    [kind, query, cityId, subCategoryIds]
+  );
 
-  // Debounce query input. Reload on every other filter change.
+  // Reset to page 1 whenever filters change. Debounce text input so
+  // every keystroke doesn't fire a request.
   useEffect(() => {
-    const t = setTimeout(search, 300);
+    setHasMore(true);
+    const t = setTimeout(() => {
+      fetchPage(1, false);
+    }, 300);
     return () => clearTimeout(t);
-  }, [search]);
+  }, [fetchPage]);
 
-  // Re-run whenever the screen regains focus (e.g. user comes back
-  // from a chip-driven navigate that mutated params).
+  // Apply the deep-link categoryId once on focus then wipe it from
+  // route params so the user's subsequent clears stick.
   useFocusEffect(
     useCallback(() => {
-      if (
-        route &&
-        route.params &&
-        route.params.categoryId &&
-        route.params.categoryId !== categoryId
-      ) {
-        setCategoryId(route.params.categoryId);
+      const incoming = route && route.params && route.params.categoryId;
+      if (incoming) {
+        setSubCategoryIds([incoming]);
+        navigation.setParams({ categoryId: undefined });
       }
-    }, [categoryId, route])
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [route])
   );
 
   function clearFilters() {
     setQuery('');
     setCityId('');
-    setProfessionalType('');
-    setCategoryId('');
+    setSubCategoryIds([]);
   }
   const activeFilters =
     (query.trim() ? 1 : 0) +
     (cityId ? 1 : 0) +
-    (professionalType ? 1 : 0) +
-    (categoryId ? 1 : 0);
+    (subCategoryIds.length > 0 ? 1 : 0);
 
-  return (
-    <ScreenContainer scroll={false} contentStyle={{ padding: 0 }}>
-      <View style={styles.head}>
-        {/* Pro / Firm toggle */}
-        <View style={styles.toggle}>
-          <ToggleBtn
-            label="Professionals"
-            icon="user"
-            active={kind === KIND.PRO}
-            onPress={() => setKind(KIND.PRO)}
-          />
-          <ToggleBtn
-            label="Firms"
-            icon="briefcase"
-            active={kind === KIND.FIRM}
-            onPress={() => setKind(KIND.FIRM)}
-          />
-        </View>
+  function onEndReached() {
+    if (loading || loadingMore || !hasMore) return;
+    fetchPage(page + 1, true);
+  }
 
-        <AuthInput
-          icon="search"
-          placeholder="Search by name or expertise"
-          value={query}
-          onChangeText={setQuery}
+  const ListHeader = (
+    <View style={styles.head}>
+      <View style={styles.toggle}>
+        <ToggleBtn
+          label="Professionals"
+          icon="user"
+          active={kind === KIND.PRO}
+          onPress={() => setKind(KIND.PRO)}
         />
-
-        <View style={styles.filterRow}>
-          <View style={{ flex: 1 }}>
-            <SearchableSelect
-              icon="map-pin"
-              placeholder="Any city"
-              options={cityOptions}
-              value={cityId}
-              onChange={setCityId}
-            />
-          </View>
-          {kind === KIND.PRO ? (
-            <View style={{ flex: 1 }}>
-              <SearchableSelect
-                icon="briefcase"
-                placeholder="Any profession"
-                options={PRO_TYPES}
-                value={professionalType}
-                onChange={setProfessionalType}
-              />
-            </View>
-          ) : null}
-        </View>
-
-        {/* Featured category chips — when a chip is selected, it's
-            shown with the active style + a clear control. */}
-        {subOptions.length > 0 ? (
-          <View style={styles.chipScroller}>
-            <FlatList
-              data={subOptions}
-              horizontal
-              keyExtractor={(item) => item.id}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: 6, paddingRight: spacing.lg }}
-              renderItem={({ item }) => {
-                const active = item.id === categoryId;
-                return (
-                  <Pressable
-                    onPress={() => setCategoryId(active ? '' : item.id)}
-                    style={({ pressed }) => [
-                      styles.featChip,
-                      active && styles.featChipActive,
-                      { opacity: pressed ? 0.85 : 1 },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.featChipText,
-                        active && styles.featChipTextActive,
-                      ]}
-                    >
-                      {item.name}
-                    </Text>
-                  </Pressable>
-                );
-              }}
-            />
-          </View>
-        ) : null}
-
-        {activeFilters > 0 ? (
-          <Pressable onPress={clearFilters} style={styles.clearRow} hitSlop={6}>
-            <Feather name="x" size={12} color={colors.danger} />
-            <Text style={styles.clearText}>
-              Clear filters · {activeFilters}
-            </Text>
-          </Pressable>
-        ) : null}
+        <ToggleBtn
+          label="Firms"
+          icon="briefcase"
+          active={kind === KIND.FIRM}
+          onPress={() => setKind(KIND.FIRM)}
+        />
       </View>
 
-      {loading ? (
-        <View style={{ paddingHorizontal: spacing.lg, gap: spacing.sm }}>
-          <CardSkeleton />
-          <CardSkeleton />
-          <CardSkeleton />
-        </View>
-      ) : items.length === 0 ? (
-        <EmptyState
-          icon="search"
-          title="Nothing matches"
-          description="Try a different search or clear some filters."
+      <AuthInput
+        icon="search"
+        placeholder="Search by name or expertise"
+        value={query}
+        onChangeText={setQuery}
+      />
+
+      <SearchableSelect
+        icon="map-pin"
+        placeholder="Any city"
+        options={cityOptions}
+        value={cityId}
+        onChange={setCityId}
+      />
+
+      {kind === KIND.PRO ? (
+        <SearchableMultiSelect
+          icon="briefcase"
+          placeholder="Any profession"
+          options={professionOptions}
+          value={subCategoryIds}
+          onChange={setSubCategoryIds}
         />
+      ) : null}
+
+      {activeFilters > 0 ? (
+        <Pressable onPress={clearFilters} style={styles.clearRow} hitSlop={6}>
+          <Feather name="x" size={12} color={colors.danger} />
+          <Text style={styles.clearText}>
+            Clear filters · {activeFilters}
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+
+  const ListFooter = loadingMore ? (
+    <View style={styles.footerLoading}>
+      <ActivityIndicator size="small" color={colors.primary} />
+      <Text style={styles.footerLoadingText}>Loading more…</Text>
+    </View>
+  ) : !hasMore && items.length > 0 ? (
+    <View style={styles.footerEnd}>
+      <Text style={styles.footerEndText}>You've reached the end</Text>
+    </View>
+  ) : null;
+
+  const ListEmpty = loading ? (
+    <View style={{ paddingHorizontal: spacing.lg, gap: spacing.sm }}>
+      {kind === KIND.PRO ? (
+        <>
+          <ProfessionalCardSkeleton width="100%" />
+          <ProfessionalCardSkeleton width="100%" />
+        </>
       ) : (
-        <FlatList
-          data={items}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{
-            paddingHorizontal: spacing.lg,
-            paddingBottom: spacing['2xl'],
-            gap: spacing.sm,
-          }}
-          renderItem={({ item }) =>
-            kind === KIND.PRO ? <ProRow item={item} /> : <FirmRow item={item} />
-          }
-        />
+        <>
+          <FirmCardSkeleton width="100%" />
+          <FirmCardSkeleton width="100%" />
+        </>
       )}
-    </ScreenContainer>
+    </View>
+  ) : (
+    <EmptyState
+      icon="search"
+      title="Nothing matches"
+      description="Try a different search or clear some filters."
+    />
+  );
+
+  return (
+    <FlatList
+      data={loading ? [] : items}
+      keyExtractor={(item, index) => `${item.id}-${index}`}
+      keyboardShouldPersistTaps="handled"
+      style={styles.list}
+      contentContainerStyle={styles.listContent}
+      ListHeaderComponent={ListHeader}
+      ListEmptyComponent={ListEmpty}
+      ListFooterComponent={ListFooter}
+      onEndReached={onEndReached}
+      onEndReachedThreshold={0.4}
+      renderItem={({ item }) =>
+        kind === KIND.PRO ? (
+          <ProfessionalHorizontalCard
+            pro={item}
+            width="100%"
+            onPressProfile={() =>
+              navigation.navigate('ProfessionalDetail', {
+                professionalId: item.id,
+              })
+            }
+            onPressBook={() =>
+              navigation.navigate('Booking', { professionalId: item.id })
+            }
+          />
+        ) : (
+          <FirmCard
+            firm={item}
+            width="100%"
+            onPress={() =>
+              navigation.navigate('FirmDetail', { firmId: item.id })
+            }
+          />
+        )
+      }
+      ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
+    />
   );
 }
 
@@ -290,72 +330,29 @@ function ToggleBtn({ label, icon, active, onPress }) {
         size={13}
         color={active ? colors.textPrimary : colors.textSecondary}
       />
-      <Text
-        style={[styles.toggleLabel, active && styles.toggleLabelActive]}
-      >
+      <Text style={[styles.toggleLabel, active && styles.toggleLabelActive]}>
         {label}
       </Text>
     </Pressable>
   );
 }
 
-function ProRow({ item }) {
-  return (
-    <Card>
-      <View style={styles.rowHead}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.rowTitle}>{item.name}</Text>
-          {item.designation || item.professionalType ? (
-            <Text style={styles.rowSubtitle}>
-              {item.designation || item.professionalType}
-            </Text>
-          ) : null}
-          <View style={styles.rowBadges}>
-            {item.city ? <Badge variant="gray">{item.city}</Badge> : null}
-            {item.rating ? <Badge variant="amber">★ {item.rating}</Badge> : null}
-            {item.verified ? (
-              <Badge variant="green">verified</Badge>
-            ) : null}
-          </View>
-        </View>
-        {item.consultationFee ? (
-          <Text style={styles.rowFee}>{formatRupees(item.consultationFee)}</Text>
-        ) : null}
-      </View>
-    </Card>
-  );
-}
-
-function FirmRow({ item }) {
-  return (
-    <Card>
-      <View style={styles.rowHead}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.rowTitle}>{item.name}</Text>
-          {item.firmType ? (
-            <Text style={styles.rowSubtitle}>{item.firmType}</Text>
-          ) : null}
-          <View style={styles.rowBadges}>
-            {item.city ? <Badge variant="gray">{item.city}</Badge> : null}
-            {item.numberOfProfessionals ? (
-              <Badge variant="blue">{item.numberOfProfessionals} pros</Badge>
-            ) : null}
-            {item.rating ? <Badge variant="amber">★ {item.rating}</Badge> : null}
-          </View>
-        </View>
-      </View>
-    </Card>
-  );
-}
-
 const styles = StyleSheet.create({
-  head: {
-    backgroundColor: colors.surface,
+  list: { flex: 1, backgroundColor: colors.bg },
+  listContent: {
+    paddingBottom: spacing['2xl'],
     paddingHorizontal: spacing.lg,
+    flexGrow: 1,
+  },
+  head: {
     paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingBottom: spacing.md,
+    marginHorizontal: -spacing.lg,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    marginBottom: spacing.md,
   },
   toggle: {
     flexDirection: 'row',
@@ -387,28 +384,6 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   toggleLabelActive: { color: colors.textPrimary },
-
-  filterRow: { flexDirection: 'row', gap: spacing.sm },
-  chipScroller: { marginTop: -4, marginBottom: 4, marginHorizontal: -spacing.lg, paddingLeft: spacing.lg },
-  featChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surfaceMuted,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  featChipActive: {
-    backgroundColor: colors.primarySoft,
-    borderColor: colors.primary,
-  },
-  featChipText: {
-    fontSize: 12,
-    fontWeight: fontWeight.semibold,
-    color: colors.textSecondary,
-  },
-  featChipTextActive: { color: colors.primarySoftText },
-
   clearRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -416,23 +391,32 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     marginTop: 6,
   },
-  clearText: { fontSize: 11, fontWeight: fontWeight.semibold, color: colors.danger },
-
-  rowHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  rowTitle: {
-    fontSize: fontSize.base,
-    fontWeight: fontWeight.bold,
-    color: colors.textPrimary,
+  clearText: {
+    fontSize: 11,
+    fontWeight: fontWeight.semibold,
+    color: colors.danger,
   },
-  rowSubtitle: {
-    marginTop: 2,
+  footerLoading: {
+    paddingVertical: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  footerLoadingText: {
     fontSize: fontSize.sm,
     color: colors.textSecondary,
+    fontWeight: fontWeight.semibold,
   },
-  rowBadges: { marginTop: 6, flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-  rowFee: {
-    fontSize: fontSize.base,
-    fontWeight: fontWeight.bold,
-    color: colors.primary,
+  footerEnd: {
+    paddingVertical: spacing.lg,
+    alignItems: 'center',
+  },
+  footerEndText: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
 });

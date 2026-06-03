@@ -2,30 +2,44 @@
 // Logo header (or initials), firm name + type, city + size badges,
 // and a single "View firm" CTA.
 
+import { useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import { imageUrl } from '../../utils/imageUrl';
+import { computeInitials } from './ProfessionalHorizontalCard';
 import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
 
 export const FIRM_CARD_WIDTH = 268;
 
-export default function FirmCard({ firm, onPress }) {
+export default function FirmCard({ firm, onPress, width = FIRM_CARD_WIDTH }) {
   const logoUrl = imageUrl(firm.logo);
-  const initials = (firm.firmName || firm.name || '?').trim().slice(0, 1).toUpperCase();
+  const initials = computeInitials(firm.firmName || firm.name);
+  const [logoFailed, setLogoFailed] = useState(false);
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, { width }]}>
       <LinearGradient
         colors={['#0f172a', '#1e293b']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.banner}
       >
-        {logoUrl ? (
-          <Image source={{ uri: logoUrl }} style={styles.logo} />
+        {/* Subtle dotted pattern behind the logo to add texture
+            without a real image asset. */}
+        <View style={styles.bannerPattern} pointerEvents="none">
+          {[...Array(12).keys()].map((i) => (
+            <View key={i} style={styles.bannerDot} />
+          ))}
+        </View>
+        {logoUrl && !logoFailed ? (
+          <Image
+            source={{ uri: logoUrl }}
+            style={styles.logo}
+            onError={() => setLogoFailed(true)}
+          />
         ) : (
-          <View style={styles.logoInitials}>
-            <Text style={styles.initialsText}>{initials}</Text>
+          <View style={styles.logoPlaceholder}>
+            <Text style={styles.logoInitialsText}>{initials}</Text>
           </View>
         )}
         <View style={styles.bannerMeta}>
@@ -83,7 +97,6 @@ function MetaPill({ icon, label }) {
 
 const styles = StyleSheet.create({
   card: {
-    width: FIRM_CARD_WIDTH,
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -104,7 +117,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   logo: { width: 50, height: 50, borderRadius: 12, backgroundColor: '#ffffff' },
-  logoInitials: {
+  logoPlaceholder: {
     width: 50,
     height: 50,
     borderRadius: 12,
@@ -114,10 +127,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  initialsText: {
-    fontSize: 22,
+  logoInitialsText: {
+    fontSize: 18,
     fontWeight: fontWeight.bold,
     color: colors.primary,
+    letterSpacing: 0.5,
+  },
+  bannerPattern: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    padding: 6,
+    opacity: 0.18,
+  },
+  bannerDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#ffffff',
+    margin: 9,
   },
   bannerMeta: { alignItems: 'flex-end', gap: 4 },
   bannerBadge: {

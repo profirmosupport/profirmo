@@ -2,6 +2,7 @@
 // (gracefully falls back to a brand placeholder gradient when the
 // post has no featuredImage), then title + excerpt + meta row.
 
+import { useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
@@ -11,6 +12,7 @@ import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
 
 export default function BlogCard({ post, onPress, compact = false }) {
   const cover = imageUrl(post.featuredImage || post.ogImage || post.coverImage);
+  const [coverFailed, setCoverFailed] = useState(false);
   return (
     <Pressable
       onPress={onPress}
@@ -21,8 +23,13 @@ export default function BlogCard({ post, onPress, compact = false }) {
       ]}
     >
       <View style={styles.imageWrap}>
-        {cover ? (
-          <Image source={{ uri: cover }} style={styles.image} resizeMode="cover" />
+        {cover && !coverFailed ? (
+          <Image
+            source={{ uri: cover }}
+            style={styles.image}
+            resizeMode="cover"
+            onError={() => setCoverFailed(true)}
+          />
         ) : (
           <LinearGradient
             colors={['#fde68a', '#f59e0b']}

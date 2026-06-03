@@ -19,7 +19,7 @@ const STARTER_PROMPTS = [
 export default function TalkToFirmoScreen() {
   const { exitGuest } = useAuth();
   return (
-    <ScreenContainer>
+    <ScreenContainer hasNavHeader>
       <LinearGradient
         colors={['#0b1220', '#0f172a', '#1e293b']}
         start={{ x: 0, y: 0 }}

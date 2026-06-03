@@ -42,6 +42,11 @@ export default function ScreenContainer({
   edges = ['left', 'right'],
   keyboard = false,
   headerTone = 'dark',
+  // hasNavHeader=true tells the container that a navigator already
+  // owns the top inset (custom GuestHeader on guest sub-screens etc).
+  // We then skip the local topStrip AND drop the body's default
+  // 16-px top padding so content sits flush below the header.
+  hasNavHeader = false,
   style,
   contentStyle,
 }) {
@@ -54,16 +59,23 @@ export default function ScreenContainer({
       }
     : { style: { flex: 1 } };
 
+  // Suppress the local ink strip when a navigator header is already
+  // painting the top inset — otherwise we get two dark blocks.
+  const showTopStrip = headerTone === 'dark' && !hasNavHeader;
   return (
     <View style={[styles.root, style]}>
-      {headerTone === 'dark' ? (
+      {showTopStrip ? (
         <View style={[styles.topStrip, { height: insets.top }]} />
       ) : null}
       <SafeAreaView style={styles.safe} edges={edges}>
         <Inner {...innerProps}>
           {scroll ? (
             <ScrollView
-              contentContainerStyle={[styles.scroll, contentStyle]}
+              contentContainerStyle={[
+                styles.scroll,
+                hasNavHeader && styles.scrollUnderHeader,
+                contentStyle,
+              ]}
               keyboardShouldPersistTaps="handled"
               refreshControl={
                 onRefresh ? (
@@ -79,7 +91,15 @@ export default function ScreenContainer({
               {children}
             </ScrollView>
           ) : (
-            <View style={[styles.body, contentStyle]}>{children}</View>
+            <View
+              style={[
+                styles.body,
+                hasNavHeader && styles.bodyUnderHeader,
+                contentStyle,
+              ]}
+            >
+              {children}
+            </View>
           )}
         </Inner>
       </SafeAreaView>
@@ -97,4 +117,8 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   body: { flex: 1, padding: spacing.lg },
   scroll: { padding: spacing.lg, paddingBottom: spacing['2xl'] },
+  // Variants when a navigator header sits above — flush top so the
+  // header → content boundary reads as one block.
+  scrollUnderHeader: { paddingTop: spacing.md },
+  bodyUnderHeader: { paddingTop: 0 },
 });

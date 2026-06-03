@@ -8,7 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
 
-export default function HeroSection({ onPressAi, onPressSignup }) {
+export default function HeroSection({ onPressAi, onPressSignup, showSignup = true }) {
   return (
     <LinearGradient
       colors={['#0b1220', '#0f172a', '#1e293b']}
@@ -46,16 +46,18 @@ export default function HeroSection({ onPressAi, onPressSignup }) {
           </LinearGradient>
         </Pressable>
 
-        <Pressable
-          onPress={onPressSignup}
-          style={({ pressed }) => [
-            styles.secondary,
-            { opacity: pressed ? 0.85 : 1 },
-          ]}
-        >
-          <Feather name="user-plus" size={14} color={colors.textInverse} />
-          <Text style={styles.secondaryLabel}>Sign up — it's free</Text>
-        </Pressable>
+        {showSignup ? (
+          <Pressable
+            onPress={onPressSignup}
+            style={({ pressed }) => [
+              styles.secondary,
+              { opacity: pressed ? 0.85 : 1 },
+            ]}
+          >
+            <Feather name="user-plus" size={14} color={colors.textInverse} />
+            <Text style={styles.secondaryLabel}>Sign up — it's free</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       <View style={styles.trustRow}>

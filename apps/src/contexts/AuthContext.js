@@ -95,6 +95,12 @@ export function AuthProvider({ children }) {
     if (u) {
       setUser(u);
       await setItem(STORAGE_KEYS.user, u);
+      // Clear the guest flag so subsequent cold-starts don't keep
+      // isGuest=true alongside a real user — RootNavigator already
+      // prioritises `user`, but a stale guest flag bleeds into the
+      // tab bar avatar logic.
+      await removeItem(STORAGE_KEYS.guest);
+      setIsGuest(false);
     }
     return u;
   }, [refresh]);
@@ -108,6 +114,8 @@ export function AuthProvider({ children }) {
     if (u) {
       setUser(u);
       await setItem(STORAGE_KEYS.user, u);
+      await removeItem(STORAGE_KEYS.guest);
+      setIsGuest(false);
     }
     return u;
   }, [refresh]);

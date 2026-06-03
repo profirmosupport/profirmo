@@ -4,10 +4,14 @@
 // action button rising above the bar so it reads as the primary
 // platform CTA.
 
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '../../contexts/AuthContext';
+import { imageUrl } from '../../utils/imageUrl';
+import { displayName } from '../../utils/formatters';
+import { computeInitials } from './ProfessionalHorizontalCard';
 import { colors, fontSize, fontWeight, spacing } from '../../theme';
 
 const TAB_META = {
@@ -15,10 +19,11 @@ const TAB_META = {
   GuestSearch: { label: 'Search', icon: 'search' },
   TalkToFirmo: { label: 'Talk to Firmo', icon: 'message-circle', fab: true },
   GuestSupport: { label: 'Support', icon: 'life-buoy' },
-  GuestSignup: { label: 'Sign up', icon: 'user-plus' },
+  GuestSignup: { label: 'Account', icon: 'user-plus', avatar: true },
 };
 
 export default function GuestTabBar({ state, descriptors, navigation }) {
+  const { user } = useAuth();
   return (
     <SafeAreaView edges={['bottom']} style={styles.safe}>
       <View style={styles.bar}>
@@ -38,6 +43,16 @@ export default function GuestTabBar({ state, descriptors, navigation }) {
 
           if (meta.fab) {
             return <FabTab key={route.key} meta={meta} focused={focused} onPress={onPress} />;
+          }
+          if (meta.avatar && user) {
+            return (
+              <AvatarTab
+                key={route.key}
+                user={user}
+                focused={focused}
+                onPress={onPress}
+              />
+            );
           }
           return (
             <Tab
@@ -71,6 +86,49 @@ function Tab({ meta, focused, onPress }) {
         ]}
       >
         {meta.label}
+      </Text>
+    </Pressable>
+  );
+}
+
+// AvatarTab — replaces the generic icon for the Account tab when a
+// user is signed in. Renders the profile photo (or amber initials
+// pill) inside a ring that switches to brand-amber on focus.
+function AvatarTab({ user, focused, onPress }) {
+  const photoUrl = imageUrl(user && user.profilePhoto);
+  const initials = computeInitials(displayName(user));
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.tab, { opacity: pressed ? 0.7 : 1 }]}
+    >
+      <View
+        style={[
+          styles.avatarRing,
+          focused && { borderColor: colors.primary },
+        ]}
+      >
+        {photoUrl ? (
+          <Image source={{ uri: photoUrl }} style={styles.avatarImg} />
+        ) : (
+          <LinearGradient
+            colors={['#fde68a', '#f59e0b']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.avatarImg}
+          >
+            <Text style={styles.avatarInitials}>{initials}</Text>
+          </LinearGradient>
+        )}
+      </View>
+      <Text
+        style={[
+          styles.tabLabel,
+          { color: focused ? colors.primary : colors.textMuted },
+        ]}
+        numberOfLines={1}
+      >
+        Account
       </Text>
     </Pressable>
   );
@@ -153,5 +211,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 3,
     borderColor: colors.surface,
+  },
+  avatarRing: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    padding: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarImg: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primarySoft,
+  },
+  avatarInitials: {
+    fontSize: 10,
+    fontWeight: fontWeight.bold,
+    color: colors.textInverse,
+    letterSpacing: 0.4,
   },
 });

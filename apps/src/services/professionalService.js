@@ -7,16 +7,32 @@ export async function listProfessionals({
   search,
   city,
   professionalType,
-  category,
+  // Comma-separated list (or array) of sub-category ids. Maps to the
+  // backend's `subCategoryIdsAny` filter — a professional matches if
+  // ANY of their listed sub-categories appears in the set.
+  subCategoryIds,
   page,
   limit,
 } = {}) {
+  const subCategoryIdsAny = Array.isArray(subCategoryIds)
+    ? subCategoryIds.join(',')
+    : subCategoryIds;
   const res = await apiGet('/api/professionals', {
-    query: { search, city, professionalType, category, page, limit },
+    query: {
+      search,
+      city,
+      professionalType,
+      subCategoryIdsAny: subCategoryIdsAny || undefined,
+      page,
+      limit,
+    },
   });
-  const data = unwrap(res);
-  if (Array.isArray(data)) return { items: data };
-  return data || { items: [] };
+  // Pagination meta lives at the envelope level (`res.meta`); `data`
+  // is either a bare array (legacy listings) or `{ items }`.
+  const data = res && res.data;
+  const items = Array.isArray(data) ? data : (data && data.items) || [];
+  const meta = (res && res.meta) || {};
+  return { items, meta };
 }
 
 export async function getProfessional(id) {
@@ -28,7 +44,8 @@ export async function listFirmsPublic({ search, city, page, limit } = {}) {
   const res = await apiGet('/api/firms', {
     query: { search, city, page, limit },
   });
-  const data = unwrap(res);
-  if (Array.isArray(data)) return { items: data };
-  return data || { items: [] };
+  const data = res && res.data;
+  const items = Array.isArray(data) ? data : (data && data.items) || [];
+  const meta = (res && res.meta) || {};
+  return { items, meta };
 }

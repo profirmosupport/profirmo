@@ -120,68 +120,92 @@ export default async function BlogPostPage({ params }) {
     <div className="flex min-h-screen flex-col bg-white">
       <Header />
       <main className="flex-1">
-        {/* Hero with featured image as a faded backdrop */}
-        <section className="relative overflow-hidden border-b border-slate-100 bg-slate-50">
-          {post.featuredImage && (
-            <div className="absolute inset-0 opacity-25">
+        {/* Top crumb — sits on white above the cover so it's never
+            confused with the heading. */}
+        <nav className="mx-auto max-w-5xl px-4 pt-6 sm:px-6 lg:px-8">
+          <Link
+            href="/blog"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 transition hover:text-amber-700"
+          >
+            <ArrowLeft size={14} />
+            Back to journal
+          </Link>
+        </nav>
+
+        {/* Cover image — full-bleed banner, NO text overlay. Falls back
+            to a warm gradient when no featured image is set so the page
+            still feels intentional. */}
+        {post.featuredImage ? (
+          <figure className="mx-auto mt-5 max-w-5xl overflow-hidden px-4 sm:px-6 lg:px-8">
+            <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-100 shadow-card">
               <img
                 src={post.featuredImage}
-                alt=""
-                aria-hidden="true"
-                className="h-full w-full scale-110 object-cover blur-xl"
+                alt={post.title}
+                className="aspect-[16/9] w-full object-cover"
               />
             </div>
-          )}
-          <div className="relative mx-auto max-w-3xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8 lg:py-16">
-            <Link
-              href="/blog"
-              className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 transition hover:text-amber-700"
-            >
-              <ArrowLeft size={14} />
-              Back to journal
-            </Link>
-            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
-              {category && (
-                <Link
-                  href={`/blog?categorySlug=${category.slug}`}
-                  className="inline-flex items-center rounded-full bg-amber-600 px-3 py-1 font-semibold text-white shadow"
-                >
-                  {category.name}
-                </Link>
-              )}
-              {post.publishedAt && (
-                <span className="inline-flex items-center gap-1 text-slate-500">
-                  <Calendar size={12} />
-                  {fmtDate(post.publishedAt)}
-                </span>
-              )}
-              {post.readingMinutes && (
-                <span className="inline-flex items-center gap-1 text-slate-500">
-                  <Clock size={12} />
-                  {post.readingMinutes} min read
-                </span>
-              )}
-            </div>
-            <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl lg:text-5xl">
-              {post.title}
-            </h1>
-            {post.excerpt && (
-              <p className="mt-4 text-base leading-relaxed text-slate-600 sm:text-lg">
-                {post.excerpt}
-              </p>
+          </figure>
+        ) : (
+          <div className="mx-auto mt-5 max-w-5xl px-4 sm:px-6 lg:px-8">
+            <div className="aspect-[16/9] w-full overflow-hidden rounded-3xl bg-gradient-to-br from-amber-100 via-amber-50 to-white" />
+          </div>
+        )}
+
+        {/* Title block — sits cleanly BELOW the cover on a white field.
+            Heading never overlays the image. */}
+        <section className="mx-auto max-w-3xl px-4 pb-2 pt-10 sm:px-6 sm:pt-12 lg:px-8">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {category && (
+              <Link
+                href={`/blog?categorySlug=${category.slug}`}
+                className="inline-flex items-center rounded-full bg-amber-600 px-3 py-1 font-semibold text-white shadow-sm transition hover:bg-amber-700"
+              >
+                {category.name}
+              </Link>
             )}
-            {post.authorName && (
-              <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-xs text-slate-700 backdrop-blur">
-                <User2 size={13} className="text-slate-400" />
-                By <span className="font-semibold">{post.authorName}</span>
-              </div>
+            {post.publishedAt && (
+              <span className="inline-flex items-center gap-1 text-slate-500">
+                <Calendar size={12} />
+                {fmtDate(post.publishedAt)}
+              </span>
+            )}
+            {post.readingMinutes && (
+              <span className="inline-flex items-center gap-1 text-slate-500">
+                <Clock size={12} />
+                {post.readingMinutes} min read
+              </span>
             )}
           </div>
+          <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl lg:text-5xl">
+            {post.title}
+          </h1>
+          {post.excerpt && (
+            <p className="mt-5 text-lg leading-relaxed text-slate-600">
+              {post.excerpt}
+            </p>
+          )}
+          {post.authorName && (
+            <div className="mt-6 flex items-center gap-3 border-y border-slate-100 py-4">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                <User2 size={16} />
+              </span>
+              <div className="text-sm">
+                <p className="font-semibold text-slate-800">
+                  {post.authorName}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {post.publishedAt
+                    ? `Published ${fmtDate(post.publishedAt)}`
+                    : 'Profirmo Journal'}
+                </p>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Body — typography handled with prose-like inline styles since
             we don't ship the Tailwind typography plugin. */}
-        <section className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:px-6 sm:py-12 lg:grid-cols-[64px_1fr] lg:gap-12 lg:px-8 lg:py-16">
+        <section className="mx-auto grid max-w-6xl gap-8 px-4 pb-10 pt-6 sm:px-6 sm:pb-12 sm:pt-8 lg:grid-cols-[64px_1fr] lg:gap-12 lg:px-8 lg:pb-16">
           <aside className="lg:sticky lg:top-24 lg:self-start">
             <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 lg:text-center">
               Share
@@ -194,13 +218,6 @@ export default async function BlogPostPage({ params }) {
           </aside>
 
           <article className="max-w-3xl">
-            {post.featuredImage && (
-              <img
-                src={post.featuredImage}
-                alt={post.title}
-                className="mb-8 w-full rounded-2xl border border-slate-200 object-cover shadow-card"
-              />
-            )}
             <div
               className="blog-body text-base leading-relaxed text-slate-800 [&_a]:text-amber-700 [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-amber-400 [&_blockquote]:bg-amber-50 [&_blockquote]:px-4 [&_blockquote]:py-2 [&_blockquote]:italic [&_h2]:mt-8 [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:tracking-tight [&_h2]:text-slate-900 [&_h3]:mt-6 [&_h3]:text-xl [&_h3]:font-semibold [&_h3]:text-slate-900 [&_img]:my-6 [&_img]:rounded-xl [&_li]:my-1 [&_ol]:my-4 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-4 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-slate-900 [&_pre]:p-4 [&_pre]:text-sm [&_pre]:text-slate-100 [&_ul]:my-4 [&_ul]:list-disc [&_ul]:pl-6"
               dangerouslySetInnerHTML={{ __html: post.content || '' }}

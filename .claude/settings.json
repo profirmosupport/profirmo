@@ -85,7 +85,8 @@
       "Bash(curl -s \"https://profirmo.onrender.com/api/blog/posts?limit=1\")",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); p=d['data'][0]; print\\('image fields:', {k:v for k,v in p.items\\(\\) if 'image' in k.lower\\(\\) or 'cover' in k.lower\\(\\) or 'photo' in k.lower\\(\\) or 'thumb' in k.lower\\(\\)}\\)\")",
       "Bash(curl -s \"https://profirmo.onrender.com/api/professionals?limit=2\")",
-      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); items=d['data']['items'] if isinstance\\(d.get\\('data'\\), dict\\) else d.get\\('data', []\\); [print\\(p.get\\('name'\\),'·photo:', p.get\\('profilePhoto'\\),'·fee:', p.get\\('consultationFee'\\)\\) for p in items]\")"
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); items=d['data']['items'] if isinstance\\(d.get\\('data'\\), dict\\) else d.get\\('data', []\\); [print\\(p.get\\('name'\\),'·photo:', p.get\\('profilePhoto'\\),'·fee:', p.get\\('consultationFee'\\)\\) for p in items]\")",
+      "Bash(npx expo *)"
     ]
   }
 }

@@ -12,16 +12,24 @@
 import { useCallback, useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import ScreenContainer from '../../components/common/ScreenContainer';
 import Section from '../../components/common/Section';
 import EmptyState from '../../components/common/EmptyState';
-import { CardSkeleton } from '../../components/common/Skeleton';
+import {
+  BlogCardSkeleton,
+  CardSkeleton,
+  FirmCardSkeleton,
+  ProfessionalCardSkeleton,
+} from '../../components/common/Skeleton';
 import HeroSection from '../../components/guest/HeroSection';
 import ProfessionalHorizontalCard, {
   PRO_CARD_WIDTH,
 } from '../../components/guest/ProfessionalHorizontalCard';
 import FirmCard, { FIRM_CARD_WIDTH } from '../../components/guest/FirmCard';
 import BlogCard from '../../components/guest/BlogCard';
+import ExpertiseTile from '../../components/guest/ExpertiseTile';
+import GuestHomeLoader from '../../components/guest/GuestHomeLoader';
 import { useAuth } from '../../contexts/AuthContext';
 import { listCategories } from '../../services/appSettingsService';
 import { listBlogPosts } from '../../services/blogService';
@@ -35,8 +43,30 @@ import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
 // the next card peeks in, signalling there's more to scroll.
 const CAROUSEL_GAP = 12;
 
+// Navigate to the Search tab's inner screen with params. Passing
+// params to the tab itself doesn't reach the screen inside the
+// stack — react-navigation needs the nested `screen` + `params`
+// shape to deliver them properly.
+function goToSearch(navigation, params = {}) {
+  navigation.getParent()?.navigate('GuestSearch', {
+    screen: 'GuestSearchMain',
+    params,
+  });
+}
+
+// Same helper for landing on Search inside the Home stack — used by
+// pro/firm card "View profile" taps so we land on the catalog and can
+// drill into the detail screen from there.
+function goToDetail(navigation, professionalId) {
+  navigation.navigate('ProfessionalDetail', { professionalId });
+}
+
+function goToBooking(navigation, professionalId) {
+  navigation.navigate('Booking', { professionalId });
+}
+
 export default function GuestHomeScreen({ navigation }) {
-  const { exitGuest } = useAuth();
+  const { user, exitGuest } = useAuth();
   const [pros, setPros] = useState([]);
   const [firms, setFirms] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -76,12 +106,13 @@ export default function GuestHomeScreen({ navigation }) {
     load();
   }, [load]);
 
-  // Flatten {Legal: [...], Tax: [...]} into up to 8 chips.
-  const expertiseChips = (() => {
+  // Flatten {Legal: [...], Tax: [...]} into up to 8 tiles, tagging
+  // each with its parent so the tile can render a small eyebrow.
+  const expertiseTiles = (() => {
     const out = [];
     for (const c of categories) {
       for (const s of c.subCategories || []) {
-        out.push({ id: s.id, label: s.name });
+        out.push({ id: s.id, label: s.name, parent: c.name });
         if (out.length >= 8) break;
       }
       if (out.length >= 8) break;
@@ -89,17 +120,31 @@ export default function GuestHomeScreen({ navigation }) {
     return out;
   })();
 
+  // Initial cold-start state — every section is fetching for the
+  // first time. Use the branded loader instead of stacking skeletons
+  // inside the real layout so the "Welcome to Profirmo" moment lands.
+  const firstLoad =
+    loadingPros &&
+    loadingFirms &&
+    loadingCats &&
+    loadingPosts &&
+    pros.length === 0 &&
+    firms.length === 0 &&
+    posts.length === 0;
+  if (firstLoad) return <GuestHomeLoader />;
+
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={load}>
       <HeroSection
         onPressAi={() => navigation.navigate('TalkToFirmo')}
         onPressSignup={exitGuest}
+        showSignup={!user}
       />
 
       {/* ---- Section 2: Search + experts + firms + expertise ---- */}
       <View style={styles.searchBlock}>
         <Pressable
-          onPress={() => navigation.getParent()?.navigate('GuestSearch')}
+          onPress={() => goToSearch(navigation)}
           style={({ pressed }) => [
             styles.searchCta,
             { opacity: pressed ? 0.9 : 1 },
@@ -125,15 +170,13 @@ export default function GuestHomeScreen({ navigation }) {
           title="Experts a call away"
           subtitle="Verified pros ready to consult"
           action={
-            <Pressable
-              onPress={() => navigation.getParent()?.navigate('GuestSearch')}
-            >
+            <Pressable onPress={() => goToSearch(navigation)}>
               <Text style={styles.link}>View all</Text>
             </Pressable>
           }
         >
           {loadingPros ? (
-            <SkeletonRow />
+            <SkeletonRow Component={ProfessionalCardSkeleton} />
           ) : pros.length === 0 ? (
             <EmptyState
               icon="user"
@@ -156,12 +199,8 @@ export default function GuestHomeScreen({ navigation }) {
               renderItem={({ item }) => (
                 <ProfessionalHorizontalCard
                   pro={item}
-                  onPressProfile={() =>
-                    navigation.getParent()?.navigate('GuestSearch', {
-                      professionalId: item.id,
-                    })
-                  }
-                  onPressBook={exitGuest}
+                  onPressProfile={() => goToDetail(navigation, item.id)}
+                  onPressBook={() => goToBooking(navigation, item.id)}
                 />
               )}
             />
@@ -174,15 +213,13 @@ export default function GuestHomeScreen({ navigation }) {
           title="Firms on Profirmo"
           subtitle="Established practices, vetted teams"
           action={
-            <Pressable
-              onPress={() => navigation.getParent()?.navigate('GuestSearch')}
-            >
+            <Pressable onPress={() => goToSearch(navigation)}>
               <Text style={styles.link}>View all</Text>
             </Pressable>
           }
         >
           {loadingFirms ? (
-            <SkeletonRow />
+            <SkeletonRow Component={FirmCardSkeleton} />
           ) : firms.length === 0 ? (
             <EmptyState
               icon="briefcase"
@@ -206,9 +243,7 @@ export default function GuestHomeScreen({ navigation }) {
                 <FirmCard
                   firm={item}
                   onPress={() =>
-                    navigation.getParent()?.navigate('GuestSearch', {
-                      firmId: item.id,
-                    })
+                    navigation.navigate('FirmDetail', { firmId: item.id })
                   }
                 />
               )}
@@ -217,42 +252,11 @@ export default function GuestHomeScreen({ navigation }) {
         </Section>
       </View>
 
-      <View style={styles.sectionGap}>
-        <Section
-          title="Area of expertise"
-          subtitle="Pick a specialty to filter the catalog"
-        >
-          {loadingCats ? (
-            <CardSkeleton />
-          ) : expertiseChips.length === 0 ? (
-            <EmptyState
-              icon="tag"
-              title="No specialties yet"
-              description="An admin will publish specialties soon."
-            />
-          ) : (
-            <View style={styles.chipRow}>
-              {expertiseChips.map((c) => (
-                <Pressable
-                  key={c.id}
-                  onPress={() =>
-                    navigation
-                      .getParent()
-                      ?.navigate('GuestSearch', { categoryId: c.id })
-                  }
-                  style={({ pressed }) => [
-                    styles.chip,
-                    { opacity: pressed ? 0.85 : 1 },
-                  ]}
-                >
-                  <Feather name="tag" size={11} color={colors.primary} />
-                  <Text style={styles.chipText}>{c.label}</Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
-        </Section>
-      </View>
+      <ExpertisePanel
+        loading={loadingCats}
+        tiles={expertiseTiles}
+        onPickTile={(id) => goToSearch(navigation, { categoryId: id })}
+      />
 
       {/* ---- Section 3: Blog & News ---- */}
       <View style={styles.sectionGap}>
@@ -267,8 +271,8 @@ export default function GuestHomeScreen({ navigation }) {
         >
           {loadingPosts ? (
             <View style={{ gap: spacing.md }}>
-              <CardSkeleton />
-              <CardSkeleton />
+              <BlogCardSkeleton />
+              <BlogCardSkeleton />
             </View>
           ) : posts.length === 0 ? (
             <EmptyState
@@ -295,15 +299,77 @@ export default function GuestHomeScreen({ navigation }) {
   );
 }
 
-function SkeletonRow() {
+// ExpertisePanel — full-bleed brand-coloured section. Soft amber
+// gradient background with decorative blobs + 2-column grid of
+// ExpertiseTile cards. Mirrors the brand palette top-to-bottom so it
+// reads as one cohesive block instead of a list of disparate chips.
+function ExpertisePanel({ loading, tiles, onPickTile }) {
+  return (
+    <View style={styles.expertiseWrap}>
+      <LinearGradient
+        // High-contrast brand pairing: ink panel behind amber tiles.
+        // Reads as a single premium block, like the marketing site's
+        // dark sections.
+        colors={['#0b1220', '#0f172a', '#1e293b']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.expertisePanel}
+      >
+        {/* Decorative amber blobs sit on the dark background — make
+            the section feel like a premium "spotlight" panel. */}
+        <View style={[styles.blob, styles.blobA]} />
+        <View style={[styles.blob, styles.blobB]} />
+        {/* Subtle dot grid for visual texture. */}
+        <View style={styles.dotGrid} pointerEvents="none">
+          {[...Array(20).keys()].map((i) => (
+            <View key={i} style={styles.gridDot} />
+          ))}
+        </View>
+
+        <View style={styles.expertiseHeader}>
+          <Text style={styles.expertiseTitle}>Area of expertise</Text>
+          <Text style={styles.expertiseSubtitle}>
+            Pick a specialty to filter the catalog
+          </Text>
+        </View>
+
+        {loading ? (
+          <View style={styles.tileGrid}>
+            <View style={{ flexBasis: '48%' }}>
+              <CardSkeleton />
+            </View>
+            <View style={{ flexBasis: '48%' }}>
+              <CardSkeleton />
+            </View>
+          </View>
+        ) : tiles.length === 0 ? (
+          <EmptyState
+            icon="tag"
+            title="No specialties yet"
+            description="An admin will publish specialties soon."
+          />
+        ) : (
+          <View style={styles.tileGrid}>
+            {tiles.map((c) => (
+              <ExpertiseTile
+                key={c.id}
+                label={c.label}
+                parent={c.parent}
+                onPress={() => onPickTile(c.id)}
+              />
+            ))}
+          </View>
+        )}
+      </LinearGradient>
+    </View>
+  );
+}
+
+function SkeletonRow({ Component = ProfessionalCardSkeleton }) {
   return (
     <View style={{ flexDirection: 'row', gap: CAROUSEL_GAP }}>
-      <View style={{ width: PRO_CARD_WIDTH }}>
-        <CardSkeleton />
-      </View>
-      <View style={{ width: PRO_CARD_WIDTH }}>
-        <CardSkeleton />
-      </View>
+      <Component />
+      <Component />
     </View>
   );
 }
@@ -369,21 +435,67 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
 
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip: {
+  tileGrid: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
+    flexWrap: 'wrap',
+    gap: spacing.sm,
   },
-  chipText: {
-    fontSize: 12,
-    fontWeight: fontWeight.semibold,
-    color: colors.textPrimary,
+
+  // Expertise panel — ink "spotlight" block with amber accents. Amber
+  // tiles inside read against a deep dark background for high contrast.
+  expertiseWrap: {
+    marginTop: spacing.xl,
+    marginHorizontal: -spacing.lg,
+  },
+  expertisePanel: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl,
+    overflow: 'hidden',
+  },
+  blob: { position: 'absolute', borderRadius: 999 },
+  blobA: {
+    top: -80,
+    right: -70,
+    width: 220,
+    height: 220,
+    backgroundColor: 'rgba(217,119,6,0.18)',
+  },
+  blobB: {
+    bottom: -60,
+    left: -60,
+    width: 180,
+    height: 180,
+    backgroundColor: 'rgba(13,148,136,0.16)',
+  },
+  // 4 x 5 grid of tiny amber dots — adds visual interest without an
+  // image asset.
+  dotGrid: {
+    position: 'absolute',
+    top: 20,
+    left: 28,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    width: 100,
+    opacity: 0.5,
+  },
+  gridDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: 'rgba(217,119,6,0.5)',
+    margin: 8,
+  },
+  expertiseHeader: {
+    marginBottom: spacing.md,
+  },
+  expertiseTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
+    color: colors.textInverse,
+  },
+  expertiseSubtitle: {
+    marginTop: 2,
+    fontSize: fontSize.xs,
+    color: 'rgba(255,255,255,0.65)',
   },
 });

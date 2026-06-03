@@ -19,6 +19,11 @@ function toQuery(params = {}) {
     category,
     professionalType,
     professionType, // legacy alias from older callers
+    // Admin-managed taxonomy filter. `subCategoryId` matches a single
+    // sub-category exactly; `subCategoryIdsAny` matches any in a comma-
+    // separated set. Both go to the backend untouched.
+    subCategoryId,
+    subCategoryIdsAny,
     specialization,
     expertise,
     practiceArea,
@@ -47,7 +52,14 @@ function toQuery(params = {}) {
 
   return {
     search: search || undefined,
-    professionalType: professionalType || professionType || category || undefined,
+    professionalType: professionalType || professionType || (category && !String(category).startsWith('subcat-') ? category : undefined) || undefined,
+    subCategoryId:
+      subCategoryId ||
+      (category && String(category).startsWith('subcat-') ? category : undefined) ||
+      undefined,
+    subCategoryIdsAny: Array.isArray(subCategoryIdsAny)
+      ? subCategoryIdsAny.join(',') || undefined
+      : subCategoryIdsAny || undefined,
     specialization: specialization || undefined,
     expertise: expertise || undefined,
     practiceArea: practiceArea || undefined,

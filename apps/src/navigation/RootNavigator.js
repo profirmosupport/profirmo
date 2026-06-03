@@ -13,8 +13,6 @@ import { NavigationContainer } from '@react-navigation/native';
 import * as SplashScreen from 'expo-splash-screen';
 import { useAuth } from '../contexts/AuthContext';
 import AuthStack from './AuthStack';
-import ProfessionalTabs from './ProfessionalTabs';
-import ClientTabs from './ClientTabs';
 import GuestTabs from './GuestTabs';
 import AdminUnsupportedScreen from '../screens/auth/AdminUnsupportedScreen';
 import SplashView from '../components/common/SplashView';
@@ -61,23 +59,18 @@ export default function RootNavigator() {
     return <SplashView />;
   }
 
+  // Single tab navigator now serves every state — guest, client and
+  // professional — so the landing experience (Home / Search / Talk /
+  // Support / Account) stays identical across roles. The last
+  // "Account" tab swaps content based on auth state: guests see the
+  // Sign-up redirect; clients and professionals see the role-aware
+  // Dashboard + side nav drawer.
   return (
     <View style={{ flex: 1 }}>
       <NavigationContainer>
-        {/* Decision tree:
-              authenticated  → role-based tabs (admin → unsupported)
-              guest mode     → client tabs (no auth data; Profile shows
-                               a Sign-in CTA)
-              otherwise      → AuthStack (Welcome → Signup / Login) */}
-        {user ? (
-          user.role === ROLES.PROFESSIONAL ? (
-            <ProfessionalTabs />
-          ) : user.role === ROLES.CLIENT ? (
-            <ClientTabs />
-          ) : (
-            <AdminUnsupportedScreen />
-          )
-        ) : isGuest ? (
+        {user && user.role && user.role !== ROLES.CLIENT && user.role !== ROLES.PROFESSIONAL ? (
+          <AdminUnsupportedScreen />
+        ) : user || isGuest ? (
           <GuestTabs />
         ) : (
           <AuthStack />

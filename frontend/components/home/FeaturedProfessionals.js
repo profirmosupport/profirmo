@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { BadgeCheck, MapPin, Star, ArrowRight, Sparkles } from 'lucide-react';
-import Avatar from '@/components/common/Avatar';
+import { ArrowRight, Sparkles } from 'lucide-react';
+import ProfessionalCard from '@/components/professionals/ProfessionalCard';
 import professionalService from '@/services/professionalService';
-import { formatCurrency, truncate } from '@/utils/formatters';
 import { useLanguage } from '@/components/LanguageProvider';
 
 function CardSkeleton() {
@@ -94,117 +93,7 @@ export default function FeaturedProfessionals() {
         ) : (
           <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {items.map((pro) => (
-              <div
-                key={pro.id}
-                className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-card transition-all duration-300 hover:-translate-y-1 hover:border-teal-300 hover:shadow-glow-cyan"
-              >
-                <span
-                  className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-teal-500/0 blur-2xl transition-all duration-300 group-hover:bg-teal-500/15"
-                  aria-hidden="true"
-                />
-
-                <div className="flex items-start gap-4">
-                  <div className="relative">
-                    <Avatar
-                      src={pro.profilePhoto}
-                      name={pro.name}
-                      size="lg"
-                      className="rounded-2xl"
-                    />
-                    {pro.availableNow && (
-                      <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-white">
-                        <span className="relative flex h-3 w-3">
-                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                          <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-500" />
-                        </span>
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <h3 className="truncate text-base font-semibold text-slate-900">
-                        {pro.name}
-                      </h3>
-                      {pro.verified && (
-                        <BadgeCheck className="h-4 w-4 flex-shrink-0 text-indigo-500" />
-                      )}
-                    </div>
-                    <p className="text-sm font-medium text-indigo-600">
-                      {pro.professionalType}
-                    </p>
-                    {pro.city && (
-                      <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
-                        <MapPin className="h-3 w-3" />
-                        {pro.city}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {pro.specialization && (
-                  <p className="mt-4 text-sm text-slate-600">
-                    {truncate(pro.specialization, 60)}
-                  </p>
-                )}
-
-                <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
-                  {(pro.reviewsCount || 0) > 0 ? (
-                    <span className="flex items-center gap-1 text-sm">
-                      <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-                      <span className="font-semibold text-slate-900">
-                        {pro.rating || 0}
-                      </span>
-                      <span className="text-slate-400">
-                        ({pro.reviewsCount})
-                      </span>
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1 text-sm text-slate-400">
-                      <Star
-                        className="h-4 w-4 text-slate-300"
-                        fill="currentColor"
-                      />
-                      {t('profCmp.noReviewYet')}
-                    </span>
-                  )}
-                  <span className="text-right text-sm font-semibold text-slate-900">
-                    {formatCurrency(pro.consultationFee)}
-                    <span className="ml-1 text-xs font-normal text-slate-500">
-                      / min
-                    </span>
-                  </span>
-                </div>
-
-                {/* The Book CTA is hidden when the professional has paused
-                    online bookings — the View profile link stretches to
-                    full width in that case. */}
-                {pro.acceptsOnlineBooking !== false ? (
-                  <div className="mt-4 grid grid-cols-2 gap-2">
-                    <Link
-                      href={`/professionals/${pro.id}`}
-                      className="rounded-xl border border-slate-200 px-3 py-2.5 text-center text-sm font-semibold text-slate-700 transition hover:border-teal-300 hover:text-teal-700"
-                    >
-                      {t('featuredProfessionals.viewProfile')}
-                    </Link>
-                    <Link
-                      href={`/booking/${pro.id}`}
-                      className="rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-3 py-2.5 text-center text-sm font-semibold text-white shadow-glow-sm transition hover:shadow-glow"
-                    >
-                      {t('featuredProfessionals.book')}
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="mt-4">
-                    <Link
-                      href={`/professionals/${pro.id}`}
-                      className="block w-full rounded-xl border border-slate-200 px-3 py-2.5 text-center text-sm font-semibold text-slate-700 transition hover:border-teal-300 hover:text-teal-700"
-                    >
-                      {t('featuredProfessionals.viewProfile')}
-                    </Link>
-                  </div>
-                )}
-              </div>
+              <ProfessionalCard key={pro.id} professional={pro} />
             ))}
           </div>
         )}

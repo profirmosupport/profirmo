@@ -16,6 +16,7 @@ import NotificationsScreen from '../screens/shared/NotificationsScreen';
 import BookingDetailScreen from '../screens/shared/BookingDetailScreen';
 import CaseDetailScreen from '../screens/shared/CaseDetailScreen';
 import ProfessionalDetailScreen from '../screens/shared/ProfessionalDetailScreen';
+import BookingScreen from '../screens/guest/BookingScreen';
 
 import { colors, fontSize, fontWeight } from '../theme';
 
@@ -53,6 +54,11 @@ function FindStack() {
         name="ProfessionalDetail"
         component={ProfessionalDetailScreen}
         options={{ title: 'Professional' }}
+      />
+      <Stack.Screen
+        name="Booking"
+        component={BookingScreen}
+        options={{ title: 'Book a consultation' }}
       />
     </Stack.Navigator>
   );

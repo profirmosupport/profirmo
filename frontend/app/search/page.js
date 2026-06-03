@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Script from 'next/script';
 import { Search, Users, Building2, AlertCircle, Lock } from 'lucide-react';
 import Header from '@/components/common/Header';
@@ -87,6 +87,31 @@ export default function SearchPage() {
   const { flatCities } = useLocations();
   const { subCategories } = useSubCategoriesFlat();
 
+  // Pre-fill the Category filter from a ?category=<name> query string —
+  // used by the home page's "Areas of expertise" tiles. Runs once after
+  // the taxonomy loads; ignores any subsequent reloads so the user's
+  // later edits aren't clobbered.
+  const categoryPrefillRef = useRef(false);
+  useEffect(() => {
+    if (categoryPrefillRef.current) return;
+    if (!subCategories.length) return;
+    if (typeof window === 'undefined') return;
+    const raw = new URLSearchParams(window.location.search).get('category');
+    if (!raw) {
+      categoryPrefillRef.current = true;
+      return;
+    }
+    const needle = raw.trim().toLowerCase();
+    const match = subCategories.find(
+      (s) =>
+        String(s.name || '').toLowerCase() === needle ||
+        String(s.slug || '').toLowerCase() === needle ||
+        String(s.id || '').toLowerCase() === needle
+    );
+    if (match) setFilters((prev) => ({ ...prev, category: match.id }));
+    categoryPrefillRef.current = true;
+  }, [subCategories]);
+
   // Translate the UI filter state into API query params for each hook.
   const proParams = useMemo(() => {
     const expRange = EXPERIENCE_RANGES.find(
@@ -128,12 +153,14 @@ export default function SearchPage() {
 
   const {
     items: professionals,
+    meta: proMeta,
     loading: proLoading,
     error: proError,
     setParams: setProParams,
   } = useProfessionals(proParams);
   const {
     items: firms,
+    meta: firmMeta,
     loading: firmLoading,
     error: firmError,
     setParams: setFirmParams,
@@ -152,6 +179,12 @@ export default function SearchPage() {
   const loading = isIndividual ? proLoading : firmLoading;
   const error = isIndividual ? proError : firmError;
   const results = isIndividual ? professionals : firms;
+  // Total result count comes from the paginated response envelope. Falling
+  // back to the local array length only kicks in for legacy endpoints that
+  // don't emit a `meta.total`.
+  const meta = isIndividual ? proMeta : firmMeta;
+  const totalCount =
+    meta && Number.isFinite(meta.total) ? meta.total : results.length;
 
   // While we check the gate, hide interactive UI so the modal does not flash
   // over real results. Once `granted`, the page renders normally. When
@@ -336,13 +369,13 @@ export default function SearchPage() {
             ) : (
               <>
                 <span className="font-semibold text-slate-900">
-                  {results.length}
+                  {totalCount}
                 </span>{' '}
                 {isIndividual
-                  ? results.length === 1
+                  ? totalCount === 1
                     ? t('searchPage.profCountOne')
                     : t('searchPage.profCountOther')
-                  : results.length === 1
+                  : totalCount === 1
                     ? t('searchPage.firmCountOne')
                     : t('searchPage.firmCountOther')}
               </>

@@ -33,7 +33,7 @@ const CHANNELS = [
 
 export default function GuestSupportScreen() {
   return (
-    <ScreenContainer>
+    <ScreenContainer hasNavHeader>
       <Text style={styles.title}>How can we help?</Text>
       <Text style={styles.subhead}>
         We typically reply within 24 hours on business days.

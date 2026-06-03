@@ -82,9 +82,7 @@ export default function ClientDashboardScreen({ navigation }) {
         title={greeting()}
         subtitle="Find an expert and book in minutes."
         trailingIcon="bell"
-        onTrailingPress={() =>
-          navigation.navigate('HomeTab', { screen: 'Notifications' })
-        }
+        onTrailingPress={() => navigation.navigate('AccountNotifications')}
       />
 
       <Card style={{ marginTop: spacing.lg }}>
@@ -103,9 +101,10 @@ export default function ClientDashboardScreen({ navigation }) {
           title="Find a professional"
           icon={<Feather name="search" size={14} color={colors.textInverse} />}
           style={{ marginTop: spacing.md }}
-          onPress={() =>
-            navigation.navigate('FindTab', { screen: 'FindProfessional' })
-          }
+          onPress={() => {
+            const parent = navigation.getParent?.()?.getParent?.();
+            parent?.navigate?.('GuestSearch', { screen: 'GuestSearchMain' });
+          }}
         />
       </Card>
 
@@ -115,24 +114,20 @@ export default function ClientDashboardScreen({ navigation }) {
           label="My bookings"
           tone="amber"
           onPress={() =>
-            navigation.navigate('BookingsTab', { screen: 'BookingsList' })
+            navigation.navigate('AccountBookings')
           }
         />
         <QuickAction
           icon="folder"
           label="My cases"
           tone="emerald"
-          onPress={() =>
-            navigation.navigate('CasesTab', { screen: 'CasesList' })
-          }
+          onPress={() => navigation.navigate('AccountCases')}
         />
         <QuickAction
           icon="credit-card"
           label="Payments"
           tone="sky"
-          onPress={() =>
-            navigation.navigate('MoreTab', { screen: 'ClientPayments' })
-          }
+          onPress={() => navigation.navigate('AccountPayments')}
         />
       </View>
 
@@ -141,7 +136,7 @@ export default function ClientDashboardScreen({ navigation }) {
         action={
           <Pressable
             onPress={() =>
-              navigation.navigate('BookingsTab', { screen: 'BookingsList' })
+              navigation.navigate('AccountBookings')
             }
           >
             <Text style={styles.link}>See all</Text>
@@ -161,9 +156,8 @@ export default function ClientDashboardScreen({ navigation }) {
             <Pressable
               key={b.id}
               onPress={() =>
-                navigation.navigate('BookingsTab', {
-                  screen: 'BookingDetail',
-                  params: { bookingId: b.id },
+                navigation.navigate('AccountBookingDetail', {
+                  bookingId: b.id,
                 })
               }
               style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
