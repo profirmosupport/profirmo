@@ -2,20 +2,18 @@
 // Logo header (or initials), firm name + type, city + size badges,
 // and a single "View firm" CTA.
 
-import { useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
+import AvatarWithInitials from '../common/AvatarWithInitials';
 import { imageUrl } from '../../utils/imageUrl';
-import { computeInitials } from './ProfessionalHorizontalCard';
 import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
 
 export const FIRM_CARD_WIDTH = 268;
 
 export default function FirmCard({ firm, onPress, width = FIRM_CARD_WIDTH }) {
   const logoUrl = imageUrl(firm.logo);
-  const initials = computeInitials(firm.firmName || firm.name);
-  const [logoFailed, setLogoFailed] = useState(false);
+  const firmName = firm.firmName || firm.name;
   return (
     <View style={[styles.card, { width }]}>
       <LinearGradient
@@ -31,17 +29,12 @@ export default function FirmCard({ firm, onPress, width = FIRM_CARD_WIDTH }) {
             <View key={i} style={styles.bannerDot} />
           ))}
         </View>
-        {logoUrl && !logoFailed ? (
-          <Image
-            source={{ uri: logoUrl }}
-            style={styles.logo}
-            onError={() => setLogoFailed(true)}
-          />
-        ) : (
-          <View style={styles.logoPlaceholder}>
-            <Text style={styles.logoInitialsText}>{initials}</Text>
-          </View>
-        )}
+        <AvatarWithInitials
+          uri={logoUrl}
+          name={firmName}
+          size={50}
+          square
+        />
         <View style={styles.bannerMeta}>
           {firm.numberOfProfessionals || firm.professionalCount ? (
             <View style={styles.bannerBadge}>

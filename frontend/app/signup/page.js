@@ -7,7 +7,7 @@
 //    (ProfessionalRegistrationForm) -> registerProfessional() -> a pending-
 //    approval confirmation screen (verify email + awaiting admin approval).
 
-import { useState, useEffect, useRef, Suspense } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -33,14 +33,9 @@ import {
   resendVerification,
   checkAvailability,
   checkPhone,
-} from '@/services/authService';
-import {
   sendPhoneOtp,
-  confirmPhoneOtp,
-  clearRecaptcha,
-  loadFirebaseConfig,
-  firebaseConfigured,
-} from '@/lib/firebase';
+  verifyPhoneOtp,
+} from '@/services/authService';
 
 const SIGNUP_RESEND_COOLDOWN_SECONDS = 300;
 import {
@@ -128,7 +123,7 @@ function SignupInner() {
   const searchParams = useSearchParams();
   const {
     signup,
-    signupWithFirebase,
+    signupWithPhone,
     registerProfessional,
     isAuthenticated,
     loading,
@@ -140,7 +135,6 @@ function SignupInner() {
   // verified the number is locked for the rest of the wizard (per spec).
   const [step, setStep] = useState('phone');
   const [verifiedPhone, setVerifiedPhone] = useState('');
-  const [firebaseIdToken, setFirebaseIdToken] = useState('');
   const [proType, setProType] = useState('');
   // Resume mode: pre-filled wizard at Step 2 for a professional whose Step
   // 1 already created the account but who bounced before finishing.
@@ -280,9 +274,9 @@ function SignupInner() {
     setClientErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
-    // Defense in depth — the phone step should have set these before we
+    // Defense in depth — the phone step should have set this before we
     // reach this submit handler. If for some reason it didn't, bounce back.
-    if (!firebaseIdToken || !verifiedPhone) {
+    if (!verifiedPhone) {
       setBanner('Please verify your mobile number first.');
       setStep('phone');
       return;
@@ -291,12 +285,12 @@ function SignupInner() {
     const email = client.email.trim();
     setSubmitting(true);
     try {
-      // Phone-first signup — backend creates the account from the verified
-      // Firebase token + the rest of the profile, then issues our session.
-      // The user is logged in immediately on success; no email verification
-      // gate (phone is the channel of verification).
-      await signupWithFirebase({
-        idToken: firebaseIdToken,
+      // Phone-first signup — backend redeems the verified OTP and the
+      // rest of the profile to create the account + issue our session.
+      // The user is logged in immediately on success; no email
+      // verification gate (phone is the channel of verification).
+      await signupWithPhone({
+        phone: verifiedPhone,
         firstName: client.firstName.trim(),
         lastName: client.lastName.trim(),
         email,
@@ -743,9 +737,8 @@ function SignupInner() {
           </div>
           <PhoneVerifyStep
             initialPhone={searchParams.get('phone') || ''}
-            onVerified={(phoneE164, idToken) => {
+            onVerified={(phoneE164) => {
               setVerifiedPhone(phoneE164);
-              setFirebaseIdToken(idToken);
               // Pre-fill the client form's mobile (legacy field) so the
               // later steps display the verified number.
               setClient((v) => ({ ...v, mobileNumber: phoneE164 }));
@@ -1218,7 +1211,7 @@ export default function SignupPage() {
 // PhoneVerifyStep — the first screen of the signup wizard. Same OTP flow
 // as the login Phone tab, with two product differences:
 //   - Reject phones that are ALREADY registered (sign up means new account)
-//   - On success, hand the (phoneE164, firebaseIdToken) up to the parent.
+//   - On success, hand the verified phone (E.164) up to the parent.
 // ---------------------------------------------------------------------------
 function PhoneVerifyStep({ initialPhone = '', onVerified }) {
   // When the wizard was deep-linked with ?phone=… (e.g. from the "create
@@ -1227,26 +1220,15 @@ function PhoneVerifyStep({ initialPhone = '', onVerified }) {
   const phoneLocked = Boolean(initialPhone);
   const [phone, setPhone] = useState(initialPhone);
   const [otp, setOtp] = useState('');
+  // E.164 target the OTP was sent to. Verify + signup-complete both
+  // operate against this stable string regardless of any later edits.
+  const [sentTo, setSentTo] = useState('');
   const [innerStep, setInnerStep] = useState('enter-phone');
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [resendIn, setResendIn] = useState(0);
-  const [configState, setConfigState] = useState('loading');
-  const confirmationRef = useRef(null);
-
-  useEffect(() => {
-    let active = true;
-    loadFirebaseConfig().then(() => {
-      if (!active) return;
-      setConfigState(firebaseConfigured() ? 'ready' : 'unavailable');
-    });
-    return () => {
-      active = false;
-      clearRecaptcha();
-    };
-  }, []);
 
   useEffect(() => {
     if (resendIn <= 0) return undefined;
@@ -1277,10 +1259,6 @@ function PhoneVerifyStep({ initialPhone = '', onVerified }) {
     e && e.preventDefault();
     setError('');
     setInfo('');
-    if (configState !== 'ready') {
-      setError('Phone sign-in is not configured yet. Please contact support.');
-      return;
-    }
     const e164 = toE164(phone);
     if (!/^\+\d{8,15}$/.test(e164)) {
       setError('Enter a valid phone number including the country code.');
@@ -1297,8 +1275,8 @@ function PhoneVerifyStep({ initialPhone = '', onVerified }) {
         );
         return;
       }
-      const confirmation = await sendPhoneOtp(e164, 'signup-recaptcha-container');
-      confirmationRef.current = confirmation;
+      await sendPhoneOtp(e164, 'signup');
+      setSentTo(e164);
       setInnerStep('enter-code');
       setInfo(`We sent a 6-digit code to ${e164}.`);
       setResendIn(SIGNUP_RESEND_COOLDOWN_SECONDS);
@@ -1307,7 +1285,6 @@ function PhoneVerifyStep({ initialPhone = '', onVerified }) {
         (err && (err.message || err.code)) ||
           'Could not send the OTP. Please try again.'
       );
-      clearRecaptcha();
     } finally {
       setSubmitting(false);
     }
@@ -1316,7 +1293,7 @@ function PhoneVerifyStep({ initialPhone = '', onVerified }) {
   async function handleVerifyOtp(e) {
     e.preventDefault();
     setError('');
-    if (!confirmationRef.current) {
+    if (!sentTo) {
       setError('Please request a new OTP first.');
       setInnerStep('enter-phone');
       return;
@@ -1327,8 +1304,8 @@ function PhoneVerifyStep({ initialPhone = '', onVerified }) {
     }
     setSubmitting(true);
     try {
-      const idToken = await confirmPhoneOtp(confirmationRef.current, otp.trim());
-      onVerified(toE164(phone), idToken);
+      await verifyPhoneOtp(sentTo, 'signup', otp.trim());
+      onVerified(sentTo);
     } catch (err) {
       setError(
         (err && err.message) ||
@@ -1344,13 +1321,11 @@ function PhoneVerifyStep({ initialPhone = '', onVerified }) {
     setResending(true);
     setError('');
     setInfo('');
-    clearRecaptcha();
-    confirmationRef.current = null;
     try {
-      const e164 = toE164(phone);
-      const confirmation = await sendPhoneOtp(e164, 'signup-recaptcha-container');
-      confirmationRef.current = confirmation;
-      setInfo(`A new code was sent to ${e164}.`);
+      const target = sentTo || toE164(phone);
+      await sendPhoneOtp(target, 'signup');
+      setSentTo(target);
+      setInfo(`A new code was sent to ${target}.`);
       setResendIn(SIGNUP_RESEND_COOLDOWN_SECONDS);
     } catch (err) {
       setError(
@@ -1363,20 +1338,6 @@ function PhoneVerifyStep({ initialPhone = '', onVerified }) {
 
   return (
     <div className="glass rounded-2xl border border-slate-200/80 p-6 shadow-card sm:p-7">
-      {configState === 'loading' && (
-        <div className="mb-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
-          <Loader2 size={16} className="animate-spin" />
-          <span>Loading sign-up options…</span>
-        </div>
-      )}
-      {configState === 'unavailable' && (
-        <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
-          <AlertCircle size={16} className="mt-0.5 shrink-0" />
-          <span>
-            Phone sign-up is not configured yet. Please contact support.
-          </span>
-        </div>
-      )}
       {error && (
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
           <AlertCircle size={16} className="mt-0.5 shrink-0" />
@@ -1523,7 +1484,6 @@ function PhoneVerifyStep({ initialPhone = '', onVerified }) {
         </form>
       )}
 
-      <div id="signup-recaptcha-container" className="mt-3 flex justify-center" />
     </div>
   );
 }

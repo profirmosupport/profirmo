@@ -57,6 +57,10 @@ const SYNC_ORDER = [
   // --- Password-reset OTP table --------------------------------------
   // No FK dependency — userId / email are plain indexed columns.
   db.PasswordResetOtp,
+  // --- Phone-OTP table ------------------------------------------------
+  // Powers SMS-OTP login + signup + change-phone. No FK — `phone` is a
+  // plain indexed column. Same shape regardless of which flow issued it.
+  db.PhoneOtpCode,
   // Link table between professionals and client-users (many-to-many).
   db.ProfessionalClient,
   // --- App settings taxonomy ------------------------------------------

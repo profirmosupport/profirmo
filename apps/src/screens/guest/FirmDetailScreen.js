@@ -35,6 +35,7 @@ import {
 } from '../../services/firmService';
 import { listFirmReviews } from '../../services/reviewService';
 import ContactFirmModal from '../../components/firm/ContactFirmModal';
+import AvatarWithInitials from '../../components/common/AvatarWithInitials';
 import { imageUrl } from '../../utils/imageUrl';
 import { formatDate } from '../../utils/formatters';
 import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
@@ -108,7 +109,6 @@ export default function FirmDetailScreen({ route, navigation }) {
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [logoFailed, setLogoFailed] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
 
   const load = useCallback(async () => {
@@ -173,7 +173,6 @@ export default function FirmDetailScreen({ route, navigation }) {
 
   const firmName = firm.firmName || firm.name || 'Firm';
   const logoUrl = imageUrl(firm.logo);
-  const initials = computeInitials(firmName);
   const proCount =
     firm.numberOfProfessionals !== null &&
     firm.numberOfProfessionals !== undefined
@@ -258,17 +257,13 @@ export default function FirmDetailScreen({ route, navigation }) {
                 <View key={i} style={styles.heroDot} />
               ))}
             </View>
-            {logoUrl && !logoFailed ? (
-              <Image
-                source={{ uri: logoUrl }}
-                style={styles.logo}
-                onError={() => setLogoFailed(true)}
-              />
-            ) : (
-              <View style={styles.logoPlaceholder}>
-                <Text style={styles.logoInitials}>{initials}</Text>
-              </View>
-            )}
+            <AvatarWithInitials
+              uri={logoUrl}
+              name={firmName}
+              size={76}
+              square
+              initialsSize={26}
+            />
           </LinearGradient>
 
           <View style={styles.heroBody}>

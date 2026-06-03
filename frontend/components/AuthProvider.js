@@ -162,22 +162,22 @@ export function AuthProvider({ children }) {
     [applyAuth]
   );
 
-  // Adopt a Firebase Phone Auth session. Caller has already minted the
-  // Firebase ID token via the phone-OTP flow on the login page.
-  const loginWithFirebase = useCallback(
-    async (idToken) => {
-      const data = await authService.loginWithFirebase(idToken);
+  // Adopt a phone-OTP session. Caller has already verified the OTP via
+  // /api/auth/phone/verify-otp (purpose='login') for this phone number.
+  const loginWithPhone = useCallback(
+    async (phone) => {
+      const data = await authService.loginWithPhone(phone);
       return applyAuth(data);
     },
     [applyAuth]
   );
 
-  // Complete phone-first signup. Backend creates the user, verifies the
-  // Firebase idToken proves phone ownership, returns a session payload we
-  // adopt the same way loginWithFirebase does.
-  const signupWithFirebase = useCallback(
+  // Complete phone-first signup. Caller has verified the OTP for the
+  // same phone (purpose='signup') and now POSTs the new profile fields;
+  // the backend creates the user and returns a session payload.
+  const signupWithPhone = useCallback(
     async (payload) => {
-      const data = await authService.signupWithFirebase(payload);
+      const data = await authService.signupWithPhone(payload);
       return applyAuth(data);
     },
     [applyAuth]
@@ -280,8 +280,8 @@ export function AuthProvider({ children }) {
     loading,
     isAuthenticated: !!user,
     login,
-    loginWithFirebase,
-    signupWithFirebase,
+    loginWithPhone,
+    signupWithPhone,
     signup,
     verifyEmail,
     claimAccount,
@@ -310,8 +310,8 @@ export function useAuth() {
     loading: false,
     isAuthenticated: false,
     login: noop,
-    loginWithFirebase: noop,
-    signupWithFirebase: noop,
+    loginWithPhone: noop,
+    signupWithPhone: noop,
     signup: noop,
     verifyEmail: noop,
     claimAccount: noop,

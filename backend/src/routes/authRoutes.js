@@ -32,30 +32,49 @@ router.post(
   authController.login
 );
 
-// Firebase Phone Auth login. Client completes SMS-OTP via the Firebase JS
-// SDK, then posts the resulting ID token here. authLimiter still applies —
-// Firebase has its own per-phone rate limits but we keep the IP-level cap.
+// Phone-OTP: send. Body: { phone, purpose }. `purpose` is one of
+// 'login' | 'signup' | 'change-phone'. Reuses an existing live OTP (≤10
+// min old) when present, otherwise mints a fresh 6-digit code and posts
+// it to Ping4SMS. authLimiter keeps SMS spam in check.
 router.post(
-  '/firebase',
+  '/phone/send-otp',
   authLimiter,
-  validateBody({ idToken: 'required' }),
-  authController.firebaseLogin
+  validateBody({ phone: 'required', purpose: 'required' }),
+  authController.sendPhoneOtp
 );
 
-// Firebase Phone Auth SIGNUP completion. The wizard sends idToken (proves
-// phone ownership) + first/last name + email + role. Rejects on duplicate
-// phone/email.
+// Phone-OTP: verify. Body: { phone, purpose, code }. On success the
+// stored row is marked verified but NOT consumed — the downstream
+// /phone-login | /phone-signup | /change-phone endpoint redeems it.
 router.post(
-  '/firebase-signup',
+  '/phone/verify-otp',
+  authLimiter,
+  validateBody({ phone: 'required', purpose: 'required', code: 'required' }),
+  authController.verifyPhoneOtp
+);
+
+// Phone login. Requires a verified OTP for (phone, 'login') in the last
+// 10 minutes. Returns the standard { accessToken, user } session payload.
+router.post(
+  '/phone-login',
+  authLimiter,
+  validateBody({ phone: 'required' }),
+  authController.phoneLogin
+);
+
+// Phone-first signup completion. Requires a verified OTP for (phone,
+// 'signup'). Creates the user, returns the standard session payload.
+router.post(
+  '/phone-signup',
   authLimiter,
   validateBody({
-    idToken: 'required',
+    phone: 'required',
     firstName: 'required',
     lastName: 'required',
     email: 'required|email',
     role: 'required|in:client,professional',
   }),
-  authController.firebaseSignup
+  authController.phoneSignup
 );
 
 // Phone existence lookup — used by the sign-in flow to route unknown
@@ -69,20 +88,15 @@ router.post(
 );
 
 // Change the logged-in user's phone after verifying OTP on the new number.
-// Requires an authenticated session AND a fresh Firebase idToken for the
-// new number.
+// Requires an authenticated session AND a verified OTP for (newPhone,
+// 'change-phone').
 router.post(
   '/change-phone',
   authenticate,
   authLimiter,
-  validateBody({ idToken: 'required' }),
+  validateBody({ phone: 'required' }),
   authController.changePhone
 );
-
-// Public Firebase web-SDK config — apiKey, authDomain, etc. The client
-// fetches this on the login page to initialise the Firebase JS SDK at
-// runtime, so admins can rotate keys via the settings UI without rebuilding.
-router.get('/firebase-config', authController.firebaseConfig);
 
 // Public Razorpay config — just the key_id. Used by booking checkout and
 // subscription checkout to open Razorpay without baking a key into the

@@ -645,14 +645,13 @@ const login = async (email, password, meta = {}) => {
   };
 };
 
-// --- Firebase Phone Auth login --------------------------------------------
-// The frontend completes Firebase's SMS-OTP flow and posts the resulting ID
-// token here. We verify the token via firebase-admin, then map the verified
-// phone number to a local User (creating a thin client stub on first contact)
-// and issue our usual JWT session.
+// --- Phone-OTP login / signup ---------------------------------------------
+// The frontend hits /api/auth/phone/send-otp (delivers via Ping4SMS), then
+// /api/auth/phone/verify-otp to flip the OTP row to verified, then one of
+// /api/auth/phone-login | /api/auth/phone-signup | /api/auth/change-phone
+// which redeems the verified flag and commits the downstream change.
 
-const { verifyIdToken: verifyFirebaseIdToken } =
-  require('../config/firebase');
+const phoneOtpService = require('./phoneOtpService');
 
 /**
  * Normalise candidate phone strings for a lookup against `users.mobileNumber`.
@@ -698,24 +697,34 @@ const phoneIsRegistered = async (phone) => {
 };
 
 /**
- * Log in with a Firebase Phone Auth ID token. The user must already exist
- * (matched by mobileNumber). First-time onboarding goes through the
- * separate signupWithFirebase path so we never silently auto-create users
- * during a sign-in attempt.
+ * Log in with a phone number whose OTP was just verified via
+ * /api/auth/phone/verify-otp. The user must already exist (matched by
+ * mobileNumber). First-time onboarding goes through the separate
+ * signupWithPhone path so we never silently auto-create users during a
+ * sign-in attempt.
  *
- * @param {string} idToken - Firebase ID token from signInWithPhoneNumber
+ * @param {string} phone - phone number (any common format)
  * @param {{ userAgent?: string, ipAddress?: string }} [meta]
  * @returns {Promise<{ accessToken, refreshToken, user }>}
  */
-const loginWithFirebase = async (idToken, meta = {}) => {
-  const decoded = await verifyFirebaseIdToken(idToken);
-  const phone = decoded.phone_number || decoded.phoneNumber;
+const loginWithPhone = async (phone, meta = {}) => {
   if (!phone) {
     throw {
       statusCode: 400,
+      message: 'phone is required.',
+      code: 'INVALID_PHONE',
+    };
+  }
+  const okOtp = await phoneOtpService.hasVerifiedOtp({
+    phone,
+    purpose: 'login',
+  });
+  if (!okOtp) {
+    throw {
+      statusCode: 401,
       message:
-        'This Firebase token has no phone number — phone sign-in is required.',
-      code: 'FIREBASE_NO_PHONE',
+        'Verify the OTP for this phone number before logging in.',
+      code: 'OTP_NOT_VERIFIED',
     };
   }
 
@@ -748,15 +757,18 @@ const loginWithFirebase = async (idToken, meta = {}) => {
     };
   }
 
-  // Stamp mobileVerified=true on every successful Firebase login. If the
-  // phone was added via the legacy signup flow without verification, this
-  // flow effectively verifies it.
+  // Stamp mobileVerified=true on every successful phone-OTP login. If
+  // the phone was added via the legacy signup flow without verification,
+  // this flow effectively verifies it.
   if (!user.mobileVerified) user.mobileVerified = true;
   user.lastLogin = new Date();
   user.isOnline = true;
   if (!user.memberSince) user.memberSince = user.createdAt || new Date();
   if (!user.uuid) user.uuid = genUuid();
   await user.save();
+
+  // Burn the verified-OTP row so it can't be replayed.
+  await phoneOtpService.consumeOtp({ phone, purpose: 'login' });
 
   const { refreshToken } = await createSession(user, meta);
   return {
@@ -769,17 +781,18 @@ const loginWithFirebase = async (idToken, meta = {}) => {
 };
 
 /**
- * Sign up with a Firebase Phone Auth ID token + the rest of the profile
- * fields. Used by the phone-first signup wizard once the OTP step has
- * verified the user's number.
+ * Sign up with a phone number whose OTP was just verified via
+ * /api/auth/phone/verify-otp + the rest of the profile fields. Used by
+ * the phone-first signup wizard once the OTP step has verified the
+ * user's number.
  *
- *   1. verifyIdToken -> phone is verified
+ *   1. require a recent verified OTP for (phone, 'signup')
  *   2. Reject if a user already exists with that phone OR email
  *   3. Create the User (role gates: client | professional)
  *   4. Return our usual JWT + refresh session
  *
  * @param {object} payload
- * @param {string} payload.idToken    Firebase ID token (phone-verified)
+ * @param {string} payload.phone      Phone whose OTP was just verified
  * @param {string} payload.firstName
  * @param {string} payload.lastName
  * @param {string} payload.email
@@ -787,15 +800,25 @@ const loginWithFirebase = async (idToken, meta = {}) => {
  * @param {{ userAgent?: string, ipAddress?: string }} [meta]
  * @returns {Promise<{ accessToken, refreshToken, user }>}
  */
-const signupWithFirebase = async (payload = {}, meta = {}) => {
-  const { idToken, firstName, lastName, email, role } = payload;
-  const decoded = await verifyFirebaseIdToken(idToken);
-  const phone = decoded.phone_number || decoded.phoneNumber;
+const signupWithPhone = async (payload = {}, meta = {}) => {
+  const { phone, firstName, lastName, email, role } = payload;
   if (!phone) {
     throw {
       statusCode: 400,
-      message: 'Firebase token did not contain a verified phone number.',
-      code: 'FIREBASE_NO_PHONE',
+      message: 'phone is required.',
+      code: 'INVALID_PHONE',
+    };
+  }
+  const okOtp = await phoneOtpService.hasVerifiedOtp({
+    phone,
+    purpose: 'signup',
+  });
+  if (!okOtp) {
+    throw {
+      statusCode: 401,
+      message:
+        'Verify the OTP for this phone number before completing signup.',
+      code: 'OTP_NOT_VERIFIED',
     };
   }
 
@@ -851,6 +874,9 @@ const signupWithFirebase = async (payload = {}, meta = {}) => {
     uuid: genUuid(),
   });
 
+  // Burn the verified-OTP row so it can't be replayed.
+  await phoneOtpService.consumeOtp({ phone, purpose: 'signup' });
+
   const { refreshToken } = await createSession(user, meta);
   return {
     accessToken: signAccessToken(user),
@@ -861,21 +887,31 @@ const signupWithFirebase = async (payload = {}, meta = {}) => {
 
 /**
  * Change the logged-in user's mobile number after verifying ownership of
- * the NEW number via a Firebase Phone Auth ID token. Rejects if the new
- * number is already attached to another account.
+ * the NEW number via /api/auth/phone/verify-otp (purpose 'change-phone').
+ * Rejects if the new number is already attached to another account.
  *
- * @param {string} userId          Currently-logged-in user id
- * @param {string} idToken         Firebase ID token for the new number
+ * @param {string} userId  Currently-logged-in user id
+ * @param {string} phone   New phone number whose OTP was just verified
  * @returns {Promise<{ mobileNumber: string }>}
  */
-const changePhoneWithFirebase = async (userId, idToken) => {
-  const decoded = await verifyFirebaseIdToken(idToken);
-  const phone = decoded.phone_number || decoded.phoneNumber;
+const changePhone = async (userId, phone) => {
   if (!phone) {
     throw {
       statusCode: 400,
-      message: 'Firebase token did not contain a verified phone number.',
-      code: 'FIREBASE_NO_PHONE',
+      message: 'phone is required.',
+      code: 'INVALID_PHONE',
+    };
+  }
+  const okOtp = await phoneOtpService.hasVerifiedOtp({
+    phone,
+    purpose: 'change-phone',
+  });
+  if (!okOtp) {
+    throw {
+      statusCode: 401,
+      message:
+        'Verify the OTP for the new phone number before changing it.',
+      code: 'OTP_NOT_VERIFIED',
     };
   }
   const user = await User.findByPk(userId);
@@ -884,6 +920,7 @@ const changePhoneWithFirebase = async (userId, idToken) => {
   }
   // Same-number no-op — still treat as success (the OTP just re-verified).
   if (user.mobileNumber === phone) {
+    await phoneOtpService.consumeOtp({ phone, purpose: 'change-phone' });
     return { mobileNumber: phone };
   }
   // Reject if another user already holds this number.
@@ -900,6 +937,7 @@ const changePhoneWithFirebase = async (userId, idToken) => {
   user.mobileNumber = phone;
   user.mobileVerified = true;
   await user.save();
+  await phoneOtpService.consumeOtp({ phone, purpose: 'change-phone' });
   return { mobileNumber: phone };
 };
 
@@ -1610,9 +1648,9 @@ module.exports = {
   resolveApprovalStatus,
   signup,
   login,
-  loginWithFirebase,
-  signupWithFirebase,
-  changePhoneWithFirebase,
+  loginWithPhone,
+  signupWithPhone,
+  changePhone,
   phoneIsRegistered,
   logout,
   refresh,

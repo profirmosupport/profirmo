@@ -3,17 +3,16 @@
 // designation + city + rating, with the consultation fee as a
 // secondary accent block at the far right.
 
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import Card from '../common/Card';
+import AvatarWithInitials from '../common/AvatarWithInitials';
 import { imageUrl } from '../../utils/imageUrl';
 import { formatRupees } from '../../utils/formatters';
 import { colors, fontSize, fontWeight, spacing } from '../../theme';
 
 export default function ProfessionalCard({ pro, onPress }) {
   const photoUrl = imageUrl(pro.profilePhoto);
-  const initials = (pro.name || '?').trim().slice(0, 1).toUpperCase();
   const subtitle = pro.designation || pro.professionalType || 'Professional';
 
   return (
@@ -23,18 +22,12 @@ export default function ProfessionalCard({ pro, onPress }) {
     >
       <Card>
         <View style={styles.row}>
-          {photoUrl ? (
-            <Image source={{ uri: photoUrl }} style={styles.avatar} />
-          ) : (
-            <LinearGradient
-              colors={['#fde68a', '#f59e0b']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.avatar}
-            >
-              <Text style={styles.initials}>{initials}</Text>
-            </LinearGradient>
-          )}
+          <AvatarWithInitials
+            uri={photoUrl}
+            name={pro.name}
+            size={52}
+            style={{ borderRadius: 26 }}
+          />
 
           <View style={styles.body}>
             <View style={styles.nameRow}>

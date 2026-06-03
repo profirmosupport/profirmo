@@ -7,7 +7,7 @@ import Badge from '../../components/common/Badge';
 import Section from '../../components/common/Section';
 import Button from '../../components/common/Button';
 import EmptyState from '../../components/common/EmptyState';
-import HeroHeader from '../../components/common/HeroHeader';
+import DashboardHero from '../../components/common/DashboardHero';
 import { CardSkeleton } from '../../components/common/Skeleton';
 import { useAuth } from '../../contexts/AuthContext';
 import { listMyBookings } from '../../services/bookingService';
@@ -76,13 +76,19 @@ export default function ClientDashboardScreen({ navigation }) {
     .slice(0, 3);
 
   return (
-    <ScreenContainer refreshing={refreshing} onRefresh={load}>
-      <HeroHeader
+    <ScreenContainer refreshing={refreshing} onRefresh={load} bleedTop>
+      <DashboardHero
         eyebrow={`Hi, ${firstName}`}
         title={greeting()}
         subtitle="Find an expert and book in minutes."
-        trailingIcon="bell"
-        onTrailingPress={() => navigation.navigate('AccountNotifications')}
+        trailingPill="Client"
+        trailingPillTone="ghost"
+        ctaLabel="Find a professional"
+        ctaIcon="search"
+        onPressCta={() => {
+          const parent = navigation.getParent?.()?.getParent?.();
+          parent?.navigate?.('GuestSearch', { screen: 'GuestSearchMain' });
+        }}
       />
 
       <Card style={{ marginTop: spacing.lg }}>

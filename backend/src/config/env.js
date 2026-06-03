@@ -95,6 +95,14 @@ module.exports = {
   emailVerificationExpiryHours:
     Number(process.env.EMAIL_VERIFICATION_EXPIRY_HOURS) || 48,
 
+  // --- Ping4SMS (transactional SMS for phone OTP) -------------------------
+  // The API key has full send rights — keep it server-side. The default
+  // here is the project-provisioned key; override in production via env.
+  ping4sms: {
+    apiKey:
+      process.env.PING4SMS_API_KEY || 'a61b0019b215e2385064c1394c1251ac',
+  },
+
   // --- Razorpay -----------------------------------------------------------
   // Server-side credentials for Razorpay Standard Checkout. The KEY_ID is
   // also exposed to the frontend via NEXT_PUBLIC_RAZORPAY_KEY_ID; the

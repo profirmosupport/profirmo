@@ -4,6 +4,7 @@
 // action button rising above the bar so it reads as the primary
 // platform CTA.
 
+import { useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
@@ -96,7 +97,16 @@ function Tab({ meta, focused, onPress }) {
 // pill) inside a ring that switches to brand-amber on focus.
 function AvatarTab({ user, focused, onPress }) {
   const photoUrl = imageUrl(user && user.profilePhoto);
-  const initials = computeInitials(displayName(user));
+  // Track image load failures so a stale/404 photo URL falls through
+  // to the initials placeholder instead of rendering an empty box.
+  const [photoFailed, setPhotoFailed] = useState(false);
+  // Compute the placeholder text from any name signal we have; fall
+  // back to the email's local part so we still render readable letters
+  // (e.g. "VI" for "vishal@…") instead of "?".
+  const nameForInitials =
+    displayName(user) ||
+    (user && user.email ? String(user.email).split('@')[0] : '');
+  const initials = computeInitials(nameForInitials);
   return (
     <Pressable
       onPress={onPress}
@@ -108,18 +118,26 @@ function AvatarTab({ user, focused, onPress }) {
           focused && { borderColor: colors.primary },
         ]}
       >
-        {photoUrl ? (
-          <Image source={{ uri: photoUrl }} style={styles.avatarImg} />
-        ) : (
+        {/* Initials live at the base layer — always rendered. A
+            successful Image overlays them; if the image is missing,
+            slow, errors, or never fires onError, the initials are
+            still visible underneath. */}
+        <View style={styles.avatarImg}>
           <LinearGradient
             colors={['#fde68a', '#f59e0b']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={styles.avatarImg}
-          >
-            <Text style={styles.avatarInitials}>{initials}</Text>
-          </LinearGradient>
-        )}
+            style={StyleSheet.absoluteFillObject}
+          />
+          <Text style={styles.avatarInitials}>{initials}</Text>
+          {photoUrl && !photoFailed ? (
+            <Image
+              source={{ uri: photoUrl }}
+              style={StyleSheet.absoluteFillObject}
+              onError={() => setPhotoFailed(true)}
+            />
+          ) : null}
+        </View>
       </View>
       <Text
         style={[
@@ -226,6 +244,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: 12,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primarySoft,

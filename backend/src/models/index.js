@@ -51,6 +51,7 @@ const FirmJoinRequest = require('./FirmJoinRequest');
 // Stores email-OTP rows for the forgot-password / reset flow. userId and
 // email are plain indexed columns — no association / FK is declared.
 const PasswordResetOtp = require('./PasswordResetOtp');
+const PhoneOtpCode = require('./PhoneOtpCode');
 
 // --- App settings: taxonomy + locations -----------------------------------
 // Admin-managed lists that drive every category / sub-category / location
@@ -393,6 +394,7 @@ module.exports = {
   FirmInvitation,
   FirmJoinRequest,
   PasswordResetOtp,
+  PhoneOtpCode,
   Category,
   SubCategory,
   Country,

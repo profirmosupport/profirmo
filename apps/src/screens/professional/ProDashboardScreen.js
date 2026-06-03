@@ -5,7 +5,7 @@ import ScreenContainer from '../../components/common/ScreenContainer';
 import Card from '../../components/common/Card';
 import Badge from '../../components/common/Badge';
 import Section from '../../components/common/Section';
-import HeroHeader from '../../components/common/HeroHeader';
+import DashboardHero from '../../components/common/DashboardHero';
 import StatTile from '../../components/common/StatTile';
 import { CardSkeleton } from '../../components/common/Skeleton';
 import { useAuth } from '../../contexts/AuthContext';
@@ -53,13 +53,16 @@ export default function ProDashboardScreen({ navigation }) {
     .slice(0, 3);
 
   return (
-    <ScreenContainer refreshing={refreshing} onRefresh={load}>
-      <HeroHeader
+    <ScreenContainer refreshing={refreshing} onRefresh={load} bleedTop>
+      <DashboardHero
         eyebrow={`Welcome back, ${firstName}`}
         title={greeting()}
         subtitle="Here's your day at a glance."
-        trailingIcon="bell"
-        onTrailingPress={() => navigation.navigate('AccountNotifications')}
+        trailingPill={
+          (subscription && subscription.plan && subscription.plan.name) ||
+          'Free'
+        }
+        trailingPillTone="amber"
       />
 
       <Card style={{ marginTop: spacing.lg }}>

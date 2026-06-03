@@ -9,6 +9,8 @@ import {
   login as loginApi,
   logout as logoutApi,
   signup as signupApi,
+  loginWithPhone as loginWithPhoneApi,
+  signupWithPhone as signupWithPhoneApi,
 } from '../services/authService';
 import { registerUnauthorizedHandler } from '../services/api';
 import { getItem, removeItem, setItem, STORAGE_KEYS } from '../utils/storage';
@@ -20,6 +22,8 @@ const AuthContext = createContext({
   isAuthenticated: false,
   login: async () => {},
   signup: async () => {},
+  loginWithPhone: async () => {},
+  signupWithPhone: async () => {},
   logout: async () => {},
   refresh: async () => {},
   enterGuest: () => {},
@@ -120,6 +124,47 @@ export function AuthProvider({ children }) {
     return u;
   }, [refresh]);
 
+  // Phone-OTP login. Caller must have just hit verifyPhoneOtp({purpose:
+  // 'login'}); the backend redeems that verified flag and returns the
+  // standard session payload.
+  const loginWithPhone = useCallback(
+    async (phone) => {
+      const data = await loginWithPhoneApi(phone);
+      if (data && data.accessToken) {
+        await setItem(STORAGE_KEYS.accessToken, data.accessToken);
+      }
+      const u = (data && data.user) || (await refresh());
+      if (u) {
+        setUser(u);
+        await setItem(STORAGE_KEYS.user, u);
+        await removeItem(STORAGE_KEYS.guest);
+        setIsGuest(false);
+      }
+      return u;
+    },
+    [refresh]
+  );
+
+  // Phone-first SIGNUP. Same shape as loginWithPhone — the verified
+  // OTP gates the call; the backend creates the user + returns session.
+  const signupWithPhone = useCallback(
+    async (payload) => {
+      const data = await signupWithPhoneApi(payload);
+      if (data && data.accessToken) {
+        await setItem(STORAGE_KEYS.accessToken, data.accessToken);
+      }
+      const u = (data && data.user) || (await refresh());
+      if (u) {
+        setUser(u);
+        await setItem(STORAGE_KEYS.user, u);
+        await removeItem(STORAGE_KEYS.guest);
+        setIsGuest(false);
+      }
+      return u;
+    },
+    [refresh]
+  );
+
   const logout = useCallback(async () => {
     await logoutApi();
     await removeItem(STORAGE_KEYS.accessToken);
@@ -151,12 +196,26 @@ export function AuthProvider({ children }) {
       isAuthenticated: !!user,
       login,
       signup,
+      loginWithPhone,
+      signupWithPhone,
       logout,
       refresh,
       enterGuest,
       exitGuest,
     }),
-    [user, isGuest, loading, login, signup, logout, refresh, enterGuest, exitGuest]
+    [
+      user,
+      isGuest,
+      loading,
+      login,
+      signup,
+      loginWithPhone,
+      signupWithPhone,
+      logout,
+      refresh,
+      enterGuest,
+      exitGuest,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

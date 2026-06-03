@@ -24,7 +24,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Card from '../../components/common/Card';
 import EmptyState from '../../components/common/EmptyState';
 import { CardSkeleton } from '../../components/common/Skeleton';
-import { computeInitials } from '../../components/guest/ProfessionalHorizontalCard';
+import AvatarWithInitials from '../../components/common/AvatarWithInitials';
 import BookingCalendar from '../../components/booking/BookingCalendar';
 import TimeSlotSelector from '../../components/booking/TimeSlotSelector';
 import RazorpayCheckoutModal from '../../components/booking/RazorpayCheckoutModal';
@@ -79,7 +79,6 @@ export default function BookingScreen({ navigation, route }) {
   const [pro, setPro] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [photoFailed, setPhotoFailed] = useState(false);
 
   const [bookingType, setBookingType] = useState(BOOKING_TYPES.SCHEDULED);
   const [selectedDate, setSelectedDate] = useState(null);
@@ -154,7 +153,6 @@ export default function BookingScreen({ navigation, route }) {
   }
 
   const photoUrl = imageUrl(pro.profilePhoto);
-  const initials = computeInitials(pro.name);
   const subtitle = pro.designation || pro.professionalType || 'Professional';
   const perMinuteRate = pro.perMinuteRate ?? pro.consultationFee ?? 0;
   const estimatedCost = duration * Number(perMinuteRate || 0);
@@ -277,22 +275,12 @@ export default function BookingScreen({ navigation, route }) {
         {/* Pro mini-card */}
         <Card>
           <View style={styles.proRow}>
-            {photoUrl && !photoFailed ? (
-              <Image
-                source={{ uri: photoUrl }}
-                style={styles.avatar}
-                onError={() => setPhotoFailed(true)}
-              />
-            ) : (
-              <LinearGradient
-                colors={['#fde68a', '#f59e0b']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.avatar}
-              >
-                <Text style={styles.avatarInitials}>{initials}</Text>
-              </LinearGradient>
-            )}
+            <AvatarWithInitials
+              uri={photoUrl}
+              name={pro.name}
+              size={56}
+              style={{ borderRadius: 28 }}
+            />
             <View style={{ flex: 1 }}>
               <View style={styles.nameRow}>
                 <Text style={styles.name} numberOfLines={1}>

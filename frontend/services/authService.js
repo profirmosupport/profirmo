@@ -6,8 +6,11 @@ import { get, post } from '@/services/api';
 
 const ENDPOINTS = {
   login: '/api/auth/login',
-  firebaseLogin: '/api/auth/firebase',
-  firebaseSignup: '/api/auth/firebase-signup',
+  // Phone-OTP flow (replaces Firebase Phone Auth)
+  sendPhoneOtp: '/api/auth/phone/send-otp',
+  verifyPhoneOtp: '/api/auth/phone/verify-otp',
+  phoneLogin: '/api/auth/phone-login',
+  phoneSignup: '/api/auth/phone-signup',
   checkPhone: '/api/auth/check-phone',
   changePhone: '/api/auth/change-phone',
   signup: '/api/auth/signup',
@@ -48,17 +51,42 @@ export async function login(email, password) {
 }
 
 /**
- * Log in via Firebase Phone Auth.
- * The frontend completes signInWithPhoneNumber + .confirm() to mint a
- * Firebase ID token, then posts it here. Backend verifies the token, maps
- * the phone to a User (auto-creating a client stub on first contact), and
- * returns our usual { accessToken, token, user } payload.
+ * Send a phone-OTP SMS. `purpose` is one of 'login' | 'signup' |
+ * 'change-phone'. The backend reuses an existing live OTP (≤10 min)
+ * when present so a "resend" request sends the SAME code, then ships it
+ * to the user via Ping4SMS.
  *
- * @param {string} idToken - Firebase ID token from confirmPhoneOtp()
- * @returns {Promise<{accessToken,token,user}>}
+ * @param {string} phone   recipient phone (E.164 or local digits)
+ * @param {string} purpose 'login' | 'signup' | 'change-phone'
+ * @returns {Promise<{ phone:string, expiresAt:string, resent:boolean }>}
  */
-export async function loginWithFirebase(idToken) {
-  const res = await post(ENDPOINTS.firebaseLogin, { idToken });
+export async function sendPhoneOtp(phone, purpose) {
+  const res = await post(ENDPOINTS.sendPhoneOtp, { phone, purpose });
+  return unwrap(res);
+}
+
+/**
+ * Verify a phone OTP. Throws when the code is wrong / expired — inspect
+ * `err.payload.code` ('OTP_INCORRECT' | 'OTP_EXPIRED' |
+ * 'OTP_ATTEMPTS_EXCEEDED') and `err.payload.data.attemptsRemaining`.
+ *
+ * @param {string} phone
+ * @param {string} purpose
+ * @param {string} code   6-digit OTP
+ * @returns {Promise<{phone, purpose}>}
+ */
+export async function verifyPhoneOtp(phone, purpose, code) {
+  const res = await post(ENDPOINTS.verifyPhoneOtp, { phone, purpose, code });
+  return unwrap(res);
+}
+
+/**
+ * Complete a phone-OTP login. Must be called immediately after a
+ * successful verifyPhoneOtp({purpose:'login'}). Returns the standard
+ * session payload.
+ */
+export async function loginWithPhone(phone) {
+  const res = await post(ENDPOINTS.phoneLogin, { phone });
   return unwrap(res);
 }
 
@@ -74,21 +102,20 @@ export async function checkPhone(phone) {
 }
 
 /**
- * Complete the phone-first signup wizard. Backend verifies the Firebase
- * idToken (proves phone ownership), checks no other user holds that phone
- * or email, then creates the user and returns a session.
+ * Complete the phone-first signup wizard. Must be called immediately
+ * after a successful verifyPhoneOtp({purpose:'signup'}).
  */
-export async function signupWithFirebase(payload) {
-  const res = await post(ENDPOINTS.firebaseSignup, payload);
+export async function signupWithPhone(payload) {
+  const res = await post(ENDPOINTS.phoneSignup, payload);
   return unwrap(res);
 }
 
 /**
- * Change the logged-in user's mobile number. Requires an authenticated
- * session AND a fresh Firebase idToken for the NEW number.
+ * Change the logged-in user's mobile number. Must be called immediately
+ * after verifyPhoneOtp({purpose:'change-phone'}) for the new number.
  */
-export async function changePhone(idToken) {
-  const res = await post(ENDPOINTS.changePhone, { idToken });
+export async function changePhone(phone) {
+  const res = await post(ENDPOINTS.changePhone, { phone });
   return unwrap(res);
 }
 
@@ -300,8 +327,10 @@ export async function registerFirm(data) {
 
 export default {
   login,
-  loginWithFirebase,
-  signupWithFirebase,
+  sendPhoneOtp,
+  verifyPhoneOtp,
+  loginWithPhone,
+  signupWithPhone,
   checkPhone,
   changePhone,
   signup,

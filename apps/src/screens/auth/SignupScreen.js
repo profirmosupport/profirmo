@@ -13,7 +13,12 @@ import SearchableMultiSelect from '../../components/auth/SearchableMultiSelect';
 import ChipGroup from '../../components/auth/ChipGroup';
 import CheckboxRow from '../../components/auth/CheckboxRow';
 import SkipButton from '../../components/auth/SkipButton';
-import { registerProfessional } from '../../services/authService';
+import {
+  registerProfessional,
+  checkPhone,
+  sendPhoneOtp,
+  verifyPhoneOtp,
+} from '../../services/authService';
 import {
   listCategories,
   listLocations,
@@ -102,32 +107,39 @@ function categoryForType(cats, professionalType) {
 
 export default function SignupScreen({ navigation }) {
   const { enterGuest } = useAuth();
-  const [step, setStep] = useState('role'); // role | client | pro-type | pro-form
+  // phone (OTP) → role → client | pro-type → pro-form
+  const [step, setStep] = useState('phone');
+  const [verifiedPhone, setVerifiedPhone] = useState('');
   const [proType, setProType] = useState(null);
 
   function goBack() {
-    if (step === 'client' || step === 'pro-type') setStep('role');
+    if (step === 'role') setStep('phone');
+    else if (step === 'client' || step === 'pro-type') setStep('role');
     else if (step === 'pro-form') setStep('pro-type');
   }
 
   return (
     <AuthShell
       title={
-        step === 'role'
-          ? 'Create your account'
-          : step === 'pro-type'
-            ? 'Professional registration'
-            : null
+        step === 'phone'
+          ? 'Verify your mobile'
+          : step === 'role'
+            ? 'Create your account'
+            : step === 'pro-type'
+              ? 'Professional registration'
+              : null
       }
       subtitle={
-        step === 'role'
-          ? 'How will you use Profirmo?'
-          : step === 'pro-type'
-            ? 'Pick the kind of practice you run.'
-            : null
+        step === 'phone'
+          ? "We'll send a one-time code to confirm it's really you."
+          : step === 'role'
+            ? 'How will you use Profirmo?'
+            : step === 'pro-type'
+              ? 'Pick the kind of practice you run.'
+              : null
       }
       topRight={
-        step === 'role' ? <SkipButton onPress={enterGuest} /> : null
+        step === 'phone' ? <SkipButton onPress={enterGuest} /> : null
       }
       footer={
         <Text style={styles.footerText}>
@@ -141,20 +153,28 @@ export default function SignupScreen({ navigation }) {
         </Text>
       }
     >
-      {step !== 'role' ? (
+      {step !== 'phone' ? (
         <Pressable onPress={goBack} style={styles.backRow} hitSlop={8}>
           <Feather name="chevron-left" size={16} color={colors.textSecondary} />
           <Text style={styles.backText}>Back</Text>
         </Pressable>
       ) : null}
 
-      {step === 'role' ? (
+      {step === 'phone' ? (
+        <PhoneVerifyStep
+          onVerified={(phoneE164) => {
+            setVerifiedPhone(phoneE164);
+            setStep('role');
+          }}
+          onAlreadyRegistered={() => navigation.navigate('Login')}
+        />
+      ) : step === 'role' ? (
         <RoleStep
           onPickClient={() => setStep('client')}
           onPickProfessional={() => setStep('pro-type')}
         />
       ) : step === 'client' ? (
-        <ClientStep />
+        <ClientStep verifiedPhone={verifiedPhone} />
       ) : step === 'pro-type' ? (
         <ProTypeStep
           onPickLegal={() => {
@@ -167,9 +187,262 @@ export default function SignupScreen({ navigation }) {
           }}
         />
       ) : (
-        <ProRegistrationWizard professionalType={proType} />
+        <ProRegistrationWizard
+          professionalType={proType}
+          verifiedPhone={verifiedPhone}
+        />
       )}
     </AuthShell>
+  );
+}
+
+// ===========================================================================
+// PhoneVerifyStep — first step of signup. Mirrors the web's
+// PhoneVerifyStep: enter phone → send OTP → enter code → verify.
+// Rejects numbers already attached to an account.
+// ===========================================================================
+
+const SIGNUP_RESEND_COOLDOWN_SECONDS = 300;
+
+function toE164(raw) {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('+'))
+    return '+' + trimmed.slice(1).replace(/[^0-9]/g, '');
+  const digits = trimmed.replace(/[^0-9]/g, '');
+  if (digits.length === 10) return '+91' + digits;
+  if (digits.length === 12 && digits.startsWith('91')) return '+' + digits;
+  return '+' + digits;
+}
+
+function fmtMmSs(t) {
+  const m = Math.floor(t / 60);
+  const s = t % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function PhoneVerifyStep({ onVerified, onAlreadyRegistered }) {
+  const [innerStep, setInnerStep] = useState('enter-phone');
+  const [phone, setPhone] = useState('');
+  const [otp, setOtp] = useState('');
+  const [sentTo, setSentTo] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
+  const [resendIn, setResendIn] = useState(0);
+  const [alreadyRegistered, setAlreadyRegistered] = useState(false);
+
+  useEffect(() => {
+    if (resendIn <= 0) return undefined;
+    const t = setInterval(() => {
+      setResendIn((s) => (s > 0 ? s - 1 : 0));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [resendIn]);
+
+  async function handleSendOtp() {
+    setError('');
+    setInfo('');
+    setAlreadyRegistered(false);
+    const e164 = toE164(phone);
+    if (!/^\+\d{8,15}$/.test(e164)) {
+      setError('Enter a valid phone number including the country code.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      // Signup is for NEW accounts — reject numbers that already exist.
+      const check = await checkPhone(e164);
+      if (check && check.exists) {
+        setAlreadyRegistered(true);
+        return;
+      }
+      await sendPhoneOtp(e164, 'signup');
+      setSentTo(e164);
+      setInnerStep('enter-code');
+      setInfo(`We sent a 6-digit code to ${e164}.`);
+      setResendIn(SIGNUP_RESEND_COOLDOWN_SECONDS);
+    } catch (err) {
+      setError(err.message || 'Could not send the OTP. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleVerifyOtp() {
+    setError('');
+    if (!sentTo) {
+      setError('Please request a new OTP first.');
+      setInnerStep('enter-phone');
+      return;
+    }
+    if (!/^\d{6}$/.test(otp.trim())) {
+      setError('Enter the 6-digit code from the SMS.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await verifyPhoneOtp(sentTo, 'signup', otp.trim());
+      onVerified(sentTo);
+    } catch (err) {
+      setError(
+        err.message || 'Could not verify the code. It may be wrong or expired.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleResend() {
+    if (resending || resendIn > 0 || submitting) return;
+    setResending(true);
+    setError('');
+    setInfo('');
+    try {
+      const target = sentTo || toE164(phone);
+      await sendPhoneOtp(target, 'signup');
+      setSentTo(target);
+      setInfo(`A new code was sent to ${target}.`);
+      setResendIn(SIGNUP_RESEND_COOLDOWN_SECONDS);
+    } catch (err) {
+      setError(err.message || 'Could not resend the OTP. Please try again.');
+    } finally {
+      setResending(false);
+    }
+  }
+
+  return (
+    <View>
+      {error ? (
+        <View style={[styles.banner, styles.bannerDanger]}>
+          <Feather
+            name="alert-circle"
+            size={14}
+            color={colors.dangerSoftText}
+          />
+          <Text style={[styles.bannerText, { color: colors.dangerSoftText }]}>
+            {error}
+          </Text>
+        </View>
+      ) : null}
+      {info ? (
+        <View style={[styles.banner, styles.bannerSuccess]}>
+          <Feather name="check-circle" size={14} color={colors.success} />
+          <Text style={[styles.bannerText, { color: colors.success }]}>
+            {info}
+          </Text>
+        </View>
+      ) : null}
+      {alreadyRegistered ? (
+        <View style={styles.alreadyBox}>
+          <Feather name="alert-circle" size={14} color={colors.warning} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.alreadyTitle}>
+              This phone number is already registered.
+            </Text>
+            <Text style={styles.alreadyText}>Sign in instead to continue.</Text>
+            <Pressable
+              onPress={onAlreadyRegistered}
+              style={({ pressed }) => [
+                styles.alreadyCta,
+                pressed && { opacity: 0.85 },
+              ]}
+            >
+              <Text style={styles.alreadyCtaText}>Go to sign in</Text>
+              <Feather name="arrow-right" size={13} color={colors.primary} />
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
+      {innerStep === 'enter-phone' ? (
+        <>
+          <AuthInput
+            label="Mobile number"
+            icon="smartphone"
+            keyboardType="phone-pad"
+            placeholder="+91 98xxxxxxxx"
+            value={phone}
+            onChangeText={(v) => {
+              setPhone(v);
+              if (error) setError('');
+              if (alreadyRegistered) setAlreadyRegistered(false);
+            }}
+            hint="Indian numbers default to +91. You'll receive a 6-digit OTP by SMS."
+          />
+          <GradientButton
+            title={submitting ? 'Sending OTP…' : 'Send OTP'}
+            loading={submitting}
+            onPress={handleSendOtp}
+            style={{ marginTop: 6 }}
+          />
+        </>
+      ) : (
+        <>
+          <AuthInput
+            label="6-digit code"
+            icon="key"
+            keyboardType="number-pad"
+            placeholder="123456"
+            value={otp}
+            onChangeText={(v) => {
+              setOtp(v.replace(/[^0-9]/g, '').slice(0, 6));
+              if (error) setError('');
+            }}
+            maxLength={6}
+            editable={!submitting}
+          />
+          <GradientButton
+            title={submitting ? 'Verifying…' : 'Verify and continue'}
+            loading={submitting}
+            onPress={handleVerifyOtp}
+            style={{ marginTop: 6 }}
+          />
+          <View style={styles.otpFooter}>
+            <Pressable
+              disabled={submitting}
+              onPress={() => {
+                setInnerStep('enter-phone');
+                setOtp('');
+                setError('');
+                setInfo('');
+              }}
+              hitSlop={6}
+            >
+              <Text
+                style={[
+                  styles.linkMuted,
+                  submitting && { color: colors.textMuted },
+                ]}
+              >
+                Use a different number
+              </Text>
+            </Pressable>
+            <Pressable
+              disabled={submitting || resending || resendIn > 0}
+              onPress={handleResend}
+              hitSlop={6}
+            >
+              <Text
+                style={[
+                  styles.linkAccent,
+                  (submitting || resending || resendIn > 0) && {
+                    color: colors.textMuted,
+                  },
+                ]}
+              >
+                {resending
+                  ? 'Resending…'
+                  : resendIn > 0
+                    ? `Resend in ${fmtMmSs(resendIn)}`
+                    : 'Resend code'}
+              </Text>
+            </Pressable>
+          </View>
+        </>
+      )}
+    </View>
   );
 }
 
@@ -321,16 +594,22 @@ function flatCityOptions(countries) {
 // Client step — matches the web client form
 // ===========================================================================
 
-function ClientStep() {
-  const { signup } = useAuth();
+function ClientStep({ verifiedPhone }) {
+  const { signup, signupWithPhone } = useAuth();
   const { countries } = useLocations();
+
+  // When the wizard reached us via the phone-OTP first step, sign up
+  // with /api/auth/phone-signup (no password required) and lock the
+  // mobile field to the verified number. Otherwise fall back to the
+  // legacy /api/auth/signup flow with password + optional mobile.
+  const phoneFirst = Boolean(verifiedPhone);
 
   const [form, setForm] = useState({
     profilePhoto: '',
     firstName: '',
     lastName: '',
     email: '',
-    mobileNumber: '',
+    mobileNumber: verifiedPhone || '',
     password: '',
     countryId: '',
     stateId: '',
@@ -363,8 +642,14 @@ function ClientStep() {
     if (!form.email.trim()) next.email = 'Email is required.';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()))
       next.email = 'Enter a valid email.';
-    if (!form.password) next.password = 'Password is required.';
-    else if (form.password.length < 6) next.password = 'At least 6 characters.';
+    // Password is only required on the legacy (non-phone-OTP) signup
+    // path — phone-OTP signups have no password (phone is the channel
+    // of verification).
+    if (!phoneFirst) {
+      if (!form.password) next.password = 'Password is required.';
+      else if (form.password.length < 6)
+        next.password = 'At least 6 characters.';
+    }
     if (!form.countryId) next.country = 'Country is required.';
     if (!form.stateId) next.state = 'State is required.';
     if (!form.cityId) next.city = 'City is required.';
@@ -377,10 +662,25 @@ function ClientStep() {
     if (!validate()) return;
     setBanner('');
     setSubmitting(true);
-    const country = countries.find((c) => c.id === form.countryId);
-    const state = country?.states?.find((s) => s.id === form.stateId);
-    const city = state?.cities?.find((c) => c.id === form.cityId);
     try {
+      if (phoneFirst) {
+        // Phone-first signup — the backend redeems the verified OTP
+        // we just minted and returns the standard session payload.
+        await signupWithPhone({
+          phone: verifiedPhone,
+          firstName: form.firstName.trim(),
+          lastName: form.lastName.trim(),
+          email: form.email.trim(),
+          role: ROLES.CLIENT,
+        });
+        // (Address / photo / etc. get captured in the dashboard
+        // profile screen — v1 of the phone-first flow keeps the
+        // create-account payload narrow.)
+        return; // loader stays on until the auth flip swaps the navigator
+      }
+      const country = countries.find((c) => c.id === form.countryId);
+      const state = country?.states?.find((s) => s.id === form.stateId);
+      const city = state?.cities?.find((c) => c.id === form.cityId);
       await signup({
         firstName: form.firstName.trim(),
         lastName: form.lastName.trim(),
@@ -399,7 +699,6 @@ function ClientStep() {
       });
     } catch (err) {
       setBanner(err.message || 'Signup failed. Please try again.');
-    } finally {
       setSubmitting(false);
     }
   }
@@ -452,17 +751,28 @@ function ClientStep() {
         placeholder="+91 98xxxxxxxx"
         value={form.mobileNumber}
         onChangeText={(v) => set('mobileNumber', v)}
-        hint="You can verify your number after signup."
+        hint={
+          phoneFirst
+            ? 'Verified via OTP. Edit later from your profile.'
+            : 'You can verify your number after signup.'
+        }
+        editable={!phoneFirst}
       />
-      <AuthInput
-        label="Password"
-        icon="lock"
-        secureTextEntry
-        placeholder="At least 6 characters"
-        value={form.password}
-        onChangeText={(v) => set('password', v)}
-        error={errors.password}
-      />
+      {/* Phone-first signup is password-less — phone is the channel of
+          verification. The password field is only shown on the legacy
+          path (which is no longer reachable from the new flow but
+          kept for back-compat with deep links). */}
+      {!phoneFirst ? (
+        <AuthInput
+          label="Password"
+          icon="lock"
+          secureTextEntry
+          placeholder="At least 6 characters"
+          value={form.password}
+          onChangeText={(v) => set('password', v)}
+          error={errors.password}
+        />
+      ) : null}
 
       <SectionLabel>Location</SectionLabel>
       <LocationFields
@@ -502,7 +812,7 @@ function ClientStep() {
 // Professional 3-step wizard
 // ===========================================================================
 
-function ProRegistrationWizard({ professionalType }) {
+function ProRegistrationWizard({ professionalType, verifiedPhone }) {
   const { refresh } = useAuth();
   const isLegal = professionalType === PRO_TYPES.LEGAL;
   const { countries } = useLocations();
@@ -520,7 +830,12 @@ function ProRegistrationWizard({ professionalType }) {
     firstName: '',
     lastName: '',
     email: '',
-    mobileNumber: '',
+    // Pre-fill the verified phone — the field stays editable so the
+    // user can correct typos, but the OTP we minted is for THIS
+    // number. The backend's register-professional endpoint isn't OTP-
+    // gated yet (it goes through admin approval first), so this is
+    // currently a UX prefill rather than a hard constraint.
+    mobileNumber: verifiedPhone || '',
     password: '',
     confirmPassword: '',
     countryId: '',

@@ -1,6 +1,6 @@
 const authService = require('../services/authService');
-const adminSettingsService = require('../services/adminSettingsService');
 const professionalRegistrationService = require('../services/professionalRegistrationService');
+const phoneOtpService = require('../services/phoneOtpService');
 const asyncHandler = require('../utils/asyncHandler');
 const { successResponse } = require('../utils/responseHandler');
 const { logAudit } = require('../utils/auditLogger');
@@ -100,35 +100,79 @@ const razorpayConfig = asyncHandler(async (req, res) => {
   });
 });
 
-// GET /api/auth/firebase-config
-// Returns the PUBLIC subset of Firebase settings (the web SDK config — apiKey,
-// authDomain, projectId, storageBucket, messagingSenderId, appId). These are
-// public by design and the client SDK needs them to init at runtime.
-// Service-account fields (clientEmail / privateKey) are NEVER returned here.
-const firebaseConfig = asyncHandler(async (req, res) => {
-  const raw = await adminSettingsService.getPublicConfig();
-  // Project the registry keys onto the names the Firebase Web SDK expects.
-  const out = {
-    apiKey: raw.firebaseApiKey || '',
-    authDomain: raw.firebaseAuthDomain || '',
-    projectId: raw.firebaseProjectId || '',
-    storageBucket: raw.firebaseStorageBucket || '',
-    messagingSenderId: raw.firebaseMessagingSenderId || '',
-    appId: raw.firebaseAppId || '',
-    // Surfaced for informational/debug use on the client; the actual SDK
-    // verification path picks the key up from Firebase backend config,
-    // not from this field.
-    recaptchaEnterpriseSiteKey: raw.firebaseRecaptchaEnterpriseSiteKey || '',
-  };
-  // `configured` is the single flag the client checks — it requires the
-  // four web-SDK fields the auth flow actually uses.
-  const configured = Boolean(
-    out.apiKey && out.authDomain && out.projectId && out.appId
-  );
-  return successResponse(res, 200, 'Firebase web config', {
-    ...out,
-    configured,
-  });
+// --- Phone-OTP send / verify ----------------------------------------------
+//
+// Two-step flow used by login, signup and change-phone:
+//   POST /api/auth/phone/send-otp    body: { phone, purpose }
+//   POST /api/auth/phone/verify-otp  body: { phone, purpose, code }
+//
+// After /verify-otp succeeds, the caller can immediately POST the matching
+// downstream endpoint (/phone-login, /phone-signup, /change-phone). Those
+// endpoints check `hasVerifiedOtp(phone, purpose)` and consume the OTP
+// row on success so it can't be replayed.
+
+const sendPhoneOtp = asyncHandler(async (req, res) => {
+  const phone = String((req.body && req.body.phone) || '').trim();
+  const purpose = String((req.body && req.body.purpose) || 'login').trim();
+  if (!phone) {
+    return res.status(422).json({
+      success: false,
+      message: 'phone is required',
+      errors: { phone: 'phone is required' },
+    });
+  }
+  try {
+    const result = await phoneOtpService.sendOtp({ phone, purpose });
+    return successResponse(res, 200, 'OTP sent', {
+      phone: result.phone,
+      expiresAt: result.expiresAt,
+      resent: result.resent,
+      // Surface the OTP only in non-production so local + staging QA can
+      // bypass real SMS delivery.
+      debugCode: env.nodeEnv === 'production' ? undefined : result.debugCode,
+    });
+  } catch (err) {
+    if (err && err.code) {
+      return res.status(err.statusCode || 400).json({
+        success: false,
+        message: err.message,
+        errors: null,
+        code: err.code,
+      });
+    }
+    throw err;
+  }
+});
+
+const verifyPhoneOtp = asyncHandler(async (req, res) => {
+  const phone = String((req.body && req.body.phone) || '').trim();
+  const purpose = String((req.body && req.body.purpose) || 'login').trim();
+  const code = String((req.body && req.body.code) || '').trim();
+  if (!phone || !code) {
+    return res.status(422).json({
+      success: false,
+      message: 'phone and code are required',
+      errors: {
+        phone: phone ? undefined : 'phone is required',
+        code: code ? undefined : 'code is required',
+      },
+    });
+  }
+  try {
+    await phoneOtpService.verifyOtp({ phone, purpose, code });
+    return successResponse(res, 200, 'OTP verified', { phone, purpose });
+  } catch (err) {
+    if (err && err.code) {
+      return res.status(err.statusCode || 400).json({
+        success: false,
+        message: err.message,
+        errors: null,
+        code: err.code,
+        data: err.data || null,
+      });
+    }
+    throw err;
+  }
 });
 
 // POST /api/auth/check-phone
@@ -149,21 +193,23 @@ const checkPhone = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'Phone check', { exists });
 });
 
-// POST /api/auth/firebase-signup
-// Body: { idToken, firstName, lastName, email, role }
-// Phone-first wizard completes here: idToken proves phone ownership, the
-// rest of the fields are the new profile. Creates the user, returns session.
-const firebaseSignup = asyncHandler(async (req, res) => {
-  const { idToken, firstName, lastName, email, role } = req.body || {};
+// POST /api/auth/phone-signup
+// Body: { phone, firstName, lastName, email, role }
+// Phone-first wizard completes here. The caller must have already hit
+// /api/auth/phone/verify-otp with purpose='signup' for the same phone in
+// the last 10 minutes; the service double-checks that flag, creates the
+// user, returns session.
+const phoneSignup = asyncHandler(async (req, res) => {
+  const { phone, firstName, lastName, email, role } = req.body || {};
   try {
-    const result = await authService.signupWithFirebase(
-      { idToken, firstName, lastName, email, role },
+    const result = await authService.signupWithPhone(
+      { phone, firstName, lastName, email, role },
       reqMeta(req)
     );
     await logAudit({
       req,
       userId: result.user && result.user.id,
-      action: 'auth.firebase_signup',
+      action: 'auth.phone_signup',
       entity: 'user',
       entityId: result.user && result.user.id,
       status: 'success',
@@ -176,7 +222,7 @@ const firebaseSignup = asyncHandler(async (req, res) => {
   } catch (err) {
     await logAudit({
       req,
-      action: 'auth.firebase_signup_failed',
+      action: 'auth.phone_signup_failed',
       entity: 'user',
       status: 'failure',
       metadata: { code: err && err.code ? err.code : undefined },
@@ -187,8 +233,8 @@ const firebaseSignup = asyncHandler(async (req, res) => {
         err.code === 'EMAIL_ALREADY_REGISTERED' ||
         err.code === 'INVALID_ROLE' ||
         err.code === 'EMAIL_REQUIRED' ||
-        err.code === 'FIREBASE_NO_PHONE' ||
-        err.code === 'FIREBASE_NOT_CONFIGURED')
+        err.code === 'INVALID_PHONE' ||
+        err.code === 'OTP_NOT_VERIFIED')
     ) {
       return res.status(err.statusCode || 400).json({
         success: false,
@@ -201,45 +247,41 @@ const firebaseSignup = asyncHandler(async (req, res) => {
   }
 });
 
-// POST /api/auth/firebase
-// Body: { idToken }. The frontend completes signInWithPhoneNumber on the
-// client and posts the resulting Firebase ID token here. We verify it via
-// firebase-admin, map the phone to a User (which must already exist — first-
-// time onboarding goes through /api/auth/firebase-signup), and issue our
-// normal JWT + refresh cookie session.
-const firebaseLogin = asyncHandler(async (req, res) => {
-  const { idToken } = req.body || {};
+// POST /api/auth/phone-login
+// Body: { phone }. Caller must have already hit /api/auth/phone/verify-otp
+// with purpose='login' for the same phone in the last 10 minutes. We
+// verify the OTP-verified flag, map the phone to a User (which must exist
+// — first-time onboarding goes through /api/auth/phone-signup), and
+// issue our normal JWT + refresh cookie session.
+const phoneLogin = asyncHandler(async (req, res) => {
+  const { phone } = req.body || {};
   try {
-    const result = await authService.loginWithFirebase(idToken, reqMeta(req));
+    const result = await authService.loginWithPhone(phone, reqMeta(req));
     await logAudit({
       req,
       userId: result.user && result.user.id,
-      action: 'auth.firebase_login',
+      action: 'auth.phone_login',
       entity: 'user',
       entityId: result.user && result.user.id,
       status: 'success',
-      metadata: {
-        phone: result.user && result.user.mobileNumber,
-        isNewSignup: !!(result.user && result.user.isNewSignup),
-      },
+      metadata: { phone: result.user && result.user.mobileNumber },
     });
     return sendAuth(res, 200, 'Login successful', result);
   } catch (err) {
     await logAudit({
       req,
-      action: 'auth.firebase_login_failed',
+      action: 'auth.phone_login_failed',
       entity: 'user',
       status: 'failure',
       metadata: { code: err && err.code ? err.code : undefined },
     });
-    // Surface the machine-readable code on the documented rejection paths
-    // (suspended, pending approval, Firebase not configured, bad token, etc.)
     if (
       err &&
       (err.code === 'ACCOUNT_SUSPENDED' ||
         err.code === 'PENDING_APPROVAL' ||
-        err.code === 'FIREBASE_NOT_CONFIGURED' ||
-        err.code === 'FIREBASE_NO_PHONE')
+        err.code === 'PHONE_NOT_REGISTERED' ||
+        err.code === 'OTP_NOT_VERIFIED' ||
+        err.code === 'INVALID_PHONE')
     ) {
       return res.status(err.statusCode || 403).json({
         success: false,
@@ -472,14 +514,16 @@ const getMe = asyncHandler(async (req, res) => {
 });
 
 // POST /api/auth/change-phone   (requires Bearer access token)
-// Body: { idToken }. The frontend completes a Firebase Phone OTP flow
-// against the NEW number; we verify ownership, ensure no other user holds
-// that number, then update users.mobileNumber for the logged-in user.
+// Body: { phone }. The frontend completes a phone-OTP flow against the
+// NEW number via /api/auth/phone/send-otp + /api/auth/phone/verify-otp
+// with purpose='change-phone' BEFORE hitting this endpoint. The service
+// re-checks the verified flag, ensures no other user holds that number,
+// then updates users.mobileNumber for the logged-in user.
 const changePhone = asyncHandler(async (req, res) => {
   const userId = req.user && (req.user.id || req.user.sub);
-  const { idToken } = req.body || {};
+  const { phone } = req.body || {};
   try {
-    const result = await authService.changePhoneWithFirebase(userId, idToken);
+    const result = await authService.changePhone(userId, phone);
     await logAudit({
       req,
       userId,
@@ -503,8 +547,8 @@ const changePhone = asyncHandler(async (req, res) => {
     if (
       err &&
       (err.code === 'PHONE_ALREADY_REGISTERED' ||
-        err.code === 'FIREBASE_NO_PHONE' ||
-        err.code === 'FIREBASE_NOT_CONFIGURED')
+        err.code === 'INVALID_PHONE' ||
+        err.code === 'OTP_NOT_VERIFIED')
     ) {
       return res.status(err.statusCode || 400).json({
         success: false,
@@ -667,9 +711,10 @@ const resetPassword = asyncHandler(async (req, res) => {
 module.exports = {
   signup,
   login,
-  firebaseLogin,
-  firebaseSignup,
-  firebaseConfig,
+  phoneLogin,
+  phoneSignup,
+  sendPhoneOtp,
+  verifyPhoneOtp,
   razorpayConfig,
   checkPhone,
   changePhone,

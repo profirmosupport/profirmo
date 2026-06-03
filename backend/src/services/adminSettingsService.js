@@ -39,105 +39,17 @@ const SETTINGS = {
     format: (n) => String(Math.floor(Number(n) || 0)),
   },
 
-  // --- Firebase Phone Auth ----------------------------------------------
-  // The three "service account" keys are server-only — they sign ID-token
-  // verifications via firebase-admin. The six "web" keys are public by
-  // design (they're embedded in every client bundle that uses Firebase)
-  // and surface via GET /api/public/firebase-config so the browser can
-  // initialise the SDK at runtime without a rebuild.
-  firebaseProjectId: {
-    label: 'Firebase project ID',
+  // --- Ping4SMS (transactional SMS for phone OTP) -----------------------
+  // Single key — used server-side by smsService to deliver the 6-digit
+  // OTPs. Never exposed via the public config endpoint.
+  ping4smsApiKey: {
+    label: 'Ping4SMS API key',
     description:
-      'The project ID from the Firebase Console (Project Settings -> General). Shared between server and web SDK.',
-    defaultGetter: () => process.env.FIREBASE_PROJECT_ID || '',
+      'Server-side API key for Ping4SMS. Used to deliver the 6-digit OTP SMS for login, signup and phone change. Never exposed to the browser.',
+    defaultGetter: () => process.env.PING4SMS_API_KEY || '',
     type: 'string',
-    group: 'Firebase Phone Auth',
-    isPublic: true,
-    coerce: stringCoerce,
-    format: stringCoerce,
-  },
-  firebaseClientEmail: {
-    label: 'Firebase client email (service account)',
-    description:
-      'The `client_email` field from the service-account JSON. Server-only — used by firebase-admin to verify ID tokens.',
-    defaultGetter: () => process.env.FIREBASE_CLIENT_EMAIL || '',
-    type: 'string',
-    group: 'Firebase Phone Auth',
-    coerce: stringCoerce,
-    format: stringCoerce,
-  },
-  firebasePrivateKey: {
-    label: 'Firebase private key (service account)',
-    description:
-      'The `private_key` field from the service-account JSON (the entire "-----BEGIN PRIVATE KEY-----..." block, newlines preserved). Server-only — never exposed on a public endpoint.',
-    defaultGetter: () => process.env.FIREBASE_PRIVATE_KEY || '',
-    type: 'longtext',
-    group: 'Firebase Phone Auth',
+    group: 'SMS (Ping4SMS)',
     secret: true,
-    coerce: stringCoerce,
-    format: stringCoerce,
-  },
-  firebaseApiKey: {
-    label: 'Firebase Web API key',
-    description:
-      'From the Firebase Console (Project Settings -> Your apps -> Web app -> SDK setup). Embedded in the client bundle — not a secret.',
-    defaultGetter: () => process.env.NEXT_PUBLIC_FIREBASE_API_KEY || '',
-    type: 'string',
-    group: 'Firebase Phone Auth',
-    isPublic: true,
-    coerce: stringCoerce,
-    format: stringCoerce,
-  },
-  firebaseAuthDomain: {
-    label: 'Firebase auth domain',
-    description: 'Usually `<project-id>.firebaseapp.com`.',
-    defaultGetter: () => process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || '',
-    type: 'string',
-    group: 'Firebase Phone Auth',
-    isPublic: true,
-    coerce: stringCoerce,
-    format: stringCoerce,
-  },
-  firebaseStorageBucket: {
-    label: 'Firebase storage bucket',
-    description: 'Optional — usually `<project-id>.appspot.com`.',
-    defaultGetter: () => process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || '',
-    type: 'string',
-    group: 'Firebase Phone Auth',
-    isPublic: true,
-    coerce: stringCoerce,
-    format: stringCoerce,
-  },
-  firebaseMessagingSenderId: {
-    label: 'Firebase messaging sender ID',
-    description: 'Optional — numeric ID from the web-app SDK config.',
-    defaultGetter: () =>
-      process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '',
-    type: 'string',
-    group: 'Firebase Phone Auth',
-    isPublic: true,
-    coerce: stringCoerce,
-    format: stringCoerce,
-  },
-  firebaseAppId: {
-    label: 'Firebase web app ID',
-    description: 'The `appId` value from the web-app SDK config.',
-    defaultGetter: () => process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '',
-    type: 'string',
-    group: 'Firebase Phone Auth',
-    isPublic: true,
-    coerce: stringCoerce,
-    format: stringCoerce,
-  },
-  firebaseRecaptchaEnterpriseSiteKey: {
-    label: 'reCAPTCHA Enterprise site key',
-    description:
-      'reCAPTCHA Enterprise site key used by Firebase Phone Auth for App verification. Stored here for record only - the SDK picks the key up from the Firebase Console (Authentication > Settings > reCAPTCHA Enterprise). After pasting it here, register the same key in the Firebase Console for Phone Auth to honour it.',
-    defaultGetter: () =>
-      process.env.NEXT_PUBLIC_FIREBASE_RECAPTCHA_ENTERPRISE_SITE_KEY || '',
-    type: 'string',
-    group: 'Firebase Phone Auth',
-    isPublic: true,
     coerce: stringCoerce,
     format: stringCoerce,
   },
@@ -225,9 +137,8 @@ async function listAll() {
 
 /**
  * Return only the settings flagged `isPublic: true`, with their RAW
- * (non-masked) values. Intended for the public `/api/public/firebase-config`
- * endpoint — these values are public by design (they're embedded in every
- * client SDK config).
+ * (non-masked) values. Intended for public config endpoints — these
+ * values are public by design (they're embedded in client bundles).
  *
  * @returns {Promise<Object>} key -> value map (raw strings/numbers)
  */
@@ -277,22 +188,10 @@ async function getNumber(key) {
   }
 }
 
-// Keys that, when changed, must invalidate cached integrations elsewhere
-// in the process (e.g. the firebase-admin App instance).
-const FIREBASE_ADMIN_KEYS = new Set([
-  'firebaseProjectId',
-  'firebaseClientEmail',
-  'firebasePrivateKey',
-]);
 
 /**
  * Set a setting. Validates the key + coerces the value. Returns the new
  * coerced value so the admin UI can echo it back.
- *
- * Side-effect: when a Firebase service-account key changes we tear the
- * cached firebase-admin app down so the next /api/auth/firebase call
- * re-initialises against the new credentials. Without this the server
- * would have to restart for the new key to take effect.
  */
 async function set(key, value, actorUserId) {
   const spec = SETTINGS[key];
@@ -317,15 +216,6 @@ async function set(key, value, actorUserId) {
       description: spec.description,
       updatedByUserId: actorUserId || null,
     });
-  }
-  if (FIREBASE_ADMIN_KEYS.has(key)) {
-    try {
-      // Required lazily — avoids a circular import at module load time.
-      const firebase = require('../config/firebase');
-      if (typeof firebase.reset === 'function') firebase.reset();
-    } catch {
-      /* ignore — reset is best-effort */
-    }
   }
   return coerced;
 }

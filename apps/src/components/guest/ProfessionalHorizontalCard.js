@@ -2,10 +2,10 @@
 // FlatList carousels. Avatar + headline meta on top, "View profile"
 // + "Book now" CTAs anchored to the bottom.
 
-import { useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import AvatarWithInitials from '../common/AvatarWithInitials';
 import { imageUrl } from '../../utils/imageUrl';
 import { formatRupees } from '../../utils/formatters';
 import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
@@ -22,17 +22,12 @@ export default function ProfessionalHorizontalCard({
   width = PRO_CARD_WIDTH,
 }) {
   const photoUrl = imageUrl(pro.profilePhoto);
-  // Track image load failures so a broken/404 photo URL still falls
-  // through to the initials placeholder instead of rendering as an
-  // empty box.
-  const [photoFailed, setPhotoFailed] = useState(false);
   const subtitle = pro.designation || pro.professionalType || 'Professional';
   const categories = Array.isArray(pro.subCategories) ? pro.subCategories : [];
   // Some legacy rows carry a separate `perMinuteRate`; fall back to
   // `consultationFee` (which on the new model is already a per-minute
   // number for pros who price by the minute).
   const perMinuteRate = pro.perMinuteRate ?? pro.consultationFee;
-  const initials = computeInitials(pro.name);
   // Only show the "Book now" CTA when the professional has opted into
   // online booking. Otherwise we show a single full-width "View profile"
   // button — the visitor can still see the profile but won't be
@@ -43,15 +38,12 @@ export default function ProfessionalHorizontalCard({
   return (
     <View style={[styles.card, { width }]}>
       <View style={styles.head}>
-        {photoUrl && !photoFailed ? (
-          <Image
-            source={{ uri: photoUrl }}
-            style={styles.avatar}
-            onError={() => setPhotoFailed(true)}
-          />
-        ) : (
-          <PlaceholderAvatar initials={initials} />
-        )}
+        <AvatarWithInitials
+          uri={photoUrl}
+          name={pro.name}
+          size={52}
+          style={{ borderRadius: 26 }}
+        />
         <View style={{ flex: 1 }}>
           <View style={styles.nameRow}>
             <Text style={styles.name} numberOfLines={1}>

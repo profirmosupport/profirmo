@@ -223,10 +223,20 @@ function AccountStack() {
 }
 
 export default function GuestTabs() {
+  // Professionals land on their Dashboard tab so the workspace is
+  // one tap away after login. Everyone else (clients + guests)
+  // lands on the Home tab — the rich landing carousel + search.
+  // `initialRouteName` is only read once when the navigator mounts,
+  // which is exactly the moment of login (RootNavigator swaps
+  // AuthStack → GuestTabs as soon as `user` is set).
+  const { user } = useAuth();
+  const initial =
+    user && user.role === ROLES.PROFESSIONAL ? 'GuestSignup' : 'GuestHome';
   return (
     <Tab.Navigator
       tabBar={(props) => <GuestTabBar {...props} />}
       screenOptions={{ headerShown: false }}
+      initialRouteName={initial}
     >
       <Tab.Screen name="GuestHome" component={HomeStack} />
       <Tab.Screen name="GuestSearch" component={SearchStack} />

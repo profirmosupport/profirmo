@@ -1,10 +1,10 @@
 'use client';
 
-// ChangePhoneModal — runs the Firebase Phone OTP flow against a new number,
-// then submits the resulting idToken to POST /api/auth/change-phone. The
-// backend rejects if another user already holds the new number.
+// ChangePhoneModal — runs the phone-OTP flow against a new number, then
+// submits POST /api/auth/change-phone. The backend rejects if another
+// user already holds the new number.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X,
@@ -17,13 +17,11 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import {
+  changePhone,
+  checkPhone,
   sendPhoneOtp,
-  confirmPhoneOtp,
-  clearRecaptcha,
-  loadFirebaseConfig,
-  firebaseConfigured,
-} from '@/lib/firebase';
-import { changePhone, checkPhone } from '@/services/authService';
+  verifyPhoneOtp,
+} from '@/services/authService';
 
 const RESEND_COOLDOWN_SECONDS = 300;
 
@@ -53,35 +51,24 @@ export default function ChangePhoneModal({
 }) {
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
+  const [sentTo, setSentTo] = useState('');
   const [step, setStep] = useState('enter-phone'); // 'enter-phone' | 'enter-code'
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [resendIn, setResendIn] = useState(0);
-  const [configState, setConfigState] = useState('loading');
-  const confirmationRef = useRef(null);
 
-  // Lifecycle: prep firebase on open, tear down on close.
+  // Reset every time the modal opens.
   useEffect(() => {
-    if (!open) return undefined;
-    let active = true;
+    if (!open) return;
     setStep('enter-phone');
     setPhone('');
     setOtp('');
+    setSentTo('');
     setError('');
     setInfo('');
     setResendIn(0);
-    setConfigState('loading');
-    confirmationRef.current = null;
-    loadFirebaseConfig().then(() => {
-      if (!active) return;
-      setConfigState(firebaseConfigured() ? 'ready' : 'unavailable');
-    });
-    return () => {
-      active = false;
-      clearRecaptcha();
-    };
   }, [open]);
 
   // Cooldown ticker.
@@ -103,10 +90,6 @@ export default function ChangePhoneModal({
     e && e.preventDefault();
     setError('');
     setInfo('');
-    if (configState !== 'ready') {
-      setError('Phone change is not configured yet. Please contact support.');
-      return;
-    }
     const e164 = toE164(phone);
     if (!/^\+\d{8,15}$/.test(e164)) {
       setError('Enter a valid phone number including the country code.');
@@ -129,11 +112,8 @@ export default function ChangePhoneModal({
         );
         return;
       }
-      const confirmation = await sendPhoneOtp(
-        e164,
-        'change-phone-recaptcha-container'
-      );
-      confirmationRef.current = confirmation;
+      await sendPhoneOtp(e164, 'change-phone');
+      setSentTo(e164);
       setStep('enter-code');
       setInfo(`We sent a 6-digit code to ${e164}.`);
       setResendIn(RESEND_COOLDOWN_SECONDS);
@@ -142,7 +122,6 @@ export default function ChangePhoneModal({
         (err && (err.message || err.code)) ||
           'Could not send the OTP. Please try again.'
       );
-      clearRecaptcha();
     } finally {
       setSubmitting(false);
     }
@@ -151,7 +130,7 @@ export default function ChangePhoneModal({
   async function handleVerifyOtp(e) {
     e.preventDefault();
     setError('');
-    if (!confirmationRef.current) {
+    if (!sentTo) {
       setError('Please request a new OTP first.');
       setStep('enter-phone');
       return;
@@ -162,14 +141,10 @@ export default function ChangePhoneModal({
     }
     setSubmitting(true);
     try {
-      const idToken = await confirmPhoneOtp(
-        confirmationRef.current,
-        otp.trim()
-      );
-      // Backend will reject if the new number is attached to another
-      // account; surface that as a friendly inline error.
-      const result = await changePhone(idToken);
-      const newPhone = (result && result.mobileNumber) || toE164(phone);
+      await verifyPhoneOtp(sentTo, 'change-phone', otp.trim());
+      // Backend re-checks ownership + uniqueness; surface conflicts inline.
+      const result = await changePhone(sentTo);
+      const newPhone = (result && result.mobileNumber) || sentTo;
       if (typeof onChanged === 'function') onChanged(newPhone);
     } catch (err) {
       setError(
@@ -186,16 +161,11 @@ export default function ChangePhoneModal({
     setResending(true);
     setError('');
     setInfo('');
-    clearRecaptcha();
-    confirmationRef.current = null;
     try {
-      const e164 = toE164(phone);
-      const confirmation = await sendPhoneOtp(
-        e164,
-        'change-phone-recaptcha-container'
-      );
-      confirmationRef.current = confirmation;
-      setInfo(`A new code was sent to ${e164}.`);
+      const target = sentTo || toE164(phone);
+      await sendPhoneOtp(target, 'change-phone');
+      setSentTo(target);
+      setInfo(`A new code was sent to ${target}.`);
       setResendIn(RESEND_COOLDOWN_SECONDS);
     } catch (err) {
       setError(
@@ -229,18 +199,6 @@ export default function ChangePhoneModal({
         </div>
 
         <div className="space-y-4 p-5">
-          {configState === 'loading' && (
-            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
-              <Loader2 size={16} className="animate-spin" />
-              <span>Loading…</span>
-            </div>
-          )}
-          {configState === 'unavailable' && (
-            <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
-              <AlertCircle size={16} className="mt-0.5 shrink-0" />
-              <span>Phone change is not configured. Contact support.</span>
-            </div>
-          )}
           {error && (
             <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
               <AlertCircle size={16} className="mt-0.5 shrink-0" />
@@ -377,10 +335,6 @@ export default function ChangePhoneModal({
             </form>
           )}
 
-          <div
-            id="change-phone-recaptcha-container"
-            className="flex justify-center"
-          />
         </div>
       </div>
     </div>,

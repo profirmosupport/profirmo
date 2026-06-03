@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, Suspense } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -18,15 +18,13 @@ import {
 } from 'lucide-react';
 import BrandLogo from '@/components/common/BrandLogo';
 import { useAuth } from '@/components/AuthProvider';
-import { resendVerification, checkPhone } from '@/services/authService';
-import { validateForm, loginRules } from '@/utils/validators';
 import {
+  resendVerification,
+  checkPhone,
   sendPhoneOtp,
-  confirmPhoneOtp,
-  clearRecaptcha,
-  firebaseConfigured,
-  loadFirebaseConfig,
-} from '@/lib/firebase';
+  verifyPhoneOtp,
+} from '@/services/authService';
+import { validateForm, loginRules } from '@/utils/validators';
 
 // Five minutes between an OTP send and the next allowed Resend. Matches the
 // product spec.
@@ -46,12 +44,16 @@ function safeNext(raw) {
 
 function PhoneTab({ onAuthenticated, nextPath }) {
   const router = useRouter();
-  const { loginWithFirebase } = useAuth();
+  const { loginWithPhone } = useAuth();
 
   // Two-step state: 'enter-phone' -> 'enter-code'
   const [step, setStep] = useState('enter-phone');
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
+  // The E.164-normalised phone we sent the OTP to. Used as the stable
+  // identifier for verify + login (the user might edit `phone` after we
+  // sent the code; we always verify against the original target).
+  const [sentTo, setSentTo] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
   const [error, setError] = useState('');
@@ -63,10 +65,6 @@ function PhoneTab({ onAuthenticated, nextPath }) {
   // Counts down from RESEND_COOLDOWN_SECONDS after each successful send.
   const [resendIn, setResendIn] = useState(0);
 
-  // Persist the ConfirmationResult between renders without re-running the
-  // sendOtp flow — Firebase requires this object to call .confirm(code).
-  const confirmationRef = useRef(null);
-
   // Resend cooldown ticker. Runs only while the timer is positive.
   useEffect(() => {
     if (resendIn <= 0) return undefined;
@@ -75,23 +73,6 @@ function PhoneTab({ onAuthenticated, nextPath }) {
     }, 1000);
     return () => clearInterval(t);
   }, [resendIn]);
-
-  // Config is now fetched at runtime from /api/auth/firebase-config, so we
-  // can't know synchronously whether phone sign-in is available. Trigger
-  // the load on mount and reflect it in `configState`.
-  const [configState, setConfigState] = useState('loading'); // loading|ready|unavailable
-
-  useEffect(() => {
-    let active = true;
-    loadFirebaseConfig().then(() => {
-      if (!active) return;
-      setConfigState(firebaseConfigured() ? 'ready' : 'unavailable');
-    });
-    return () => {
-      active = false;
-      clearRecaptcha();
-    };
-  }, []);
 
   function toE164(raw) {
     // Strip everything that isn't a digit or leading +. Default to +91 when
@@ -112,13 +93,6 @@ function PhoneTab({ onAuthenticated, nextPath }) {
     setError('');
     setInfo('');
     setUnregistered(false);
-    if (configState !== 'ready') {
-      setError(
-        'Phone sign-in is not configured yet. An admin can enable it under ' +
-          'Platform settings → Firebase Phone Auth, or use the Email tab.'
-      );
-      return;
-    }
     const e164 = toE164(phone);
     if (!/^\+\d{8,15}$/.test(e164)) {
       setError('Enter a valid phone number including the country code.');
@@ -126,16 +100,15 @@ function PhoneTab({ onAuthenticated, nextPath }) {
     }
     setSubmitting(true);
     try {
-      // Existence check BEFORE burning an SMS / reCAPTCHA. Avoids any UX
-      // confusion where an unregistered user receives an OTP they then
-      // can't redeem.
+      // Existence check BEFORE burning an SMS. Avoids any UX confusion
+      // where an unregistered user receives an OTP they then can't redeem.
       const check = await checkPhone(e164);
       if (!check || !check.exists) {
         setUnregistered(true);
         return;
       }
-      const confirmation = await sendPhoneOtp(e164, 'recaptcha-container');
-      confirmationRef.current = confirmation;
+      await sendPhoneOtp(e164, 'login');
+      setSentTo(e164);
       setStep('enter-code');
       setInfo(`We sent a 6-digit code to ${e164}.`);
       setResendIn(RESEND_COOLDOWN_SECONDS);
@@ -144,8 +117,6 @@ function PhoneTab({ onAuthenticated, nextPath }) {
         (err && (err.message || err.code)) ||
           'Could not send the OTP. Please try again.'
       );
-      // Reset the verifier so a retry isn't blocked by a stale instance.
-      clearRecaptcha();
     } finally {
       setSubmitting(false);
     }
@@ -154,7 +125,7 @@ function PhoneTab({ onAuthenticated, nextPath }) {
   async function handleVerifyOtp(e) {
     e.preventDefault();
     setError('');
-    if (!confirmationRef.current) {
+    if (!sentTo) {
       setError('Please request a new OTP first.');
       setStep('enter-phone');
       return;
@@ -165,16 +136,28 @@ function PhoneTab({ onAuthenticated, nextPath }) {
     }
     setSubmitting(true);
     try {
-      const idToken = await confirmPhoneOtp(confirmationRef.current, otp.trim());
-      await loginWithFirebase(idToken);
+      // Step 1: verify the OTP server-side. Sets a verified flag on the
+      // OTP row that the next call redeems.
+      await verifyPhoneOtp(sentTo, 'login', otp.trim());
+      // Step 2: redeem the verified flag to mint a session.
+      await loginWithPhone(sentTo);
       onAuthenticated && onAuthenticated();
-      router.push(nextPath);
+      // Use replace so the user can't back-button into the login page,
+      // and DON'T clear `submitting` — the loader stays visible until the
+      // component unmounts at the destination route. Without this the
+      // spinner blinks off and the button "Verify and sign in" briefly
+      // re-appears between the auth state flip and the navigation
+      // committing.
+      router.replace(nextPath);
+      return;
     } catch (err) {
+      const code = err && err.payload && err.payload.code;
       setError(
         (err && err.message) ||
-          'Could not verify the code. It may be wrong or expired.'
+          (code === 'OTP_INCORRECT'
+            ? 'The code you entered is incorrect.'
+            : 'Could not verify the code. It may be wrong or expired.')
       );
-    } finally {
       setSubmitting(false);
     }
   }
@@ -184,13 +167,11 @@ function PhoneTab({ onAuthenticated, nextPath }) {
     setResending(true);
     setError('');
     setInfo('');
-    clearRecaptcha();
-    confirmationRef.current = null;
     try {
-      const e164 = toE164(phone);
-      const confirmation = await sendPhoneOtp(e164, 'recaptcha-container');
-      confirmationRef.current = confirmation;
-      setInfo(`A new 6-digit code was sent to ${e164}.`);
+      const target = sentTo || toE164(phone);
+      await sendPhoneOtp(target, 'login');
+      setSentTo(target);
+      setInfo(`A new 6-digit code was sent to ${target}.`);
       setResendIn(RESEND_COOLDOWN_SECONDS);
     } catch (err) {
       setError(
@@ -210,21 +191,6 @@ function PhoneTab({ onAuthenticated, nextPath }) {
 
   return (
     <div>
-      {configState === 'loading' && (
-        <div className="mb-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
-          <Loader2 size={16} className="animate-spin" />
-          <span>Loading sign-in options…</span>
-        </div>
-      )}
-      {configState === 'unavailable' && (
-        <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
-          <AlertCircle size={16} className="mt-0.5 shrink-0" />
-          <span>
-            Phone sign-in is not configured yet. Use the Email tab, or ask an
-            admin to add the Firebase keys under Platform settings.
-          </span>
-        </div>
-      )}
       {error && (
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
           <AlertCircle size={16} className="mt-0.5 shrink-0" />
@@ -328,7 +294,8 @@ function PhoneTab({ onAuthenticated, nextPath }) {
                 autoComplete="one-time-code"
                 inputMode="numeric"
                 maxLength={6}
-                className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-base tracking-[0.4em] text-slate-800 placeholder-slate-400 transition focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200"
+                disabled={submitting}
+                className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-base tracking-[0.4em] text-slate-800 placeholder-slate-400 transition focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200 disabled:cursor-not-allowed disabled:bg-slate-50"
               />
             </div>
           </div>
@@ -354,20 +321,21 @@ function PhoneTab({ onAuthenticated, nextPath }) {
           <div className="flex items-center justify-between text-xs">
             <button
               type="button"
+              disabled={submitting}
               onClick={() => {
                 setStep('enter-phone');
                 setOtp('');
                 setError('');
                 setInfo('');
               }}
-              className="font-semibold text-slate-500 transition hover:text-slate-700"
+              className="font-semibold text-slate-500 transition hover:text-slate-700 disabled:cursor-not-allowed disabled:text-slate-300"
             >
               Use a different number
             </button>
             <button
               type="button"
               onClick={handleResend}
-              disabled={resending || resendIn > 0}
+              disabled={submitting || resending || resendIn > 0}
               className="inline-flex items-center gap-1 font-semibold text-amber-700 transition hover:text-amber-800 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:text-slate-400"
             >
               <RotateCcw size={12} />
@@ -381,10 +349,6 @@ function PhoneTab({ onAuthenticated, nextPath }) {
         </form>
       )}
 
-      {/* reCAPTCHA host — must exist before sendPhoneOtp runs. In
-          'normal' mode the widget renders a visible "I'm not a robot"
-          checkbox here; in 'invisible' mode this stays empty. */}
-      <div id="recaptcha-container" className="mt-3 flex justify-center" />
     </div>
   );
 }

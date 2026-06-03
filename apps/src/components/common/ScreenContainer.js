@@ -47,6 +47,12 @@ export default function ScreenContainer({
   // We then skip the local topStrip AND drop the body's default
   // 16-px top padding so content sits flush below the header.
   hasNavHeader = false,
+  // bleedTop=true lets the FIRST child render under the status bar.
+  // We skip the ink topStrip AND the body's 16-px top padding AND
+  // make the SafeAreaView ignore the top inset, so a hero gradient
+  // can paint all the way to y=0. The hero itself is expected to
+  // pad its content past `insets.top`.
+  bleedTop = false,
   style,
   contentStyle,
 }) {
@@ -61,19 +67,23 @@ export default function ScreenContainer({
 
   // Suppress the local ink strip when a navigator header is already
   // painting the top inset — otherwise we get two dark blocks.
-  const showTopStrip = headerTone === 'dark' && !hasNavHeader;
+  const showTopStrip = headerTone === 'dark' && !hasNavHeader && !bleedTop;
+  const safeEdges = bleedTop
+    ? edges.filter((e) => e !== 'top')
+    : edges;
   return (
     <View style={[styles.root, style]}>
       {showTopStrip ? (
         <View style={[styles.topStrip, { height: insets.top }]} />
       ) : null}
-      <SafeAreaView style={styles.safe} edges={edges}>
+      <SafeAreaView style={styles.safe} edges={safeEdges}>
         <Inner {...innerProps}>
           {scroll ? (
             <ScrollView
               contentContainerStyle={[
                 styles.scroll,
                 hasNavHeader && styles.scrollUnderHeader,
+                bleedTop && styles.scrollBleedTop,
                 contentStyle,
               ]}
               keyboardShouldPersistTaps="handled"
@@ -95,6 +105,7 @@ export default function ScreenContainer({
               style={[
                 styles.body,
                 hasNavHeader && styles.bodyUnderHeader,
+                bleedTop && styles.bodyBleedTop,
                 contentStyle,
               ]}
             >
@@ -121,4 +132,9 @@ const styles = StyleSheet.create({
   // header → content boundary reads as one block.
   scrollUnderHeader: { paddingTop: spacing.md },
   bodyUnderHeader: { paddingTop: 0 },
+  // bleedTop: the first child (a hero gradient) paints under the
+  // status bar. Zero top padding + no horizontal padding constraint
+  // so the hero can stretch edge-to-edge.
+  scrollBleedTop: { paddingTop: 0 },
+  bodyBleedTop: { paddingTop: 0 },
 });

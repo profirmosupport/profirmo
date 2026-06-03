@@ -21,6 +21,7 @@ import Card from '../../components/common/Card';
 import Badge from '../../components/common/Badge';
 import EmptyState from '../../components/common/EmptyState';
 import { CardSkeleton } from '../../components/common/Skeleton';
+import AvatarWithInitials from '../../components/common/AvatarWithInitials';
 import { computeInitials } from '../../components/guest/ProfessionalHorizontalCard';
 import StarRow from '../../components/guest/StarRow';
 import ReviewComposer from '../../components/guest/ReviewComposer';
@@ -39,7 +40,6 @@ export default function ProfessionalDetailScreen({ navigation, route }) {
   const [pro, setPro] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [photoFailed, setPhotoFailed] = useState(false);
 
   const [cities, setCities] = useState({}); // id → city name
   const [reviews, setReviews] = useState([]);
@@ -145,22 +145,12 @@ export default function ProfessionalDetailScreen({ navigation, route }) {
         {/* Hero card */}
         <Card>
           <View style={styles.heroRow}>
-            {photoUrl && !photoFailed ? (
-              <Image
-                source={{ uri: photoUrl }}
-                style={styles.avatar}
-                onError={() => setPhotoFailed(true)}
-              />
-            ) : (
-              <LinearGradient
-                colors={['#fde68a', '#f59e0b']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.avatar}
-              >
-                <Text style={styles.avatarInitials}>{initials}</Text>
-              </LinearGradient>
-            )}
+            <AvatarWithInitials
+              uri={photoUrl}
+              name={pro.name}
+              size={72}
+              style={{ borderRadius: 36 }}
+            />
             <View style={{ flex: 1 }}>
               <View style={styles.nameRow}>
                 <Text style={styles.name}>{pro.name}</Text>
