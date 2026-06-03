@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowRight, Sparkles, ShieldCheck, Clock, BadgeCheck } from 'lucide-react';
+import { ArrowRight, ShieldCheck, Clock } from 'lucide-react';
 import { useLanguage } from '@/components/LanguageProvider';
 
 // Fixed pravatar ids — always render real human faces.
@@ -87,30 +87,19 @@ export default function CTASection() {
                 aria-hidden="true"
               />
 
-              {/* Framed consultant portrait on a solid brand gradient */}
+              {/* Framed consultant portrait on a solid brand gradient. The
+                  source lives at /public/images/cta-consultant.jpg so an
+                  admin can swap the file without touching the code. The
+                  object-position keeps the subject's face in frame at
+                  the tall portrait aspect we render. */}
               <div className="relative overflow-hidden rounded-3xl border border-white/15 bg-gradient-to-br from-amber-600 to-amber-500 p-1.5 shadow-glow">
                 <div className="relative overflow-hidden rounded-[1.35rem] bg-slate-900">
                   <img
-                    src="https://i.pravatar.cc/520?img=33"
+                    src="/images/cta-consultant.jpg"
                     alt={t('cta.consultantAlt')}
                     loading="lazy"
-                    className="h-64 w-full object-cover"
+                    className="h-80 w-full object-cover object-top"
                   />
-                  <div
-                    className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-transparent to-transparent"
-                    aria-hidden="true"
-                  />
-                  <div className="absolute inset-x-3 bottom-3 flex items-center gap-1.5">
-                    <div>
-                      <p className="flex items-center gap-1 text-sm font-semibold text-white">
-                        {t('cta.consultantName')}
-                        <BadgeCheck className="h-4 w-4 text-teal-300" />
-                      </p>
-                      <p className="text-xs font-medium text-amber-200">
-                        {t('cta.consultantRole')}
-                      </p>
-                    </div>
-                  </div>
                 </div>
               </div>
 
