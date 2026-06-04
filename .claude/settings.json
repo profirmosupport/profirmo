@@ -86,7 +86,10 @@
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); p=d['data'][0]; print\\('image fields:', {k:v for k,v in p.items\\(\\) if 'image' in k.lower\\(\\) or 'cover' in k.lower\\(\\) or 'photo' in k.lower\\(\\) or 'thumb' in k.lower\\(\\)}\\)\")",
       "Bash(curl -s \"https://profirmo.onrender.com/api/professionals?limit=2\")",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); items=d['data']['items'] if isinstance\\(d.get\\('data'\\), dict\\) else d.get\\('data', []\\); [print\\(p.get\\('name'\\),'·photo:', p.get\\('profilePhoto'\\),'·fee:', p.get\\('consultationFee'\\)\\) for p in items]\")",
-      "Bash(npx expo *)"
+      "Bash(npx expo *)",
+      "Bash(lsof -ti:5001 -ti:3000 -ti:8081)",
+      "WebFetch(domain:ecourtsindia.com)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/ecourts)"
     ]
   }
 }

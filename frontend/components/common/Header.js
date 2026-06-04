@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, X, ArrowRight, Languages } from 'lucide-react';
+import { Menu, X, ArrowRight, Languages, LogIn, UserPlus } from 'lucide-react';
 import { NAV_LINKS } from '@/utils/constants';
 import { useLanguage } from '@/components/LanguageProvider';
 import { useAuth } from '@/components/AuthProvider';
@@ -15,6 +15,7 @@ import CurrentPlanBadge from '@/components/common/CurrentPlanBadge';
 const NAV_KEYS = {
   '/professionals': 'nav.professionals',
   '/firms': 'nav.firms',
+  '/ecourts': 'nav.eCourts',
   '/blog': 'nav.blog',
   '/how-it-works': 'nav.howItWorks',
   '/pricing': 'nav.pricing',
@@ -138,6 +139,29 @@ export default function Header() {
 
         <div className="flex items-center gap-2 lg:hidden">
           <LangSwitch lang={lang} setLang={setLang} />
+          {/* Auth icon buttons on the mobile bar — visible only when the
+              visitor isn't signed in. Logged-in users get their profile
+              + notification controls inside the menu instead. */}
+          {!authLoading && !isAuthenticated && (
+            <>
+              <Link
+                href="/login"
+                aria-label={t('nav.signIn')}
+                title={t('nav.signIn')}
+                className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:border-teal-300 hover:bg-slate-50"
+              >
+                <LogIn className="h-5 w-5" />
+              </Link>
+              <Link
+                href="/signup"
+                aria-label={t('nav.getStarted')}
+                title={t('nav.getStarted')}
+                className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-glow-sm transition hover:shadow-glow"
+              >
+                <UserPlus className="h-5 w-5" />
+              </Link>
+            </>
+          )}
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
@@ -165,42 +189,22 @@ export default function Header() {
               {t(NAV_KEYS[link.href] || link.label)}
             </Link>
           ))}
-          <div className="mt-3 flex flex-col gap-2 border-t border-slate-200 pt-4">
-            {authLoading ? (
-              <div
-                className="h-11 w-full animate-pulse rounded-xl bg-slate-100"
-                aria-hidden="true"
-              />
-            ) : isAuthenticated ? (
-              <>
-                <Link
-                  href="/dashboard"
-                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-center text-sm font-semibold text-slate-700 transition hover:border-teal-300 hover:bg-slate-50"
-                >
-                  {t('nav.dashboard') || 'Dashboard'}
-                </Link>
-                <div className="flex justify-start">
-                  <ProfileDropdown />
-                </div>
-              </>
-            ) : (
-              <>
-                <Link
-                  href="/login"
-                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-center text-sm font-semibold text-slate-700 transition hover:border-teal-300 hover:bg-slate-50"
-                >
-                  {t('nav.signIn')}
-                </Link>
-                <Link
-                  href="/signup"
-                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-2.5 text-sm font-semibold text-white shadow-glow-sm transition hover:shadow-glow"
-                >
-                  {t('nav.getStarted')}
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </>
-            )}
-          </div>
+          {/* Signed-in users get a dashboard shortcut + profile menu here.
+              For signed-out visitors the login/signup CTAs live on the
+              mobile header bar above, not in this slide-down panel. */}
+          {!authLoading && isAuthenticated && (
+            <div className="mt-3 flex flex-col gap-2 border-t border-slate-200 pt-4">
+              <Link
+                href="/dashboard"
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-center text-sm font-semibold text-slate-700 transition hover:border-teal-300 hover:bg-slate-50"
+              >
+                {t('nav.dashboard') || 'Dashboard'}
+              </Link>
+              <div className="flex justify-start">
+                <ProfileDropdown />
+              </div>
+            </div>
+          )}
         </nav>
       </div>
     </header>

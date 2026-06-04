@@ -8,6 +8,7 @@ export const translations = {
     // --- Header / navigation ---
     'nav.professionals': 'Professionals',
     'nav.firms': 'Firms',
+    'nav.eCourts': 'E-Courts India',
     'nav.blog': 'Blog',
     'nav.howItWorks': 'How it works',
     'nav.pricing': 'Pricing',
@@ -303,6 +304,7 @@ export const translations = {
     // --- Header / navigation ---
     'nav.professionals': 'प्रोफेशनल',
     'nav.firms': 'फर्म',
+    'nav.eCourts': 'ई-कोर्ट्स इंडिया',
     'nav.blog': 'ब्लॉग',
     'nav.howItWorks': 'यह कैसे काम करता है',
     'nav.pricing': 'मूल्य निर्धारण',

@@ -90,6 +90,22 @@ const SETTINGS = {
     coerce: stringCoerce,
     format: stringCoerce,
   },
+
+  // --- E-Courts India (case lookup proxy) -------------------------------
+  // Used by /api/ecourts/* to call ecourtsindia.com on behalf of the
+  // browser. Server-only — the partner key is never exposed to clients
+  // (would leak our quota). Sent as Bearer in the Authorization header.
+  ecourtsApiKey: {
+    label: 'E-Courts India API key',
+    description:
+      'Partner API key (eci_live_…) for ecourtsindia.com. Used server-side to proxy case search + detail + order-download calls from the /ecourts page. Never sent to the browser. Get one at https://ecourtsindia.com/api/docs.',
+    defaultGetter: () => process.env.ECOURTS_API_KEY || '',
+    type: 'string',
+    group: 'E-Courts India',
+    secret: true,
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
 };
 
 const KNOWN_KEYS = Object.keys(SETTINGS);

@@ -64,6 +64,36 @@ const Case = sequelize.define(
     // booking" by the convertBookingToCase controller — deleting the case
     // clears the row, so the next conversion is free to create another.
     bookingId: { type: DataTypes.STRING(64), allowNull: true },
+
+    // --- E-Courts India (eci) integration -----------------------------
+    // When a case is imported from ecourtsindia.com the columns below are
+    // populated from the partner API. `source = 'ecourts'` flags such
+    // rows so the dashboard can show the "Update from E-Court" button
+    // (which re-fetches and stores a fresh snapshot under `eciSnapshot`).
+    // Manual cases keep source = 'manual'.
+    source: {
+      type: DataTypes.STRING(32),
+      allowNull: false,
+      defaultValue: 'manual',
+    },
+    cnr: { type: DataTypes.STRING(32), allowNull: true },
+    caseType: { type: DataTypes.STRING(64), allowNull: true },
+    courtCode: { type: DataTypes.STRING(64), allowNull: true },
+    state: { type: DataTypes.STRING(64), allowNull: true },
+    district: { type: DataTypes.STRING(128), allowNull: true },
+    filingDate: { type: DataTypes.DATEONLY, allowNull: true },
+    decisionDate: { type: DataTypes.DATEONLY, allowNull: true },
+    petitioners: jsonField('petitioners', []),
+    respondents: jsonField('respondents', []),
+    judges: jsonField('judges', []),
+    petitionerAdvocates: jsonField('petitionerAdvocates', []),
+    respondentAdvocates: jsonField('respondentAdvocates', []),
+    actsAndSections: jsonField('actsAndSections', []),
+    // Full upstream JSON blob (courtCaseData) from the last sync — used
+    // to diff fresh fetches against the stored snapshot so the UI can
+    // show "what changed since you last viewed".
+    eciSnapshot: { type: DataTypes.JSON, allowNull: true },
+    eciSyncedAt: { type: DataTypes.DATE, allowNull: true },
   },
   {
     tableName: 'cases',
@@ -77,6 +107,11 @@ const Case = sequelize.define(
       // One live case per booking — see convertBookingToCase. Not unique at
       // the DB level (NULL is allowed for cases created without a booking).
       { fields: ['bookingId'] },
+      // E-Courts index — a single (userId-scoped) CNR can only be imported
+      // once per owner. The duplicate check lives in the import controller
+      // (not a DB unique constraint), so this index is just for lookup speed.
+      { fields: ['cnr'] },
+      { fields: ['source'] },
     ],
   }
 );

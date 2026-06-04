@@ -896,6 +896,41 @@ async function runMigrations() {
     }
   }
 
+  // E-Courts India integration: extend the existing `cases` table with the
+  // partner-API fields used by the case-detail dashboard. Idempotent — each
+  // ADD COLUMN IF NOT EXISTS is safe to re-run on every boot.
+  const CASE_ECI_COLUMNS = [
+    ['source', "VARCHAR(32) NOT NULL DEFAULT 'manual'"],
+    ['cnr', 'VARCHAR(32) NULL'],
+    ['caseType', 'VARCHAR(64) NULL'],
+    ['courtCode', 'VARCHAR(64) NULL'],
+    ['state', 'VARCHAR(64) NULL'],
+    ['district', 'VARCHAR(128) NULL'],
+    ['filingDate', 'DATE NULL'],
+    ['decisionDate', 'DATE NULL'],
+    ['petitioners', 'LONGTEXT NULL'],
+    ['respondents', 'LONGTEXT NULL'],
+    ['judges', 'LONGTEXT NULL'],
+    ['petitionerAdvocates', 'LONGTEXT NULL'],
+    ['respondentAdvocates', 'LONGTEXT NULL'],
+    ['actsAndSections', 'LONGTEXT NULL'],
+    ['eciSnapshot', 'LONGTEXT NULL'],
+    ['eciSyncedAt', 'DATETIME NULL'],
+  ];
+  for (const [col, type] of CASE_ECI_COLUMNS) {
+    try {
+      await sequelize.query(
+        `ALTER TABLE \`cases\` ADD COLUMN IF NOT EXISTS \`${col}\` ${type}`
+      );
+    } catch (err) {
+      if (!/doesn'?t exist|Unknown table/i.test(err.message)) {
+        console.warn(
+          `[Migrate] Could not add cases.${col}: ${err.message}`
+        );
+      }
+    }
+  }
+
   console.log('[Migrate] Migrations finished successfully.');
 }
 

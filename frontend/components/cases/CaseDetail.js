@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import {
   Briefcase,
   Pencil,
@@ -19,6 +19,11 @@ import {
   Mail,
   MapPin,
   Building2,
+  Scale,
+  CloudDownload,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
 } from 'lucide-react';
 import Card from '@/components/common/Card';
 import Button from '@/components/common/Button';
@@ -31,6 +36,7 @@ import AddCaseModal from '@/components/cases/AddCaseModal';
 import { resolveFileUrl } from '@/services/fileService';
 import caseService from '@/services/caseService';
 import { getLawFirm } from '@/services/profileService';
+import { syncCaseFromEcourts } from '@/services/ecourtsService';
 import { useAuth } from '@/components/AuthProvider';
 import { formatDate, formatDateTime } from '@/utils/formatters';
 
@@ -110,6 +116,7 @@ function Skeleton() {
  */
 export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { user } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -172,6 +179,32 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
   const [updateOpen, setUpdateOpen] = useState(false);
 
   const [editOpen, setEditOpen] = useState(false);
+
+  // E-Courts India sync — modal showing what changed between the locally
+  // stored snapshot and the live partner-API copy. `syncing` covers the
+  // network call; `eciResult` carries { case, diff } on success.
+  const [syncing, setSyncing] = useState(false);
+  const [eciOpen, setEciOpen] = useState(false);
+  const [eciResult, setEciResult] = useState(null);
+  const [eciError, setEciError] = useState('');
+
+  async function refreshFromEcourts() {
+    if (syncing) return;
+    setSyncing(true);
+    setEciError('');
+    setEciResult(null);
+    setEciOpen(true);
+    try {
+      const res = await syncCaseFromEcourts(caseId);
+      setEciResult(res);
+      // Pull the fresh case data into the page so the field rows refresh.
+      if (res && res.case) setData(res.case);
+    } catch (err) {
+      setEciError(err.message || 'Could not refresh from E-Courts.');
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   const loadCase = useCallback(async () => {
     setLoading(true);
@@ -429,6 +462,16 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                 {data.priority || 'medium'}
               </Badge>
               {data.category && <Badge variant="gray">{data.category}</Badge>}
+              {data.cnr && (
+                <span
+                  title="E-Courts India CNR"
+                  className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-800 ring-1 ring-inset ring-amber-200"
+                >
+                  <Scale size={10} />
+                  CNR
+                  <span className="font-mono">{data.cnr}</span>
+                </span>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -441,6 +484,17 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
               <RefreshCw size={15} />
               Refresh
             </Button>
+            {data && data.source === 'ecourts' && data.cnr ? (
+              <Button
+                variant="primary"
+                size="sm"
+                href={`/ecourts/${encodeURIComponent(data.cnr)}?from=${encodeURIComponent(pathname || '')}`}
+                title="Open the live E-Courts India record for this case"
+              >
+                <CloudDownload size={15} />
+                Update from E-Court
+              </Button>
+            ) : null}
             {!isClient && (() => {
               // A firm case (2+ assignees) is owned by the firm, not any
               // individual member — only the firm admin can edit it.
@@ -991,24 +1045,40 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
       </Card>
 
       {/* Danger zone — case deletion lives at the very bottom of the page
-          so it stays out of the way until you explicitly scroll to it. */}
-      {!isClient && (
-        <Card className="border-red-200">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-red-700">Danger zone</h3>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Deleting the case removes every note, update, attachment, and
-                activity-log entry. This cannot be undone.
-              </p>
+          so it stays out of the way until you explicitly scroll to it.
+          Clients can only delete their own cases when no professional has
+          been assigned yet (server-enforced as well). */}
+      {(() => {
+        const assignees = Array.isArray(data && data.professionalIds)
+          ? data.professionalIds.filter(Boolean)
+          : [];
+        const hasPro = !!(data && data.professionalId) || assignees.length > 0;
+        const canDelete = isClient ? !hasPro : true;
+        if (isClient && hasPro) return null;
+        return (
+          <Card className="border-red-200">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-red-700">Danger zone</h3>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {isClient
+                    ? 'Deleting this case removes every note and update you added. No professional is assigned yet, so this can be done from your side. This cannot be undone.'
+                    : 'Deleting the case removes every note, update, attachment, and activity-log entry. This cannot be undone.'}
+                </p>
+              </div>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={openDeleteCase}
+                disabled={!canDelete}
+              >
+                <Trash2 size={14} />
+                Delete case
+              </Button>
             </div>
-            <Button variant="danger" size="sm" onClick={openDeleteCase}>
-              <Trash2 size={14} />
-              Delete case
-            </Button>
-          </div>
-        </Card>
-      )}
+          </Card>
+        );
+      })()}
 
       {/* Full-description popup */}
       <Modal
@@ -1375,7 +1445,392 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
           record the deletion.
         </p>
       </Modal>
+
+      {/* E-Courts India sync modal — shows what changed since last refresh */}
+      <Modal
+        open={eciOpen}
+        onClose={() => setEciOpen(false)}
+        title="Update from E-Courts India"
+        size="lg"
+        footer={
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setEciOpen(false)}
+            disabled={syncing}
+          >
+            Done
+          </Button>
+        }
+      >
+        {syncing ? (
+          <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-600">
+            <Loader2 size={18} className="animate-spin text-amber-600" />
+            <div>
+              <p className="font-semibold text-slate-800">
+                Fetching the latest record…
+              </p>
+              <p className="text-xs text-slate-500">
+                E-Courts can take 10–60 seconds to respond. Please don&apos;t
+                close this window.
+              </p>
+            </div>
+          </div>
+        ) : eciError ? (
+          <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+            <AlertCircle size={16} className="mt-0.5 shrink-0" />
+            <span>{eciError}</span>
+          </div>
+        ) : eciResult ? (
+          <EcourtsDiffBody result={eciResult} />
+        ) : null}
+      </Modal>
     </div>
+  );
+}
+
+// EcourtsDiffBody — renders the full latest snapshot from E-Courts plus
+// a "what changed since last sync" banner. The diff payload is computed
+// server-side so users see deltas at a glance, but the bulk of the modal
+// shows the complete current state (parties, hearings, orders, judgments)
+// — that's what a returning user actually wants to scan.
+function EcourtsDiffBody({ result }) {
+  const c = (result && result.case) || {};
+  const snap = c.eciSnapshot || {};
+  const diff = (result && result.diff) || {};
+  const newKeys = new Set(
+    (diff.newHearings || []).map(
+      (h) =>
+        `${h.hearingDate || h.businessOnDate || ''}|${h.purposeOfListing || h.purpose || ''}`
+    )
+  );
+  const newOrderKeys = new Set(
+    (diff.newOrders || []).map(
+      (o) => `${o.orderDate || ''}|${o.orderUrl || o.filename || ''}`
+    )
+  );
+  const interim = Array.isArray(snap.interimOrders) ? snap.interimOrders : [];
+  const judgments = Array.isArray(snap.judgmentOrders)
+    ? snap.judgmentOrders
+    : [];
+  const hearings = Array.isArray(snap.historyOfCaseHearings)
+    ? snap.historyOfCaseHearings
+    : [];
+
+  const apiBase =
+    typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_URL
+      ? process.env.NEXT_PUBLIC_API_URL
+      : '';
+
+  return (
+    <div className="space-y-5">
+      {/* Summary banner — diff-aware. */}
+      {diff.isFirstSync ? (
+        <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-700">
+          <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+          <span>
+            First refresh saved. Future syncs will mark only what&apos;s new.
+          </span>
+        </div>
+      ) : diff.hasAnyChange ? (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+          <RefreshCw size={16} className="mt-0.5 shrink-0" />
+          <span>
+            {(diff.fieldChanges || []).length} field change(s),{' '}
+            {(diff.newHearings || []).length} new hearing(s),{' '}
+            {(diff.newOrders || []).length} new order(s) since the last
+            refresh — highlighted below.
+          </span>
+        </div>
+      ) : (
+        <div className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
+          <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-600" />
+          <span>
+            No new updates from E-Courts India since the last refresh — full
+            current record below.
+          </span>
+        </div>
+      )}
+
+      {/* Field changes (only when something changed) */}
+      {(diff.fieldChanges || []).length > 0 ? (
+        <section>
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            What changed
+          </h4>
+          <ul className="mt-2 space-y-2">
+            {diff.fieldChanges.map((ch, i) => (
+              <li
+                key={`${ch.field}-${i}`}
+                className="rounded-lg border border-amber-200 bg-amber-50/60 p-3 text-sm"
+              >
+                <p className="text-xs font-semibold text-amber-800">
+                  {ch.field}
+                </p>
+                <p className="mt-1 text-slate-700">
+                  <span className="rounded bg-red-100 px-1.5 py-0.5 text-[11px] font-mono text-red-700 line-through">
+                    {String(ch.from || '—')}
+                  </span>{' '}
+                  <span className="mx-1 text-slate-400">→</span>{' '}
+                  <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[11px] font-mono text-emerald-700">
+                    {String(ch.to || '—')}
+                  </span>
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {/* Case summary grid */}
+      <section>
+        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+          Case summary
+        </h4>
+        <div className="mt-2 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-3">
+          <KV label="CNR" value={c.cnr} mono />
+          <KV label="Status" value={snap.caseStatus || '—'} />
+          <KV label="Case type" value={snap.caseType || c.caseType || '—'} />
+          <KV
+            label="Case number"
+            value={snap.caseNumber || c.caseNumber || '—'}
+          />
+          <KV
+            label="Court"
+            value={snap.courtName || snap.courtCode || c.courtName || '—'}
+          />
+          <KV
+            label="District / State"
+            value={
+              [snap.district || c.district, snap.state || c.state]
+                .filter(Boolean)
+                .join(', ') || '—'
+            }
+          />
+          <KV label="Filed on" value={formatDate(snap.filingDate || c.filingDate)} />
+          <KV
+            label="Registered on"
+            value={formatDate(snap.registrationDate)}
+          />
+          <KV
+            label="Decision date"
+            value={formatDate(snap.decisionDate || c.decisionDate)}
+          />
+          <KV
+            label="Next hearing"
+            value={formatDate(snap.nextHearingDate || c.nextHearingDate)}
+          />
+          <KV
+            label="Refreshed"
+            value={
+              c.eciSyncedAt
+                ? formatDateTime(c.eciSyncedAt)
+                : 'just now'
+            }
+          />
+        </div>
+      </section>
+
+      {/* Parties */}
+      <section>
+        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+          Parties &amp; counsel
+        </h4>
+        <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <PartyList
+            label="Petitioner(s)"
+            items={snap.petitioners || c.petitioners}
+          />
+          <PartyList
+            label="Respondent(s)"
+            items={snap.respondents || c.respondents}
+          />
+          <PartyList
+            label="Petitioner's advocates"
+            items={snap.petitionerAdvocates || c.petitionerAdvocates}
+          />
+          <PartyList
+            label="Respondent's advocates"
+            items={snap.respondentAdvocates || c.respondentAdvocates}
+          />
+          <PartyList label="Judges" items={snap.judges || c.judges} />
+        </div>
+      </section>
+
+      {/* Acts & sections */}
+      {Array.isArray(snap.actsAndSections) && snap.actsAndSections.length > 0 ? (
+        <section>
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Acts &amp; sections
+          </h4>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {snap.actsAndSections.map((a, i) => (
+              <span
+                key={`${a}-${i}`}
+                className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-700"
+              >
+                {a}
+              </span>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {/* Hearings */}
+      {hearings.length > 0 ? (
+        <section>
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Hearing history ({hearings.length})
+          </h4>
+          <ul className="mt-2 max-h-72 space-y-2 overflow-y-auto pr-1">
+            {hearings.map((h, i) => {
+              const k = `${h.hearingDate || h.businessOnDate || ''}|${h.purposeOfListing || h.purpose || ''}`;
+              const isNew = newKeys.has(k);
+              return (
+                <li
+                  key={i}
+                  className={`rounded-lg border p-3 text-sm ${
+                    isNew
+                      ? 'border-emerald-300 bg-emerald-50'
+                      : 'border-slate-200 bg-white'
+                  }`}
+                >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className="font-semibold text-slate-900">
+                      {formatDate(h.hearingDate || h.businessOnDate) || '—'}
+                    </p>
+                    {isNew ? (
+                      <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase text-white">
+                        New
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-0.5 text-xs text-slate-600">
+                    {h.purposeOfListing || h.purpose || '—'}
+                  </p>
+                  {h.judge ? (
+                    <p className="mt-0.5 text-[11px] text-slate-500">
+                      Before {h.judge}
+                    </p>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
+
+      {/* Orders & judgments */}
+      {interim.length + judgments.length > 0 ? (
+        <section>
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Orders &amp; judgments ({interim.length + judgments.length})
+          </h4>
+          <ul className="mt-2 space-y-2">
+            {judgments.map((o, i) => (
+              <OrderListItem
+                key={`j-${o.orderUrl}-${i}`}
+                order={o}
+                cnr={c.cnr}
+                isNew={newOrderKeys.has(
+                  `${o.orderDate || ''}|${o.orderUrl || o.filename || ''}`
+                )}
+                kind="Judgment"
+                apiBase={apiBase}
+              />
+            ))}
+            {interim.map((o, i) => (
+              <OrderListItem
+                key={`i-${o.orderUrl}-${i}`}
+                order={o}
+                cnr={c.cnr}
+                isNew={newOrderKeys.has(
+                  `${o.orderDate || ''}|${o.orderUrl || o.filename || ''}`
+                )}
+                kind="Order"
+                apiBase={apiBase}
+              />
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function KV({ label, value, mono }) {
+  return (
+    <div>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+        {label}
+      </p>
+      <p
+        className={`mt-0.5 text-sm font-semibold text-slate-800 ${mono ? 'font-mono text-[12px] uppercase tracking-wide' : ''}`}
+      >
+        {value || '—'}
+      </p>
+    </div>
+  );
+}
+
+function PartyList({ label, items }) {
+  const list = Array.isArray(items) ? items.filter(Boolean) : [];
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <p className="text-xs font-semibold text-slate-600">{label}</p>
+      {list.length === 0 ? (
+        <p className="mt-1 text-sm text-slate-400">Not listed</p>
+      ) : (
+        <ul className="mt-1 space-y-0.5 text-sm text-slate-800">
+          {list.map((name, i) => (
+            <li key={`${name}-${i}`}>{name}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function OrderListItem({ order, cnr, isNew, kind, apiBase }) {
+  const fname = order.orderUrl || order.filename;
+  return (
+    <li
+      className={`flex items-center justify-between gap-3 rounded-lg border p-3 text-sm ${
+        isNew ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-white'
+      }`}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          <p className="font-semibold text-slate-900">
+            {order.orderType || order.description || kind}
+          </p>
+          {isNew ? (
+            <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase text-white">
+              New
+            </span>
+          ) : null}
+        </div>
+        <p className="text-xs text-slate-500">
+          {formatDate(order.orderDate)}
+          {fname ? (
+            <span className="ml-2 font-mono text-[10px] uppercase tracking-wide text-slate-400">
+              {fname}
+            </span>
+          ) : null}
+        </p>
+      </div>
+      {cnr && fname ? (
+        <a
+          href={`${apiBase}/api/ecourts/case/${encodeURIComponent(cnr)}/order/${encodeURIComponent(fname)}/download`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+        >
+          <Scale size={12} />
+          Download
+        </a>
+      ) : null}
+    </li>
   );
 }
 

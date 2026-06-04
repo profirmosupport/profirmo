@@ -100,6 +100,8 @@ const SYNC_ORDER = [
   db.SubscriptionFeatureRule,
   db.ProfessionalSubscription,
   db.SubscriptionPayment,
+  // E-Courts India bookmarks — no FK dependency, plain user_id index.
+  db.ECourtsFavorite,
 ];
 
 // Boot the Profirmo HTTP server.

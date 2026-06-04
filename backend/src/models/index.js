@@ -94,6 +94,11 @@ const SubscriptionFeatureRule = require('./SubscriptionFeatureRule');
 const ProfessionalSubscription = require('./ProfessionalSubscription');
 const SubscriptionPayment = require('./SubscriptionPayment');
 
+// --- E-Courts India favourites -------------------------------------------
+// Lightweight bookmarks of cases looked up via the partner API. No
+// associations — userId + cnr are plain indexed columns.
+const ECourtsFavorite = require('./ECourtsFavorite');
+
 // Optional relationship — clearing the parent nulls the foreign key.
 const fkSetNull = (foreignKey) => ({
   foreignKey,
@@ -416,4 +421,5 @@ module.exports = {
   SubscriptionFeatureRule,
   ProfessionalSubscription,
   SubscriptionPayment,
+  ECourtsFavorite,
 };

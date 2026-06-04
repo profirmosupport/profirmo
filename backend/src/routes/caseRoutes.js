@@ -62,4 +62,10 @@ router.post(
 router.patch('/:id/updates/:updateId', caseController.editCaseUpdate);
 router.delete('/:id/updates/:updateId', caseController.deleteCaseUpdate);
 
+// E-Courts India sync — re-pull the latest case detail from the partner
+// API and overwrite the local snapshot. Returns a structured diff so the
+// UI can show "what changed since last viewed" in a modal.
+const ecourtsController = require('../controllers/ecourtsController');
+router.post('/:id/sync-ecourts', ecourtsController.syncCase);
+
 module.exports = router;

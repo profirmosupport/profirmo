@@ -191,6 +191,30 @@ const getCaseLog = asyncHandler(async (req, res) => {
 
 // DELETE /api/cases/:id
 const deleteCase = asyncHandler(async (req, res) => {
+  // Clients can delete only their own E-Courts-imported cases when no
+  // professional has been assigned yet. Once a pro is on the case the
+  // delete is locked — the professional handles the relationship.
+  const existing = await caseService.getById(req.params.id);
+  if (!existing) throw notFound(req.params.id);
+  const role = String(req.user && req.user.role || '').toLowerCase();
+  if (role === 'client') {
+    const isOwner =
+      existing.clientId === req.user.id ||
+      (Array.isArray(existing.clientIds) && existing.clientIds.includes(req.user.id));
+    const hasPro =
+      !!existing.professionalId ||
+      (Array.isArray(existing.professionalIds) && existing.professionalIds.length > 0);
+    if (!isOwner) {
+      throw { statusCode: 403, message: 'You can only delete your own cases.' };
+    }
+    if (hasPro) {
+      throw {
+        statusCode: 403,
+        message:
+          'A professional is already assigned to this case. Ask them to remove it, or contact support.',
+      };
+    }
+  }
   const removed = await caseService.remove(req.params.id);
   if (!removed) throw notFound(req.params.id);
   return successResponse(res, 200, 'Case deleted', removed);

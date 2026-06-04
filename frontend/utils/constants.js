@@ -51,6 +51,7 @@ export const SITE = {
 export const NAV_LINKS = [
   { label: 'Professionals', href: '/professionals' },
   { label: 'Firms', href: '/firms' },
+  { label: 'E-Courts India', href: '/ecourts' },
   { label: 'Blog', href: '/blog' },
   { label: 'How it works', href: '/how-it-works' },
   { label: 'Pricing', href: '/pricing' },
