@@ -34,6 +34,7 @@ const payoutRoutes = require('./routes/payoutRoutes');
 const blogRoutes = require('./routes/blogRoutes');
 const subscriptionRoutes = require('./routes/subscriptionRoutes');
 const ecourtsRoutes = require('./routes/ecourtsRoutes');
+const attestrRoutes = require('./routes/attestrRoutes');
 const paymentController = require('./controllers/paymentController');
 
 const app = express();
@@ -173,6 +174,7 @@ app.use('/api/wallet', walletRoutes);
 app.use('/api/payouts', payoutRoutes);
 app.use('/api/blog', blogRoutes);
 app.use('/api/ecourts', ecourtsRoutes);
+app.use('/api/attestr', attestrRoutes);
 // Subscription routes — /api/subscription-plans is public, the rest are
 // auth-gated inside the router.
 app.use('/api', subscriptionRoutes);

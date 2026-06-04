@@ -42,6 +42,7 @@ const COLUMNS = [
       { key: 'footer.linkProfessionals', href: '/professionals' },
       { key: 'footer.linkFirms', href: '/firms' },
       { key: 'footer.linkSearch', href: '/search' },
+      { key: 'footer.linkUnifiedCases', href: '/unified-cases' },
     ],
   },
   {

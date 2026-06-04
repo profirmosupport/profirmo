@@ -81,6 +81,7 @@ export const FOOTER_LINKS = [
       { label: 'Professionals', href: '/professionals' },
       { label: 'Firms', href: '/firms' },
       { label: 'Search', href: '/search' },
+      { label: 'Unified cases', href: '/unified-cases' },
     ],
   },
 ];

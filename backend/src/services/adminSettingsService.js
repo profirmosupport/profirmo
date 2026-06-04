@@ -106,6 +106,22 @@ const SETTINGS = {
     coerce: stringCoerce,
     format: stringCoerce,
   },
+
+  // --- Attestr Unified eCourt API ---------------------------------------
+  // Token for https://api.attestr.com/api/v2/public/ecourtx/case-details/basic
+  // — sent as `Authorization: Basic <token>`. Generated from the Attestr
+  // dashboard ("Register App"). Server-only.
+  attestrApiKey: {
+    label: 'Attestr API token',
+    description:
+      'Authorization token for https://api.attestr.com — used to proxy the Unified eCourt Case Details API for the /unified-cases page. Generated in your Attestr dashboard under "Register App". Sent as Basic auth.',
+    defaultGetter: () => process.env.ATTESTR_API_TOKEN || '',
+    type: 'string',
+    group: 'Attestr',
+    secret: true,
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
 };
 
 const KNOWN_KEYS = Object.keys(SETTINGS);
