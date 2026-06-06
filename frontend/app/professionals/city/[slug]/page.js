@@ -17,12 +17,38 @@ import { API_BASE_URL } from '@/utils/constants';
 import CityProfessionalsList from './CityProfessionalsList';
 
 const BRAND = 'Profirmo';
+// Production backend (mirrors the client-side override in services/api.js).
+// Used when neither `API_BACKEND_URL` nor `NEXT_PUBLIC_API_URL` is wired in
+// the deployment environment, so SSR fetches don't accidentally hit the
+// localhost fallback baked into the production bundle.
+const PRODUCTION_API_URL = 'https://profirmo.onrender.com';
+
+function resolveApiBaseUrl() {
+  // Server-side env var has priority — set this on Vercel
+  // (Settings → Environment Variables) to point at your backend.
+  if (process.env.API_BACKEND_URL) return process.env.API_BACKEND_URL;
+  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+  // Anything baked into the bundle (production build, no env override).
+  if (
+    API_BASE_URL &&
+    !/^https?:\/\/(localhost|127\.0\.0\.1)/i.test(API_BASE_URL)
+  ) {
+    return API_BASE_URL;
+  }
+  // We're either on a Vercel build with no env vars or a localhost
+  // default leaked into production — fall back to Render.
+  if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
+    return PRODUCTION_API_URL;
+  }
+  return API_BASE_URL;
+}
 
 async function fetchCityBySlug(slug) {
   if (!slug) return null;
+  const base = resolveApiBaseUrl();
   try {
     const res = await fetch(
-      `${API_BASE_URL}/api/app-settings/cities/by-slug/${encodeURIComponent(slug)}`,
+      `${base}/api/app-settings/cities/by-slug/${encodeURIComponent(slug)}`,
       // Cache for an hour on the server — cities don't change often,
       // and ISR-friendly responses make the page feel instant.
       { next: { revalidate: 3600 } }
@@ -30,7 +56,14 @@ async function fetchCityBySlug(slug) {
     if (!res.ok) return null;
     const body = await res.json();
     return body && (body.data || body);
-  } catch {
+  } catch (err) {
+    // Log so Vercel function logs surface the actual failure (host
+    // unreachable / DNS / TLS) instead of swallowing into a silent 404.
+    console.warn(
+      `[city-page] fetchCityBySlug(${slug}) failed via ${base}: ${
+        err && err.message
+      }`
+    );
     return null;
   }
 }
