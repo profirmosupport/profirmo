@@ -9,7 +9,6 @@ import {
   Home,
   Building2,
   Calculator,
-  Receipt,
   FileText,
   Briefcase,
   Layers,
@@ -17,23 +16,24 @@ import {
 import { useCategories } from '@/hooks/useAppSettings';
 import { useLanguage } from '@/components/LanguageProvider';
 
-const ICONS = {
+// Per-slug icon overrides for Legal sub-categories. Names that don't
+// match here fall through to the generic Scale (Legal) / Calculator
+// (Tax) icons selected in the render below.
+const LEGAL_ICON_OVERRIDES = {
   'divorce-lawyer': Heart,
   'family-lawyer': Users,
+  'family-and-matrimonial-law': Users,
   'criminal-lawyer': Gavel,
+  'criminal-law': Gavel,
   'civil-lawyer': Scale,
+  'civil-law': Scale,
   'property-lawyer': Home,
+  'real-estate-rera-and-construction-law': Home,
   'corporate-lawyer': Building2,
-  'tax-consultant': Calculator,
-  'gst-consultant': Receipt,
-  'income-tax-consultant': FileText,
-  'company-registration-consultant': Briefcase,
+  'corporate-and-commercial-law': Building2,
+  'consumer-protection-law': FileText,
+  'cyber-law-technology-and-data-protection': Briefcase,
 };
-
-// Hard cap on the homepage grid so a generous admin curation doesn't
-// blow the section into a 30-card wall. Featured sub-categories beyond
-// this cap stay accessible via the full search/filter page.
-const HOME_GRID_CAP = 10;
 
 export default function CategorySection() {
   const { t } = useLanguage();
@@ -72,7 +72,10 @@ export default function CategorySection() {
         sensitivity: 'base',
       })
   );
-  const categories = collected.slice(0, HOME_GRID_CAP);
+  // Render every featured top-level entry — no client-side cap. Admin
+  // curation in /admin/categories is the single source of truth for
+  // how many cards surface here.
+  const categories = collected;
 
   // If no sub-category is featured yet, hide the section entirely so the
   // home page doesn't render an empty grid.
@@ -96,8 +99,14 @@ export default function CategorySection() {
 
         <div className="mt-14 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
           {categories.map((category) => {
-            const Icon = ICONS[category.slug] || Scale;
             const isLegal = category.type === 'legal';
+            // Tax sub-categories always render Calculator — admin has
+            // no need to wire per-tax-slug icons. Legal entries pick
+            // a per-slug icon when one is mapped, else fall back to
+            // the Scale icon to stay on-brand.
+            const Icon = isLegal
+              ? LEGAL_ICON_OVERRIDES[category.slug] || Scale
+              : Calculator;
             return (
               <Link
                 key={category.id}

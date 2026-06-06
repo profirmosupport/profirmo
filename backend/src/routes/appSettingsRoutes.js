@@ -9,6 +9,10 @@ const router = express.Router();
 
 router.get('/categories', ctrl.publicListCategories);
 router.get('/cities', ctrl.publicListCities);
+// Resolve a city slug (lowercased name like "mumbai") to the canonical
+// city + state + country. Used by the /professionals/city/[slug] SEO
+// landing pages.
+router.get('/cities/by-slug/:slug', ctrl.publicGetCityBySlug);
 router.get('/locations', ctrl.publicListLocations);
 router.get('/case-statuses', ctrl.publicListCaseStatuses);
 router.get('/case-types', ctrl.publicListCaseTypes);

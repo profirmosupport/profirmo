@@ -1,12 +1,19 @@
 'use client';
 
+import { useMemo } from 'react';
 import Link from 'next/link';
 import { Twitter, Linkedin, Github, Mail, ArrowRight, MapPin } from 'lucide-react';
 import { useLanguage } from '@/components/LanguageProvider';
+import { useLocations } from '@/hooks/useLocations';
 
-// Top 10 Indian cities surfaced in the footer for SEO landing pages.
-const TOP_INDIA_CITIES = [
+// City-link landing pages we want surfaced in the footer for SEO. We
+// pick from the admin-managed cities table at runtime — names that
+// don't exist in the DB are skipped so every footer link resolves to a
+// real listing. Order matches the curated "metros first" set below;
+// remaining slots are filled alphabetically across all India cities.
+const FEATURED_CITY_NAMES = [
   'Mumbai',
+  'New Delhi',
   'Delhi',
   'Bangalore',
   'Hyderabad',
@@ -16,7 +23,25 @@ const TOP_INDIA_CITIES = [
   'Ahmedabad',
   'Jaipur',
   'Lucknow',
-  'Gautam Budh Nagar',
+  'Surat',
+  'Chandigarh',
+  'Kochi',
+  'Indore',
+  'Bhopal',
+  'Patna',
+  'Nagpur',
+  'Coimbatore',
+  'Vadodara',
+  'Visakhapatnam',
+  'Thiruvananthapuram',
+  'Gurugram',
+  'Noida',
+  'Faridabad',
+  'Ghaziabad',
+  'Dehradun',
+  'Guwahati',
+  'Ranchi',
+  'Raipur',
 ];
 
 const SOCIALS = [
@@ -57,7 +82,41 @@ const COLUMNS = [
 export default function Footer() {
   const year = new Date().getFullYear();
   const { t } = useLanguage();
-  const cityNames = TOP_INDIA_CITIES;
+  const { flatCities } = useLocations();
+
+  // Resolve each curated city NAME against the admin-managed cities
+  // table, preferring exact case-insensitive matches. The result is an
+  // ordered list of { id, name } so every footer link points at a row
+  // that actually exists (and so query-string `?city=<id>` resolves
+  // cleanly on the listing page). Unknown names are dropped silently.
+  const cityRows = useMemo(() => {
+    if (!Array.isArray(flatCities) || flatCities.length === 0) return [];
+    const byLowerName = new Map();
+    for (const c of flatCities) {
+      const key = String(c.name || '').trim().toLowerCase();
+      if (!key) continue;
+      // First seen wins — keeps the first DB row alphabetic order would
+      // surface (we don't want New Delhi mapping to Old Delhi).
+      if (!byLowerName.has(key)) byLowerName.set(key, c);
+    }
+    // Public landing-page slug — matches the backend slugify() helper:
+    // lowercased name, non-alphanumeric runs collapsed to `-`.
+    const publicSlug = (s) =>
+      String(s || '')
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    const seen = new Set();
+    const out = [];
+    for (const name of FEATURED_CITY_NAMES) {
+      const hit = byLowerName.get(String(name).trim().toLowerCase());
+      if (!hit || seen.has(hit.id)) continue;
+      seen.add(hit.id);
+      out.push({ id: hit.id, name: hit.name, slug: publicSlug(hit.name) });
+    }
+    return out;
+  }, [flatCities]);
 
   return (
     <footer className="relative overflow-hidden bg-slate-950 text-slate-400">
@@ -162,24 +221,13 @@ export default function Footer() {
           </p>
 
           <div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-2.5 sm:grid-cols-3 lg:grid-cols-3">
-            {cityNames.map((city) => (
+            {cityRows.map((city) => (
               <Link
-                key={`law-${city}`}
-                href={`/professionals?city=${encodeURIComponent(city)}`}
+                key={`city-${city.id}`}
+                href={`/professionals/city/${city.slug}`}
                 className="text-xs text-slate-400 transition hover:text-teal-300"
               >
-                {t('footer.lawyersIn', { city: t(`city.${city}`) })}
-              </Link>
-            ))}
-            {cityNames.map((city) => (
-              <Link
-                key={`tax-${city}`}
-                href={`/professionals?city=${encodeURIComponent(
-                  city
-                )}&category=${encodeURIComponent('Tax Consultant')}`}
-                className="text-xs text-slate-400 transition hover:text-teal-300"
-              >
-                {t('footer.taxIn', { city: t(`city.${city}`) })}
+                Legal &amp; Tax Experts in {city.name}
               </Link>
             ))}
           </div>

@@ -366,10 +366,20 @@ export default function AdminCategoriesPage() {
               }
               const tier1 = childrenByParent.get(null) || [];
 
+              // Tier-3 label varies by category — Legal calls them
+              // "Practice areas", Tax calls them "Tags", everything
+              // else falls back to a generic "Item".
+              const catSlug = String(cat.slug || '').toLowerCase();
+              const tier3Label =
+                catSlug === 'legal'
+                  ? 'Practice area'
+                  : catSlug === 'tax'
+                    ? 'Tag'
+                    : 'Item';
               const tierLabel = (depth) => {
                 if (depth === 0) return 'Sub-category';
                 if (depth === 1) return 'Sub-sub-category';
-                return 'Practice area';
+                return tier3Label;
               };
 
               const renderSubRow = (row, depth) => {

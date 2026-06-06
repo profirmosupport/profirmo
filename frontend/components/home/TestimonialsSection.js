@@ -1,7 +1,26 @@
 'use client';
 
-import { Star, Quote, Play, Video, Mic, MessageSquareQuote } from 'lucide-react';
+import {
+  Star,
+  Quote,
+  Play,
+  Video,
+  Mic,
+  MessageSquareQuote,
+  Heart,
+} from 'lucide-react';
 import { useLanguage } from '@/components/LanguageProvider';
+
+// Profirmo's Facebook page rendered via the official Page Plugin iframe.
+// `adapt_container_width=true` makes the embed grow up to its `width=`
+// cap to fill whatever column it lands in — we use 500 so the plugin
+// fills the full grid cell on every breakpoint (cells are ~320–500px
+// across the home grid). Height matches the sibling video / audio
+// cards (~280px) to keep the row visually even.
+const FB_PAGE_URL = 'https://www.facebook.com/fbprofirmo';
+const FB_PAGE_PLUGIN_URL = `https://www.facebook.com/plugins/page.php?href=${encodeURIComponent(
+  FB_PAGE_URL
+)}&tabs=timeline&width=500&height=280&small_header=false&adapt_container_width=true&hide_cover=false&show_facepile=true`;
 
 const TESTIMONIALS = [
   {
@@ -42,6 +61,7 @@ const TESTIMONIALS = [
   },
 ];
 
+// Two video / audio reviews + one Facebook page card in the third slot.
 const MEDIA_REVIEWS = [
   {
     img: 8,
@@ -56,13 +76,6 @@ const MEDIA_REVIEWS = [
     outcomeKey: 'testimonials.media2Outcome',
     typeKey: 'testimonials.media2Type',
     icon: Mic,
-  },
-  {
-    img: 53,
-    name: 'Lakshmi Menon',
-    outcomeKey: 'testimonials.media3Outcome',
-    typeKey: 'testimonials.media3Type',
-    icon: Video,
   },
 ];
 
@@ -147,9 +160,10 @@ export default function TestimonialsSection() {
         </div>
       </div>
 
-      {/* Video / audio reviews */}
+      {/* Video / audio reviews + Facebook page widget in the 3rd slot. */}
       <div className="mx-auto mt-14 max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid gap-6 sm:grid-cols-3">
+          <FacebookPageCard />
           {MEDIA_REVIEWS.map(({ img, name, outcomeKey, typeKey, icon: Icon }) => (
             <div
               key={name}
@@ -200,5 +214,35 @@ export default function TestimonialsSection() {
         <MarqueeRow items={rowTwo} reverse />
       </div>
     </section>
+  );
+}
+
+// FacebookPageCard — just the Facebook Page Plugin iframe inside a
+// card whose chrome matches the sibling video / audio cards. No
+// header, no buttons, no custom copy; the embed itself shows the page
+// cover, name, follow CTA and recent posts.
+function FacebookPageCard() {
+  return (
+    <div className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card transition-all duration-300 hover:-translate-y-1 hover:border-blue-300 hover:shadow-glow-cyan">
+      {/* Floating tag — sits over the iframe's top-left corner the same
+          way the "Video" / "Audio" pills sit on the sibling cards.
+          Slightly elevated z-index + pointer-events-none so the iframe
+          stays fully interactive underneath. */}
+      <span className="pointer-events-none absolute right-3 top-[20%] z-10 inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-white shadow-glow-sm">
+        <Heart className="h-3.5 w-3.5 fill-white" />
+        Happy Customers on Facebook
+      </span>
+      <iframe
+        src={FB_PAGE_PLUGIN_URL}
+        title="Profirmo on Facebook"
+        width="500"
+        height="280"
+        style={{ border: 'none', overflow: 'hidden', width: '100%', display: 'block' }}
+        scrolling="no"
+        frameBorder="0"
+        allow="encrypted-media"
+        loading="lazy"
+      />
+    </div>
   );
 }

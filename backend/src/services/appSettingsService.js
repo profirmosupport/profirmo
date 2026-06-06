@@ -317,6 +317,76 @@ async function listCitiesPublic() {
   });
 }
 
+/**
+ * Resolve a city by its public landing-page slug (the lower-cased,
+ * hyphenated NAME — e.g. "mumbai", "new-delhi"). Different from the
+ * stored `slug` column which is state-prefixed (e.g. "mh-mumbai")
+ * to keep the global slug-unique constraint working when two states
+ * share a city name. For the SEO landing pages we want the cleaner
+ * `/professionals/city/mumbai` form.
+ *
+ * If multiple rows match (same name across states), the first by
+ * sortOrder then name wins — which matches the public list ordering.
+ */
+async function findCityByPublicSlug(rawSlug) {
+  const want = String(rawSlug || '').toLowerCase().trim();
+  if (!want) return null;
+  const cities = await City.findAll({
+    where: { active: true },
+    order: [
+      ['sortOrder', 'ASC'],
+      ['name', 'ASC'],
+    ],
+    attributes: ['id', 'name', 'slug', 'stateId'],
+    raw: true,
+  });
+  const candidates = cities.filter((c) => slugify(c.name) === want);
+  if (candidates.length === 0) return null;
+  // When the slug matches multiple rows (e.g. "New Delhi" exists in
+  // both DL and a venue-only state), bias toward a real state by
+  // dropping any row whose state.code is "SC" (the Supreme Court of
+  // India venue we use for case routing). Falls back to the first
+  // candidate when no bias applies.
+  let match = candidates[0];
+  if (candidates.length > 1) {
+    const states = await State.findAll({
+      where: { id: candidates.map((c) => c.stateId).filter(Boolean) },
+      attributes: ['id', 'code'],
+      raw: true,
+    });
+    const codeByStateId = new Map(states.map((s) => [s.id, s.code]));
+    const real = candidates.find(
+      (c) => String(codeByStateId.get(c.stateId) || '').toUpperCase() !== 'SC'
+    );
+    if (real) match = real;
+  }
+  // Enrich with state + country for nicer landing-page copy ("Mumbai,
+  // Maharashtra, India"). Pull lazily so the common cities listing
+  // stays fast.
+  const state = match.stateId
+    ? await State.findByPk(match.stateId, {
+        attributes: ['id', 'name', 'code', 'countryId'],
+        raw: true,
+      })
+    : null;
+  const country = state && state.countryId
+    ? await Country.findByPk(state.countryId, {
+        attributes: ['id', 'name', 'code'],
+        raw: true,
+      })
+    : null;
+  return {
+    id: match.id,
+    name: match.name,
+    slug: match.slug,
+    publicSlug: want,
+    state: state ? { id: state.id, name: state.name, code: state.code } : null,
+    country: country
+      ? { id: country.id, name: country.name, code: country.code }
+      : null,
+  };
+}
+
 async function createCity({ name, sortOrder, active }) {
   const trimmed = String(name || '').trim();
   if (!trimmed) throw httpError(400, 'City name is required.');
@@ -915,6 +985,7 @@ module.exports = {
   deleteSubCategory,
   listCitiesAdmin,
   listCitiesPublic,
+  findCityByPublicSlug,
   createCity,
   updateCity,
   deleteCity,

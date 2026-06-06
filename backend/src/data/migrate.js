@@ -881,6 +881,12 @@ async function runMigrations() {
   //     genuinely-missing names.
   await runLegalPracticeAreasSeed();
 
+  // 18-quater-b. Populate the "Tax" professional category with the
+  //     admin-supplied 3-tier taxonomy from data/taxPracticeAreasSeed.
+  //     Wipes any prior Tax sub-categories on first run (or whenever
+  //     the row count drifts) and rebuilds from scratch.
+  await runTaxPracticeAreasSeed();
+
   // 18a. Seed the case-status enum (ABATED, DISPOSED, PENDING, …).
   //      Admins can add/edit/delete from /admin/case-statuses. Idempotent.
   await runCaseStatusSeed();
@@ -2225,7 +2231,10 @@ async function runLegalPracticeAreasSeed() {
         name: tier1Name,
         slugBase: tier1SlugBase,
         parentId: null,
-        featured: true,
+        // Curated by the admin via /admin/categories — NOT auto-featured.
+        // Matches the Tax taxonomy default so both categories start
+        // from a clean slate.
+        featured: false,
         sortOrder: (i + 1) * 10,
       });
       stats.c1 += 1;
@@ -2264,6 +2273,145 @@ async function runLegalPracticeAreasSeed() {
     );
   } catch (err) {
     console.warn(`[Migrate] Legal taxonomy seed failed: ${err.message}`);
+  }
+}
+
+// runTaxPracticeAreasSeed — same shape as runLegalPracticeAreasSeed
+// but for the Tax category. 3-tier taxonomy: tier-1 sub-categories
+// (e.g. "Income Tax", "GST"), tier-2 sub-sub-categories
+// (e.g. "Income Tax Return Filing"), tier-3 tags (e.g. "Individual
+// ITR Filing"). Wipes all prior Tax sub-categories on a fresh run so
+// the legacy four flat entries ("Tax Consultant", "GST Consultant",
+// "Income Tax Consultant", "Company Registration Consultant") don't
+// linger.
+async function runTaxPracticeAreasSeed() {
+  const { Category, SubCategory } = require('../models');
+  const SEED = require('./taxPracticeAreasSeed');
+  const slugify = (s) =>
+    String(s || '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+  try {
+    const tax = await Category.findOne({ where: { slug: 'tax' } });
+    if (!tax) {
+      console.warn(
+        '[Migrate] Tax taxonomy seed skipped: parent category missing.'
+      );
+      return;
+    }
+
+    // Fast-path: if the row count already matches the seed exactly,
+    // skip the wipe+reinsert. Drop sub_categories under Tax in MySQL
+    // to force a reseed.
+    let expectedTotal = 0;
+    for (const [, tier2Groups] of SEED) {
+      expectedTotal += 1;
+      for (const [, tier3Items] of tier2Groups) {
+        expectedTotal += 1 + (tier3Items || []).length;
+      }
+    }
+    const existingCount = await SubCategory.count({
+      where: { categoryId: tax.id },
+    });
+    if (existingCount === expectedTotal && expectedTotal > 0) {
+      console.log(
+        `[Migrate] Tax taxonomy seed: already populated (${existingCount} rows) — skipping reseed.`
+      );
+      return;
+    }
+
+    // Hard reset: wipe everything under Tax (including the four legacy
+    // "Tax Consultant", "GST Consultant", "Income Tax Consultant",
+    // "Company Registration Consultant" entries) and rebuild from the
+    // 3-tier seed.
+    const wiped = await SubCategory.destroy({
+      where: { categoryId: tax.id },
+    });
+
+    // Slug-uniqueness helper — sub_categories.slug is globally unique,
+    // so two siblings with the same name across different parents
+    // need a numeric suffix to avoid colliding.
+    const uniqueSlug = async (base) => {
+      let cand = base;
+      let n = 2;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const dup = await SubCategory.findOne({ where: { slug: cand } });
+        if (!dup) return cand;
+        cand = `${base}-${n}`;
+        n += 1;
+        if (n > 30) {
+          throw new Error(`Could not generate unique slug for ${base}`);
+        }
+      }
+    };
+
+    const stats = { c1: 0, c2: 0, c3: 0 };
+
+    async function createRow({ name, slugBase, parentId, featured, sortOrder }) {
+      const slug = await uniqueSlug(slugBase);
+      return SubCategory.create({
+        categoryId: tax.id,
+        parentSubCategoryId: parentId,
+        name,
+        slug,
+        sortOrder,
+        featured,
+        active: true,
+      });
+    }
+
+    for (let i = 0; i < SEED.length; i++) {
+      const [tier1Name, tier2Groups] = SEED[i];
+      const tier1SlugBase = `${tax.slug}-${slugify(tier1Name)}`;
+      const t1 = await createRow({
+        name: tier1Name,
+        slugBase: tier1SlugBase,
+        parentId: null,
+        // Tier-1 starts unfeatured — admin opts each one into the home
+        // page directory via /admin/categories.
+        featured: false,
+        sortOrder: (i + 1) * 10,
+      });
+      stats.c1 += 1;
+
+      for (let j = 0; j < tier2Groups.length; j++) {
+        const [tier2Name, tier3Items] = tier2Groups[j];
+        const tier2SlugBase = `${tier1SlugBase}-${slugify(tier2Name)}`;
+        const t2 = await createRow({
+          name: tier2Name,
+          slugBase: tier2SlugBase,
+          parentId: t1.id,
+          featured: false,
+          sortOrder: (j + 1) * 10,
+        });
+        stats.c2 += 1;
+
+        for (let k = 0; k < (tier3Items || []).length; k++) {
+          const tier3Name = tier3Items[k];
+          const tier3SlugBase = `${tier2SlugBase}-${slugify(tier3Name)}`;
+          await createRow({
+            name: tier3Name,
+            slugBase: tier3SlugBase,
+            parentId: t2.id,
+            featured: false,
+            sortOrder: (k + 1) * 10,
+          });
+          stats.c3 += 1;
+        }
+      }
+    }
+
+    console.log(
+      `[Migrate] Tax taxonomy seed: ` +
+        `wiped ${wiped}, ` +
+        `tier-1 ${stats.c1}, tier-2 ${stats.c2}, tier-3 (tags) ${stats.c3}.`
+    );
+  } catch (err) {
+    console.warn(`[Migrate] Tax taxonomy seed failed: ${err.message}`);
   }
 }
 

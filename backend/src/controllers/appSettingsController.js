@@ -26,6 +26,19 @@ const publicGetStorage = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'Storage config', cfg);
 });
 
+// GET /api/app-settings/cities/by-slug/:slug
+// Resolves a public city slug (e.g. "mumbai", "new-delhi") to the
+// canonical city row + state + country. Powers the SEO landing pages
+// at /professionals/city/[slug].
+const publicGetCityBySlug = asyncHandler(async (req, res) => {
+  const slug = String((req.params && req.params.slug) || '');
+  const city = await svc.findCityByPublicSlug(slug);
+  if (!city) {
+    throw { statusCode: 404, message: `No city found for slug "${slug}".` };
+  }
+  return successResponse(res, 200, 'City', city);
+});
+
 // --- Admin: categories ----------------------------------------------------
 
 const adminListCategories = asyncHandler(async (req, res) => {
@@ -483,6 +496,7 @@ const adminDeleteCauseListType = asyncHandler(async (req, res) => {
 module.exports = {
   publicListCategories,
   publicListCities,
+  publicGetCityBySlug,
   publicGetStorage,
   adminListCategories,
   adminCreateCategory,
