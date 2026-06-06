@@ -147,22 +147,34 @@ const listUsers = async ({
     offset: (safePage - 1) * safeLimit,
   });
 
-  // Attach the latest approval status to professional users.
+  // Attach the latest approval status + the `featured` flag to
+  // professional users. Featured drives whether they surface in the
+  // home page directory; the admin user list shows it so the bulk
+  // action bar can target the right subset.
   const profUserIds = rows
     .filter((u) => u.role === 'professional')
     .map((u) => u.id);
   let approvalByUser = new Map();
+  let featuredByUser = new Map();
   if (profUserIds.length) {
-    const approvals = await ProfessionalApproval.findAll({
-      where: { userId: { [Op.in]: profUserIds } },
-      order: [['createdAt', 'DESC']],
-      raw: true,
-    });
+    const [approvals, details] = await Promise.all([
+      ProfessionalApproval.findAll({
+        where: { userId: { [Op.in]: profUserIds } },
+        order: [['createdAt', 'DESC']],
+        raw: true,
+      }),
+      ProfessionalDetail.findAll({
+        where: { userId: { [Op.in]: profUserIds } },
+        attributes: ['userId', 'featured'],
+        raw: true,
+      }),
+    ]);
     for (const a of approvals) {
       if (!approvalByUser.has(a.userId)) {
         approvalByUser.set(a.userId, a.status);
       }
     }
+    for (const d of details) featuredByUser.set(d.userId, !!d.featured);
   }
 
   return {
@@ -170,6 +182,7 @@ const listUsers = async ({
       const safe = sanitizeUser(u);
       if (safe.role === 'professional') {
         safe.approvalStatus = approvalByUser.get(safe.id) || null;
+        safe.featured = featuredByUser.get(safe.id) || false;
       }
       return safe;
     }),

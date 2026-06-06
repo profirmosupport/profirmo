@@ -15,11 +15,15 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  CheckCircle2,
   Eye,
   Pencil,
   Trash2,
   Plus,
   MoreVertical,
+  Star,
+  StarOff,
+  X,
 } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import Card from '@/components/common/Card';
@@ -385,6 +389,12 @@ export default function AdminLawFirmsPage() {
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
+  // Bulk selection — same shape as the users page.
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkResult, setBulkResult] = useState(null);
+  const [bulkConfirm, setBulkConfirm] = useState(null);
+
   const isAdmin = user && user.role === ROLES.PLATFORM_ADMIN;
 
   // Redirect unauthenticated visitors once auth has resolved.
@@ -418,6 +428,99 @@ export default function AdminLawFirmsPage() {
       load();
     }
   }, [authLoading, isAuthenticated, isAdmin, load]);
+
+  // Drop the selection whenever the visible row set changes so a tick
+  // never silently survives a filter swap.
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setBulkResult(null);
+  }, [page, search, status]);
+
+  const selectedRows = rows.filter((r) => selectedIds.has(r.id));
+  const selectedCount = selectedRows.length;
+  const allOnPageSelected = rows.length > 0 && selectedCount === rows.length;
+  function toggleRow(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function toggleAll() {
+    setSelectedIds((prev) => {
+      if (rows.length > 0 && prev.size === rows.length) return new Set();
+      return new Set(rows.map((r) => r.id));
+    });
+  }
+  function clearSelection() {
+    setSelectedIds(new Set());
+    setBulkResult(null);
+  }
+  async function runBulk({ action, label, eligible, fn, destructive }) {
+    if (bulkBusy) return;
+    const targets = (eligible || selectedRows).filter(Boolean);
+    if (targets.length === 0) {
+      setBulkResult({ ok: 0, fail: 0, action, skipped: 'none-eligible', label });
+      return;
+    }
+    const exec = async () => {
+      setBulkBusy(true);
+      setBulkResult(null);
+      let ok = 0;
+      let fail = 0;
+      for (const row of targets) {
+        try {
+          await fn(row);
+          ok += 1;
+        } catch {
+          fail += 1;
+        }
+      }
+      setBulkBusy(false);
+      setBulkResult({ ok, fail, action, label });
+      setSelectedIds(new Set());
+      await load();
+    };
+    if (destructive) {
+      setBulkConfirm({ action, label, run: exec, count: targets.length });
+    } else {
+      await exec();
+    }
+  }
+  function bulkFeature() {
+    return runBulk({
+      action: 'feature',
+      label: 'Mark featured',
+      eligible: selectedRows,
+      fn: (r) => updateLawFirm(r.id, { featured: true }),
+    });
+  }
+  function bulkUnfeature() {
+    return runBulk({
+      action: 'unfeature',
+      label: 'Remove from featured',
+      eligible: selectedRows,
+      fn: (r) => updateLawFirm(r.id, { featured: false }),
+    });
+  }
+  function bulkSetStatus(nextStatus, label) {
+    return runBulk({
+      action: `status-${nextStatus}`,
+      label,
+      eligible: selectedRows.filter((r) => r.status !== nextStatus),
+      fn: (r) => updateLawFirm(r.id, { status: nextStatus }),
+    });
+  }
+  function bulkDelete() {
+    return runBulk({
+      action: 'delete',
+      label: 'Delete',
+      eligible: selectedRows,
+      fn: (r) => deleteLawFirm(r.id),
+      destructive: true,
+    });
+  }
 
   // ----- Filter handlers ---------------------------------------------------
 
@@ -712,11 +815,46 @@ export default function AdminLawFirmsPage() {
           />
         ) : (
           <>
+            {selectedCount > 0 && (
+              <FirmBulkActionBar
+                selectedCount={selectedCount}
+                busy={bulkBusy}
+                onClear={clearSelection}
+                onFeature={bulkFeature}
+                onUnfeature={bulkUnfeature}
+                onActivate={() => bulkSetStatus('ACTIVE', 'Activate')}
+                onPending={() => bulkSetStatus('PENDING_APPROVAL', 'Send to pending')}
+                onReject={() => bulkSetStatus('REJECTED', 'Reject')}
+                onDelete={bulkDelete}
+              />
+            )}
+            {bulkResult && (
+              <FirmBulkResultBanner
+                result={bulkResult}
+                onDismiss={() => setBulkResult(null)}
+              />
+            )}
+
             {/* Responsive table — horizontally scrollable on narrow screens. */}
             <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-              <table className="w-full min-w-[760px] text-left text-sm">
+              <table className="w-full min-w-[820px] text-left text-sm">
                 <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
+                    <th className="w-10 px-3 py-3 text-center">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all on this page"
+                        checked={allOnPageSelected}
+                        ref={(el) => {
+                          if (el) {
+                            el.indeterminate =
+                              selectedCount > 0 && !allOnPageSelected;
+                          }
+                        }}
+                        onChange={toggleAll}
+                        className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                      />
+                    </th>
                     <th className="px-4 py-3 font-semibold">Firm</th>
                     <th className="px-4 py-3 font-semibold">Owner</th>
                     <th className="px-4 py-3 font-semibold">Status</th>
@@ -731,8 +869,23 @@ export default function AdminLawFirmsPage() {
                   {rows.map((row) => {
                     const name = firmName(row);
                     const badge = statusBadge(row.status);
+                    const checked = selectedIds.has(row.id);
                     return (
-                      <tr key={row.id} className="hover:bg-slate-50">
+                      <tr
+                        key={row.id}
+                        className={`hover:bg-slate-50 ${
+                          checked ? 'bg-amber-50/40' : ''
+                        }`}
+                      >
+                        <td className="px-3 py-3 text-center">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${name}`}
+                            checked={checked}
+                            onChange={() => toggleRow(row.id)}
+                            className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                          />
+                        </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             <Avatar
@@ -747,6 +900,12 @@ export default function AdminLawFirmsPage() {
                               <p className="truncate text-xs text-slate-500">
                                 {row.headquarters || '—'}
                               </p>
+                              {row.featured && (
+                                <span className="mt-0.5 inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0 text-[10px] font-semibold text-amber-700">
+                                  <Star size={9} />
+                                  Featured
+                                </span>
+                              )}
                             </div>
                           </div>
                         </td>
@@ -1345,6 +1504,165 @@ export default function AdminLawFirmsPage() {
           <p className="mt-3 text-xs text-red-600">{deleteError}</p>
         )}
       </Modal>
+      {/* Destructive bulk confirm */}
+      <Modal
+        open={!!bulkConfirm}
+        onClose={() => !bulkBusy && setBulkConfirm(null)}
+        title={
+          bulkConfirm
+            ? `${bulkConfirm.label} ${bulkConfirm.count} firm${
+                bulkConfirm.count === 1 ? '' : 's'
+              }?`
+            : ''
+        }
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBulkConfirm(null)}
+              disabled={bulkBusy}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={async () => {
+                if (bulkConfirm) await bulkConfirm.run();
+                setBulkConfirm(null);
+              }}
+              disabled={bulkBusy}
+            >
+              {bulkBusy ? 'Working…' : bulkConfirm ? bulkConfirm.label : ''}
+            </Button>
+          </>
+        }
+      >
+        {bulkConfirm && (
+          <p className="text-sm text-slate-700">
+            This will run &ldquo;{bulkConfirm.label}&rdquo; on{' '}
+            <strong>{bulkConfirm.count}</strong> selected firm
+            {bulkConfirm.count === 1 ? '' : 's'}. This action cannot be
+            undone.
+          </p>
+        )}
+      </Modal>
     </DashboardLayout>
+  );
+}
+
+// ----- Firm bulk action bar --------------------------------------------------
+
+function FirmBulkActionBar({
+  selectedCount,
+  busy,
+  onClear,
+  onFeature,
+  onUnfeature,
+  onActivate,
+  onPending,
+  onReject,
+  onDelete,
+}) {
+  return (
+    <Card>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm text-slate-700">
+          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-700">
+            {selectedCount}
+          </span>
+          <span>
+            <strong>{selectedCount}</strong> firm
+            {selectedCount === 1 ? '' : 's'} selected
+          </span>
+          <button
+            type="button"
+            onClick={onClear}
+            disabled={busy}
+            className="ml-2 inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800"
+          >
+            <X size={12} />
+            Clear
+          </button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" onClick={onFeature} disabled={busy}>
+            <Star size={14} />
+            Mark featured
+          </Button>
+          <Button size="sm" variant="outline" onClick={onUnfeature} disabled={busy}>
+            <StarOff size={14} />
+            Remove featured
+          </Button>
+          <Button size="sm" variant="outline" onClick={onActivate} disabled={busy}>
+            <CheckCircle2 size={14} />
+            Activate
+          </Button>
+          <Button size="sm" variant="outline" onClick={onPending} disabled={busy}>
+            <AlertTriangle size={14} />
+            Send to pending
+          </Button>
+          <Button size="sm" variant="outline" onClick={onReject} disabled={busy}>
+            <AlertTriangle size={14} />
+            Reject
+          </Button>
+          <Button size="sm" variant="danger" onClick={onDelete} disabled={busy}>
+            <Trash2 size={14} />
+            Delete
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function FirmBulkResultBanner({ result, onDismiss }) {
+  if (!result) return null;
+  const success = result.fail === 0 && result.ok > 0;
+  const skipped = result.skipped === 'none-eligible';
+  const message = skipped
+    ? `No firms were eligible for "${result.label || result.action}".`
+    : success
+      ? `${result.label || result.action}: ${result.ok} firm${
+          result.ok === 1 ? '' : 's'
+        } updated.`
+      : `${result.label || result.action}: ${result.ok} succeeded, ${
+          result.fail
+        } failed.`;
+  const tone = skipped
+    ? 'amber'
+    : success
+      ? 'emerald'
+      : result.ok > 0
+        ? 'amber'
+        : 'red';
+  const palette = {
+    emerald: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    amber: 'border-amber-200 bg-amber-50 text-amber-800',
+    red: 'border-red-200 bg-red-50 text-red-700',
+  };
+  return (
+    <div
+      className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${palette[tone]}`}
+    >
+      <span className="flex items-center gap-2">
+        {tone === 'emerald' ? (
+          <CheckCircle2 size={14} />
+        ) : (
+          <AlertTriangle size={14} />
+        )}
+        {message}
+      </span>
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="text-current opacity-70 hover:opacity-100"
+        aria-label="Dismiss"
+      >
+        <X size={14} />
+      </button>
+    </div>
   );
 }

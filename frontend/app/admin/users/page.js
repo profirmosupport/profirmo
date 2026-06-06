@@ -23,6 +23,9 @@ import {
   Trash2,
   UserPlus,
   MoreVertical,
+  Star,
+  StarOff,
+  X,
 } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import Card from '@/components/common/Card';
@@ -45,6 +48,7 @@ import {
   updateUser,
   deleteUser,
   markUserEmailVerified,
+  setProfessionalFeatured,
 } from '@/services/adminService';
 
 const PAGE_SIZE = 20;
@@ -240,6 +244,14 @@ export default function AdminUsersPage() {
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
+  // ----- Bulk-action selection state -------------------------------------
+  // Set of user ids currently ticked in the row checkboxes. Cleared on
+  // filter changes, page changes, and after every bulk action completes.
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkResult, setBulkResult] = useState(null); // { ok, fail, action }
+  const [bulkConfirm, setBulkConfirm] = useState(null); // { action, label, run }
+
   const isAdmin = user && user.role === ROLES.PLATFORM_ADMIN;
 
   // Redirect unauthenticated visitors once auth has resolved.
@@ -274,6 +286,130 @@ export default function AdminUsersPage() {
       load();
     }
   }, [authLoading, isAuthenticated, isAdmin, load]);
+
+  // Clear the selection whenever the visible row set changes — keeping
+  // ticks across page changes would silently apply an action to rows
+  // the admin can no longer see.
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setBulkResult(null);
+  }, [page, role, status, search]);
+
+  // ----- Bulk-action helpers ---------------------------------------------
+
+  const selectedRows = rows.filter((r) => selectedIds.has(r.id));
+  const selectedCount = selectedRows.length;
+  const allOnPageSelected = rows.length > 0 && selectedCount === rows.length;
+  const selectedProfessionals = selectedRows.filter(
+    (r) => r.role === 'professional'
+  );
+
+  function toggleRow(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function toggleAll() {
+    setSelectedIds((prev) => {
+      if (rows.length > 0 && prev.size === rows.length) return new Set();
+      return new Set(rows.map((r) => r.id));
+    });
+  }
+  function clearSelection() {
+    setSelectedIds(new Set());
+    setBulkResult(null);
+  }
+
+  // Run a per-row async op across the selection, sequentially, and
+  // report a tally of successes/failures. Sequential (rather than
+  // parallel) keeps the audit log + admin DB load predictable; bulk
+  // ops here are typically tens, not thousands.
+  async function runBulk({ action, label, eligible, fn, destructive }) {
+    if (bulkBusy) return;
+    const targets = (eligible || selectedRows).filter(Boolean);
+    if (targets.length === 0) {
+      setBulkResult({ ok: 0, fail: 0, action, skipped: 'none-eligible' });
+      return;
+    }
+    const exec = async () => {
+      setBulkBusy(true);
+      setBulkResult(null);
+      let ok = 0;
+      let fail = 0;
+      for (const row of targets) {
+        try {
+          await fn(row);
+          ok += 1;
+        } catch {
+          fail += 1;
+        }
+      }
+      setBulkBusy(false);
+      setBulkResult({ ok, fail, action, label });
+      setSelectedIds(new Set());
+      await load();
+    };
+    if (destructive) {
+      setBulkConfirm({ action, label, run: exec, count: targets.length });
+    } else {
+      await exec();
+    }
+  }
+
+  function bulkSuspend() {
+    return runBulk({
+      action: 'suspend',
+      label: 'Suspend',
+      eligible: selectedRows.filter(
+        (r) => r.id !== (user && user.id) && r.status !== 'suspended'
+      ),
+      fn: (r) => updateUserStatus(r.id, 'suspended'),
+    });
+  }
+  function bulkActivate() {
+    return runBulk({
+      action: 'activate',
+      label: 'Activate',
+      eligible: selectedRows.filter((r) => r.status === 'suspended'),
+      fn: (r) => updateUserStatus(r.id, 'active'),
+    });
+  }
+  function bulkFeature() {
+    return runBulk({
+      action: 'feature',
+      label: 'Mark featured',
+      eligible: selectedProfessionals,
+      fn: (r) => setProfessionalFeatured(r.linkedId || r.id, true),
+    });
+  }
+  function bulkUnfeature() {
+    return runBulk({
+      action: 'unfeature',
+      label: 'Remove from featured',
+      eligible: selectedProfessionals,
+      fn: (r) => setProfessionalFeatured(r.linkedId || r.id, false),
+    });
+  }
+  function bulkVerifyEmail() {
+    return runBulk({
+      action: 'verify-email',
+      label: 'Mark email verified',
+      eligible: selectedRows.filter((r) => !r.emailVerified),
+      fn: (r) => markUserEmailVerified(r.id),
+    });
+  }
+  function bulkDelete() {
+    return runBulk({
+      action: 'delete',
+      label: 'Delete',
+      eligible: selectedRows.filter((r) => r.id !== (user && user.id)),
+      fn: (r) => deleteUser(r.id),
+      destructive: true,
+    });
+  }
 
   // ----- Filter handlers ---------------------------------------------------
 
@@ -689,11 +825,48 @@ export default function AdminUsersPage() {
           />
         ) : (
           <>
+            {/* Bulk action bar — sticky-feeling card above the table. */}
+            {selectedCount > 0 && (
+              <BulkActionBar
+                selectedCount={selectedCount}
+                proCount={selectedProfessionals.length}
+                busy={bulkBusy}
+                onClear={clearSelection}
+                onSuspend={bulkSuspend}
+                onActivate={bulkActivate}
+                onFeature={bulkFeature}
+                onUnfeature={bulkUnfeature}
+                onVerifyEmail={bulkVerifyEmail}
+                onDelete={bulkDelete}
+              />
+            )}
+            {bulkResult && (
+              <BulkResultBanner
+                result={bulkResult}
+                onDismiss={() => setBulkResult(null)}
+              />
+            )}
+
             {/* Responsive table — horizontally scrollable on narrow screens. */}
             <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-              <table className="w-full min-w-[760px] text-left text-sm">
+              <table className="w-full min-w-[840px] text-left text-sm">
                 <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
+                    <th className="w-10 px-3 py-3 text-center">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all on this page"
+                        checked={allOnPageSelected}
+                        ref={(el) => {
+                          if (el) {
+                            el.indeterminate =
+                              selectedCount > 0 && !allOnPageSelected;
+                          }
+                        }}
+                        onChange={toggleAll}
+                        className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                      />
+                    </th>
                     <th className="px-4 py-3 font-semibold">User</th>
                     <th className="px-4 py-3 font-semibold">Email</th>
                     <th className="px-4 py-3 font-semibold">Role</th>
@@ -709,8 +882,23 @@ export default function AdminUsersPage() {
                     const name = userName(row);
                     const badge = statusBadge(row.status);
                     const isSelf = user && row.id === user.id;
+                    const checked = selectedIds.has(row.id);
                     return (
-                      <tr key={row.id} className="hover:bg-slate-50">
+                      <tr
+                        key={row.id}
+                        className={`hover:bg-slate-50 ${
+                          checked ? 'bg-amber-50/40' : ''
+                        }`}
+                      >
+                        <td className="px-3 py-3 text-center">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${name}`}
+                            checked={checked}
+                            onChange={() => toggleRow(row.id)}
+                            className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                          />
+                        </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             <Avatar
@@ -718,9 +906,17 @@ export default function AdminUsersPage() {
                               name={name}
                               size="sm"
                             />
-                            <p className="truncate font-medium text-slate-800">
-                              {name}
-                            </p>
+                            <div className="min-w-0">
+                              <p className="truncate font-medium text-slate-800">
+                                {name}
+                              </p>
+                              {row.role === 'professional' && row.featured && (
+                                <span className="mt-0.5 inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0 text-[10px] font-semibold text-amber-700">
+                                  <Star size={9} />
+                                  Featured
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td className="px-4 py-3 text-slate-600">
@@ -1192,6 +1388,212 @@ export default function AdminUsersPage() {
           <p className="mt-3 text-xs text-red-600">{deleteError}</p>
         )}
       </Modal>
+      {/* Bulk destructive confirm */}
+      <Modal
+        open={!!bulkConfirm}
+        onClose={() => !bulkBusy && setBulkConfirm(null)}
+        title={
+          bulkConfirm
+            ? `${bulkConfirm.label} ${bulkConfirm.count} user${
+                bulkConfirm.count === 1 ? '' : 's'
+              }?`
+            : ''
+        }
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBulkConfirm(null)}
+              disabled={bulkBusy}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={async () => {
+                if (bulkConfirm) await bulkConfirm.run();
+                setBulkConfirm(null);
+              }}
+              disabled={bulkBusy}
+            >
+              {bulkBusy ? 'Working…' : bulkConfirm ? bulkConfirm.label : ''}
+            </Button>
+          </>
+        }
+      >
+        {bulkConfirm && (
+          <p className="text-sm text-slate-700">
+            This will run &ldquo;{bulkConfirm.label}&rdquo; on{' '}
+            <strong>{bulkConfirm.count}</strong> selected user
+            {bulkConfirm.count === 1 ? '' : 's'}. This action cannot be
+            undone.
+          </p>
+        )}
+      </Modal>
     </DashboardLayout>
+  );
+}
+
+// ----- Bulk action bar -------------------------------------------------------
+
+function BulkActionBar({
+  selectedCount,
+  proCount,
+  busy,
+  onClear,
+  onSuspend,
+  onActivate,
+  onFeature,
+  onUnfeature,
+  onVerifyEmail,
+  onDelete,
+}) {
+  return (
+    <Card>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm text-slate-700">
+          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-700">
+            {selectedCount}
+          </span>
+          <span>
+            <strong>{selectedCount}</strong> selected
+            {proCount > 0 && proCount !== selectedCount && (
+              <span className="text-slate-500"> ({proCount} professional)</span>
+            )}
+          </span>
+          <button
+            type="button"
+            onClick={onClear}
+            disabled={busy}
+            className="ml-2 inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800"
+          >
+            <X size={12} />
+            Clear
+          </button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onActivate}
+            disabled={busy}
+            title="Set status = active on the selected users"
+          >
+            <CheckCircle2 size={14} />
+            Activate
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onSuspend}
+            disabled={busy}
+            title="Suspend the selected users"
+          >
+            <Ban size={14} />
+            Suspend
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onVerifyEmail}
+            disabled={busy}
+            title="Mark email as verified on the selected users"
+          >
+            <MailCheck size={14} />
+            Verify email
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onFeature}
+            disabled={busy || proCount === 0}
+            title={
+              proCount === 0
+                ? 'Featured applies only to professionals'
+                : 'Surface the selected professionals on the home directory'
+            }
+          >
+            <Star size={14} />
+            Mark featured
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onUnfeature}
+            disabled={busy || proCount === 0}
+            title={
+              proCount === 0
+                ? 'Featured applies only to professionals'
+                : 'Remove the selected professionals from the home directory'
+            }
+          >
+            <StarOff size={14} />
+            Remove featured
+          </Button>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={onDelete}
+            disabled={busy}
+          >
+            <Trash2 size={14} />
+            Delete
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function BulkResultBanner({ result, onDismiss }) {
+  if (!result) return null;
+  const success = result.fail === 0 && result.ok > 0;
+  const skipped = result.skipped === 'none-eligible';
+  const message = skipped
+    ? `No users were eligible for "${result.label || result.action}".`
+    : success
+      ? `${result.label || result.action}: ${result.ok} user${
+          result.ok === 1 ? '' : 's'
+        } updated.`
+      : `${result.label || result.action}: ${result.ok} succeeded, ${
+          result.fail
+        } failed.`;
+  const tone = skipped
+    ? 'amber'
+    : success
+      ? 'emerald'
+      : result.ok > 0
+        ? 'amber'
+        : 'red';
+  const palette = {
+    emerald:
+      'border-emerald-200 bg-emerald-50 text-emerald-800',
+    amber: 'border-amber-200 bg-amber-50 text-amber-800',
+    red: 'border-red-200 bg-red-50 text-red-700',
+  };
+  return (
+    <div
+      className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${palette[tone]}`}
+    >
+      <span className="flex items-center gap-2">
+        {tone === 'emerald' ? (
+          <CheckCircle2 size={14} />
+        ) : (
+          <AlertTriangle size={14} />
+        )}
+        {message}
+      </span>
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="text-current opacity-70 hover:opacity-100"
+        aria-label="Dismiss"
+      >
+        <X size={14} />
+      </button>
+    </div>
   );
 }

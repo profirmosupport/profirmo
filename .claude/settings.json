@@ -107,7 +107,9 @@
       "Bash(awk '{print; fflush\\(\\)} /Port: |app crashed/ {exit}')",
       "Bash(./node_modules/.bin/eslint components/professionals/ProfessionalRegistrationForm.js)",
       "Bash(npm start *)",
-      "Bash(awk '{print; fflush\\(\\)} /Waiting on|Logs for|exp:\\\\/\\\\/|EADDRINUSE|Failed/ {exit}')"
+      "Bash(awk '{print; fflush\\(\\)} /Waiting on|Logs for|exp:\\\\/\\\\/|EADDRINUSE|Failed/ {exit}')",
+      "Bash(./node_modules/.bin/eslint app/admin/users/page.js app/admin/law-firms/page.js)",
+      "Bash(curl -s -o /dev/null -w \"health=%{http_code}\\\\n\" http://localhost:5001/api/health)"
     ]
   }
 }
