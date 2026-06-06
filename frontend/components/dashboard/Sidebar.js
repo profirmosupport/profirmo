@@ -314,6 +314,21 @@ const NAV_BY_ROLE = {
           href: '/admin/locations',
           icon: MapPin,
         },
+        {
+          labelKey: 'dash.nav.caseStatuses',
+          href: '/admin/case-statuses',
+          icon: ListTree,
+        },
+        {
+          labelKey: 'dash.nav.caseTypes',
+          href: '/admin/case-types',
+          icon: ListTree,
+        },
+        {
+          labelKey: 'dash.nav.causeListTypes',
+          href: '/admin/cause-list-types',
+          icon: ListTree,
+        },
       ],
     },
   ],

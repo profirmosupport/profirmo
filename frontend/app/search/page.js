@@ -2,7 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Script from 'next/script';
-import { Search, Users, Building2, AlertCircle, Lock } from 'lucide-react';
+import {
+  Search,
+  Users,
+  Building2,
+  AlertCircle,
+  Lock,
+  Scale,
+  Calculator,
+  Briefcase,
+} from 'lucide-react';
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
 import Card from '@/components/common/Card';
@@ -291,10 +300,30 @@ export default function SearchPage() {
                 value={filters.category}
                 onChange={(e) => update({ category: e.target.value })}
                 placeholder={t('searchPage.allCategories')}
-                options={subCategories.map((s) => ({
-                  value: s.id,
-                  label: `${s.categoryName} — ${s.name}`,
-                }))}
+                options={subCategories
+                  // Only top-level sub-categories — deeper tiers are
+                  // search-only refinements, not landing entry points.
+                  .filter((s) => !s.parentSubCategoryId)
+                  .slice()
+                  .sort((a, b) =>
+                    String(a.name).localeCompare(String(b.name), undefined, {
+                      sensitivity: 'base',
+                    })
+                  )
+                  .map((s) => {
+                    const slug = String(s.categorySlug || '').toLowerCase();
+                    const Icon =
+                      slug === 'legal'
+                        ? Scale
+                        : slug === 'tax'
+                          ? Calculator
+                          : Briefcase;
+                    return {
+                      value: s.id,
+                      label: s.name,
+                      icon: <Icon size={16} />,
+                    };
+                  })}
               />
               <Combobox
                 label={t('searchPage.location')}

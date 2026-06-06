@@ -298,6 +298,177 @@ const adminUpdateCityHierarchical = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'City updated', row);
 });
 
+// --- Case statuses --------------------------------------------------------
+
+const publicListCaseStatuses = asyncHandler(async (req, res) => {
+  const rows = await svc.listCaseStatusesPublic();
+  return successResponse(res, 200, 'Case statuses fetched', rows);
+});
+
+const adminListCaseStatuses = asyncHandler(async (req, res) => {
+  const rows = await svc.listCaseStatusesAdmin({ search: req.query.search });
+  return successResponse(res, 200, 'Case statuses fetched', rows);
+});
+
+const adminCreateCaseStatus = asyncHandler(async (req, res) => {
+  const adminId = req.user.id || req.user.sub;
+  const row = await svc.createCaseStatus(req.body || {});
+  await logAudit({
+    req,
+    userId: adminId,
+    action: 'admin.case_status_created',
+    entity: 'case_status',
+    entityId: row.id,
+    status: 'success',
+    metadata: { value: row.value },
+  });
+  return successResponse(res, 201, 'Case status created', row);
+});
+
+const adminUpdateCaseStatus = asyncHandler(async (req, res) => {
+  const adminId = req.user.id || req.user.sub;
+  const row = await svc.updateCaseStatus(req.params.id, req.body || {});
+  await logAudit({
+    req,
+    userId: adminId,
+    action: 'admin.case_status_updated',
+    entity: 'case_status',
+    entityId: req.params.id,
+    status: 'success',
+    metadata: { fields: Object.keys(req.body || {}) },
+  });
+  return successResponse(res, 200, 'Case status updated', row);
+});
+
+const adminDeleteCaseStatus = asyncHandler(async (req, res) => {
+  const adminId = req.user.id || req.user.sub;
+  const result = await svc.deleteCaseStatus(req.params.id);
+  await logAudit({
+    req,
+    userId: adminId,
+    action: 'admin.case_status_deleted',
+    entity: 'case_status',
+    entityId: req.params.id,
+    status: 'success',
+    metadata: {},
+  });
+  return successResponse(res, 200, 'Case status deleted', result);
+});
+
+// --- Case types -----------------------------------------------------------
+
+const publicListCaseTypes = asyncHandler(async (req, res) => {
+  const rows = await svc.listCaseTypesPublic();
+  return successResponse(res, 200, 'Case types fetched', rows);
+});
+
+const adminListCaseTypes = asyncHandler(async (req, res) => {
+  const rows = await svc.listCaseTypesAdmin({ search: req.query.search });
+  return successResponse(res, 200, 'Case types fetched', rows);
+});
+
+const adminCreateCaseType = asyncHandler(async (req, res) => {
+  const adminId = req.user.id || req.user.sub;
+  const row = await svc.createCaseType(req.body || {});
+  await logAudit({
+    req,
+    userId: adminId,
+    action: 'admin.case_type_created',
+    entity: 'case_type',
+    entityId: row.id,
+    status: 'success',
+    metadata: { value: row.value },
+  });
+  return successResponse(res, 201, 'Case type created', row);
+});
+
+const adminUpdateCaseType = asyncHandler(async (req, res) => {
+  const adminId = req.user.id || req.user.sub;
+  const row = await svc.updateCaseType(req.params.id, req.body || {});
+  await logAudit({
+    req,
+    userId: adminId,
+    action: 'admin.case_type_updated',
+    entity: 'case_type',
+    entityId: req.params.id,
+    status: 'success',
+    metadata: { fields: Object.keys(req.body || {}) },
+  });
+  return successResponse(res, 200, 'Case type updated', row);
+});
+
+const adminDeleteCaseType = asyncHandler(async (req, res) => {
+  const adminId = req.user.id || req.user.sub;
+  const result = await svc.deleteCaseType(req.params.id);
+  await logAudit({
+    req,
+    userId: adminId,
+    action: 'admin.case_type_deleted',
+    entity: 'case_type',
+    entityId: req.params.id,
+    status: 'success',
+    metadata: {},
+  });
+  return successResponse(res, 200, 'Case type deleted', result);
+});
+
+// --- Cause list types -----------------------------------------------------
+
+const publicListCauseListTypes = asyncHandler(async (req, res) => {
+  const rows = await svc.listCauseListTypesPublic();
+  return successResponse(res, 200, 'Cause list types fetched', rows);
+});
+
+const adminListCauseListTypes = asyncHandler(async (req, res) => {
+  const rows = await svc.listCauseListTypesAdmin({ search: req.query.search });
+  return successResponse(res, 200, 'Cause list types fetched', rows);
+});
+
+const adminCreateCauseListType = asyncHandler(async (req, res) => {
+  const adminId = req.user.id || req.user.sub;
+  const row = await svc.createCauseListType(req.body || {});
+  await logAudit({
+    req,
+    userId: adminId,
+    action: 'admin.cause_list_type_created',
+    entity: 'cause_list_type',
+    entityId: row.id,
+    status: 'success',
+    metadata: { value: row.value },
+  });
+  return successResponse(res, 201, 'Cause list type created', row);
+});
+
+const adminUpdateCauseListType = asyncHandler(async (req, res) => {
+  const adminId = req.user.id || req.user.sub;
+  const row = await svc.updateCauseListType(req.params.id, req.body || {});
+  await logAudit({
+    req,
+    userId: adminId,
+    action: 'admin.cause_list_type_updated',
+    entity: 'cause_list_type',
+    entityId: req.params.id,
+    status: 'success',
+    metadata: { fields: Object.keys(req.body || {}) },
+  });
+  return successResponse(res, 200, 'Cause list type updated', row);
+});
+
+const adminDeleteCauseListType = asyncHandler(async (req, res) => {
+  const adminId = req.user.id || req.user.sub;
+  const result = await svc.deleteCauseListType(req.params.id);
+  await logAudit({
+    req,
+    userId: adminId,
+    action: 'admin.cause_list_type_deleted',
+    entity: 'cause_list_type',
+    entityId: req.params.id,
+    status: 'success',
+    metadata: {},
+  });
+  return successResponse(res, 200, 'Cause list type deleted', result);
+});
+
 module.exports = {
   publicListCategories,
   publicListCities,
@@ -323,4 +494,22 @@ module.exports = {
   adminDeleteState,
   adminCreateCityForState,
   adminUpdateCityHierarchical,
+  // Case statuses
+  publicListCaseStatuses,
+  adminListCaseStatuses,
+  adminCreateCaseStatus,
+  adminUpdateCaseStatus,
+  adminDeleteCaseStatus,
+  // Case types
+  publicListCaseTypes,
+  adminListCaseTypes,
+  adminCreateCaseType,
+  adminUpdateCaseType,
+  adminDeleteCaseType,
+  // Cause list types
+  publicListCauseListTypes,
+  adminListCauseListTypes,
+  adminCreateCauseListType,
+  adminUpdateCauseListType,
+  adminDeleteCauseListType,
 };

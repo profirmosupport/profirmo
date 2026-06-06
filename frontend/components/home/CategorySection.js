@@ -30,29 +30,50 @@ const ICONS = {
   'company-registration-consultant': Briefcase,
 };
 
+// Hard cap on the homepage grid so a generous admin curation doesn't
+// blow the section into a 30-card wall. Featured sub-categories beyond
+// this cap stay accessible via the full search/filter page.
+const HOME_GRID_CAP = 10;
+
 export default function CategorySection() {
   const { t } = useLanguage();
   const { categories: apiCategories } = useCategories();
 
-  // Flatten the admin-managed taxonomy and keep only sub-categories an
-  // admin has flagged as "Featured". The home page surfaces a curated few
-  // — anything else stays accessible via the full search/filter page.
-  const categories = [];
+  // Flatten the admin-managed taxonomy and keep only TOP-LEVEL
+  // sub-categories an admin has flagged as "Featured". Deeper tiers
+  // (sub-sub-categories, practice areas) are search-only refinements,
+  // not homepage landing entries, so they're excluded even if someone
+  // ticks the Featured flag deeper in the tree.
+  const collected = [];
   for (const cat of apiCategories) {
     const isTax = String(cat.slug || '').toLowerCase() === 'tax';
     for (const sub of cat.subCategories || []) {
       if (!sub.featured) continue;
+      if (sub.parentSubCategoryId) continue;
       const slug = String(sub.name || '')
         .toLowerCase()
         .replace(/\s+/g, '-');
-      categories.push({
+      collected.push({
         id: sub.id,
         name: sub.name,
         slug,
+        sortOrder: Number.isFinite(Number(sub.sortOrder))
+          ? Number(sub.sortOrder)
+          : 0,
         type: isTax ? 'tax' : 'legal',
       });
     }
   }
+  // Sort by sortOrder then name so admins can hand-arrange the grid.
+  collected.sort(
+    (a, b) =>
+      a.sortOrder - b.sortOrder ||
+      String(a.name).localeCompare(String(b.name), undefined, {
+        sensitivity: 'base',
+      })
+  );
+  const categories = collected.slice(0, HOME_GRID_CAP);
+
   // If no sub-category is featured yet, hide the section entirely so the
   // home page doesn't render an empty grid.
   if (categories.length === 0) return null;

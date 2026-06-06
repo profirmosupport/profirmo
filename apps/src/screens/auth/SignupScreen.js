@@ -10,7 +10,6 @@ import DocSlot from '../../components/auth/DocSlot';
 import StepProgress from '../../components/auth/StepProgress';
 import SearchableSelect from '../../components/auth/SearchableSelect';
 import SearchableMultiSelect from '../../components/auth/SearchableMultiSelect';
-import ChipGroup from '../../components/auth/ChipGroup';
 import CheckboxRow from '../../components/auth/CheckboxRow';
 import SkipButton from '../../components/auth/SkipButton';
 import {
@@ -744,20 +743,19 @@ function ClientStep({ verifiedPhone }) {
         onChangeText={(v) => set('email', v)}
         error={errors.email}
       />
-      <AuthInput
-        label="Mobile number"
-        icon="smartphone"
-        keyboardType="phone-pad"
-        placeholder="+91 98xxxxxxxx"
-        value={form.mobileNumber}
-        onChangeText={(v) => set('mobileNumber', v)}
-        hint={
-          phoneFirst
-            ? 'Verified via OTP. Edit later from your profile.'
-            : 'You can verify your number after signup.'
-        }
-        editable={!phoneFirst}
-      />
+      {phoneFirst ? (
+        <VerifiedPhoneDisplay phone={form.mobileNumber} />
+      ) : (
+        <AuthInput
+          label="Mobile number"
+          icon="smartphone"
+          keyboardType="phone-pad"
+          placeholder="+91 98xxxxxxxx"
+          value={form.mobileNumber}
+          onChangeText={(v) => set('mobileNumber', v)}
+          hint="You can verify your number after signup."
+        />
+      )}
       {/* Phone-first signup is password-less — phone is the channel of
           verification. The password field is only shown on the legacy
           path (which is no longer reachable from the new flow but
@@ -830,11 +828,11 @@ function ProRegistrationWizard({ professionalType, verifiedPhone }) {
     firstName: '',
     lastName: '',
     email: '',
-    // Pre-fill the verified phone — the field stays editable so the
-    // user can correct typos, but the OTP we minted is for THIS
-    // number. The backend's register-professional endpoint isn't OTP-
-    // gated yet (it goes through admin approval first), so this is
-    // currently a UX prefill rather than a hard constraint.
+    // Pre-fill from the OTP-verified phone and lock the field. The
+    // user can change their number later from the profile screen
+    // (which has its own OTP re-verification flow). Keeping it
+    // immutable here prevents pros from signing up with one number
+    // and operating under another mid-flow.
     mobileNumber: verifiedPhone || '',
     password: '',
     confirmPassword: '',
@@ -1091,6 +1089,7 @@ function ProRegistrationWizard({ professionalType, verifiedPhone }) {
           countries={countries}
           flatCities={flatCities}
           typeCat={typeCat}
+          verifiedPhone={verifiedPhone}
         />
       ) : step === 2 ? (
         <Step2 form={form} set={set} errors={errors} isLegal={isLegal} />
@@ -1134,7 +1133,8 @@ function ProRegistrationWizard({ professionalType, verifiedPhone }) {
 
 // --- Step 1 ---------------------------------------------------------------
 
-function Step1({ form, set, setLocation, errors, countries, flatCities, typeCat }) {
+function Step1({ form, set, setLocation, errors, countries, flatCities, typeCat, verifiedPhone }) {
+  const phoneLocked = Boolean(verifiedPhone);
   const subOptions =
     typeCat && Array.isArray(typeCat.subCategories)
       ? typeCat.subCategories.map((s) => ({ value: s.id, label: s.name }))
@@ -1176,15 +1176,19 @@ function Step1({ form, set, setLocation, errors, countries, flatCities, typeCat 
         onChangeText={(v) => set('email', v)}
         error={errors.email}
       />
-      <AuthInput
-        label="Mobile number"
-        icon="smartphone"
-        keyboardType="phone-pad"
-        placeholder="+91 98xxxxxxxx"
-        value={form.mobileNumber}
-        onChangeText={(v) => set('mobileNumber', v)}
-        error={errors.mobileNumber}
-      />
+      {phoneLocked ? (
+        <VerifiedPhoneDisplay phone={form.mobileNumber} />
+      ) : (
+        <AuthInput
+          label="Mobile number"
+          icon="smartphone"
+          keyboardType="phone-pad"
+          placeholder="+91 98xxxxxxxx"
+          value={form.mobileNumber}
+          onChangeText={(v) => set('mobileNumber', v)}
+          error={errors.mobileNumber}
+        />
+      )}
       <Row>
         <AuthInput
           label="Password"
@@ -1242,12 +1246,14 @@ function Step1({ form, set, setLocation, errors, countries, flatCities, typeCat 
       />
 
       {subOptions.length > 0 ? (
-        <ChipGroup
+        <SearchableMultiSelect
           label={`${typeCat.name} sub-categories`}
           hint={`Select every ${typeCat.name.toLowerCase()} area you practise in.`}
+          icon="tag"
           options={subOptions}
           value={form.subCategoryIds}
           onChange={(v) => set('subCategoryIds', v)}
+          placeholder={`Search ${typeCat.name.toLowerCase()} areas…`}
         />
       ) : null}
     </View>
@@ -1562,6 +1568,40 @@ function Banner({ text }) {
   );
 }
 
+// VerifiedPhoneDisplay — pure read-only render of an OTP-verified phone
+// number. Used on both client + pro signup so there is literally no
+// TextInput in the tree to type into. Visual cue: green check + muted
+// background + "Verified via OTP" caption. Users change their number
+// from the profile screen post-signup (which has its own re-OTP gate).
+function VerifiedPhoneDisplay({ phone }) {
+  return (
+    <View style={styles.phoneLock}>
+      <View style={styles.phoneLockLabelRow}>
+        <Text style={styles.phoneLockLabel}>Mobile number</Text>
+        <View style={styles.phoneLockBadge}>
+          <Feather name="check" size={10} color={colors.success} />
+          <Text style={styles.phoneLockBadgeText}>Verified</Text>
+        </View>
+      </View>
+      <View style={styles.phoneLockField}>
+        <Feather
+          name="smartphone"
+          size={16}
+          color={colors.textMuted}
+          style={{ marginRight: 8 }}
+        />
+        <Text style={styles.phoneLockValue} numberOfLines={1}>
+          {phone || '—'}
+        </Text>
+        <Feather name="lock" size={14} color={colors.textMuted} />
+      </View>
+      <Text style={styles.phoneLockHint}>
+        Verified via OTP. Edit later from your profile.
+      </Text>
+    </View>
+  );
+}
+
 function ChoiceRow({ label, value, options, onChange }) {
   return (
     <View style={{ marginBottom: spacing.md }}>
@@ -1605,6 +1645,85 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     marginBottom: spacing.md,
+  },
+
+  // OTP step footer — split row with "Use a different number" on the
+  // left and "Resend code" / cooldown on the right. Both render as
+  // proper underlined links so they read as interactive.
+  otpFooter: {
+    marginTop: spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  linkMuted: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.textSecondary,
+    textDecorationLine: 'underline',
+    textDecorationColor: colors.textSecondary,
+  },
+  linkAccent: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.bold,
+    color: colors.primary,
+    textDecorationLine: 'underline',
+    textDecorationColor: colors.primary,
+  },
+
+  // VerifiedPhoneDisplay — locked phone row used on both client + pro
+  // signup. No TextInput in the tree so nothing can be typed into it.
+  phoneLock: { marginBottom: spacing.md },
+  phoneLockLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  phoneLockLabel: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.textPrimary,
+  },
+  phoneLockBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: 'rgba(16,185,129,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.3)',
+  },
+  phoneLockBadgeText: {
+    fontSize: 10,
+    fontWeight: fontWeight.bold,
+    color: colors.success,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  phoneLockField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceMuted,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+  },
+  phoneLockValue: {
+    flex: 1,
+    fontSize: fontSize.base,
+    fontWeight: fontWeight.semibold,
+    color: colors.textPrimary,
+  },
+  phoneLockHint: {
+    marginTop: 4,
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
   },
   backText: {
     fontSize: fontSize.sm,

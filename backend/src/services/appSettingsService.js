@@ -6,7 +6,16 @@
 // uniqueness against `slug`.
 
 const { Op } = require('sequelize');
-const { Category, SubCategory, Country, State, City } = require('../models');
+const {
+  Category,
+  SubCategory,
+  Country,
+  State,
+  City,
+  CaseStatus,
+  CaseType,
+  CauseListType,
+} = require('../models');
 
 const slugify = (s) =>
   String(s || '')
@@ -135,6 +144,7 @@ async function deleteCategory(id) {
 
 async function createSubCategory({
   categoryId,
+  parentSubCategoryId,
   name,
   sortOrder,
   active,
@@ -145,16 +155,44 @@ async function createSubCategory({
   if (!parent) throw httpError(404, 'Parent category not found.');
   const trimmed = String(name || '').trim();
   if (!trimmed) throw httpError(400, 'Sub-category name is required.');
-  const slug = `${parent.slug}-${slugify(trimmed)}`;
-  const dup = await SubCategory.findOne({ where: { slug } });
-  if (dup) {
-    throw httpError(
-      409,
-      `Sub-category "${trimmed}" already exists under ${parent.name}.`
-    );
+
+  // When nesting under another SubCategory, prefix the slug with the
+  // parent SubCategory's slug so two siblings with the same name under
+  // different parents (e.g. "Child custody" under Hindu Marriage Law
+  // and Special Marriage Act) don't collide on the global slug-unique
+  // index.
+  let parentSubSlug = parent.slug;
+  if (parentSubCategoryId) {
+    const parentSub = await SubCategory.findByPk(parentSubCategoryId);
+    if (!parentSub) {
+      throw httpError(404, 'Parent sub-category not found.');
+    }
+    if (parentSub.categoryId !== categoryId) {
+      throw httpError(
+        400,
+        'Parent sub-category belongs to a different category.'
+      );
+    }
+    parentSubSlug = parentSub.slug;
+  }
+
+  let slug = `${parentSubSlug}-${slugify(trimmed)}`;
+  let n = 2;
+  // Defensive collision-bumper — global slug uniqueness can be
+  // tripped by an unrelated category's row.
+  while (await SubCategory.findOne({ where: { slug } })) {
+    slug = `${parentSubSlug}-${slugify(trimmed)}-${n}`;
+    n += 1;
+    if (n > 30) {
+      throw httpError(
+        409,
+        `Could not generate unique slug for sub-category "${trimmed}".`
+      );
+    }
   }
   return SubCategory.create({
     categoryId,
+    parentSubCategoryId: parentSubCategoryId || null,
     name: trimmed,
     slug,
     sortOrder: Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : 0,
@@ -165,7 +203,7 @@ async function createSubCategory({
 
 async function updateSubCategory(
   id,
-  { name, sortOrder, active, categoryId, featured }
+  { name, sortOrder, active, categoryId, parentSubCategoryId, featured }
 ) {
   const sub = await SubCategory.findByPk(id);
   if (!sub) throw httpError(404, 'Sub-category not found.');
@@ -176,21 +214,60 @@ async function updateSubCategory(
     if (!parent) throw httpError(404, 'Parent category not found.');
     patch.categoryId = categoryId;
   }
+
+  // Resolve parent sub-category (for nested rows). `null` is the
+  // explicit "promote to tier-1" signal; leaving the field undefined
+  // keeps the current parent.
+  const effectiveCategoryId = patch.categoryId || sub.categoryId;
+  let parentSubSlug = null;
+  if (parentSubCategoryId !== undefined) {
+    if (parentSubCategoryId === null || parentSubCategoryId === '') {
+      patch.parentSubCategoryId = null;
+    } else {
+      if (parentSubCategoryId === id) {
+        throw httpError(400, 'A sub-category cannot be its own parent.');
+      }
+      const parentSub = await SubCategory.findByPk(parentSubCategoryId);
+      if (!parentSub) {
+        throw httpError(404, 'Parent sub-category not found.');
+      }
+      if (parentSub.categoryId !== effectiveCategoryId) {
+        throw httpError(
+          400,
+          'Parent sub-category belongs to a different category.'
+        );
+      }
+      patch.parentSubCategoryId = parentSubCategoryId;
+      parentSubSlug = parentSub.slug;
+    }
+  } else if (sub.parentSubCategoryId) {
+    const existingParent = await SubCategory.findByPk(sub.parentSubCategoryId);
+    if (existingParent) parentSubSlug = existingParent.slug;
+  }
+
   if (name !== undefined) {
     const trimmed = String(name).trim();
     if (!trimmed) throw httpError(400, 'Sub-category name cannot be empty.');
     patch.name = trimmed;
-    const parentForSlug = parent || (await Category.findByPk(sub.categoryId));
-    const newSlug = `${parentForSlug.slug}-${slugify(trimmed)}`;
+    const parentForSlug =
+      parentSubSlug ||
+      (parent ? parent.slug : (await Category.findByPk(sub.categoryId)).slug);
+    let newSlug = `${parentForSlug}-${slugify(trimmed)}`;
     if (newSlug !== sub.slug) {
-      const dup = await SubCategory.findOne({
-        where: { slug: newSlug, id: { [Op.ne]: id } },
-      });
-      if (dup) {
-        throw httpError(
-          409,
-          `Sub-category "${trimmed}" already exists under ${parentForSlug.name}.`
-        );
+      let n = 2;
+      while (
+        await SubCategory.findOne({
+          where: { slug: newSlug, id: { [Op.ne]: id } },
+        })
+      ) {
+        newSlug = `${parentForSlug}-${slugify(trimmed)}-${n}`;
+        n += 1;
+        if (n > 30) {
+          throw httpError(
+            409,
+            `Could not generate unique slug for sub-category "${trimmed}".`
+          );
+        }
       }
       patch.slug = newSlug;
     }
@@ -338,7 +415,7 @@ async function listLocationsPublic() {
     State.findAll({
       where: { active: true },
       order: [['sortOrder', 'ASC'], ['name', 'ASC']],
-      attributes: ['id', 'countryId', 'name', 'slug'],
+      attributes: ['id', 'countryId', 'name', 'slug', 'code'],
       raw: true,
     }),
     City.findAll({
@@ -368,6 +445,7 @@ async function listLocationsPublic() {
       id: s.id,
       name: s.name,
       slug: s.slug,
+      code: s.code,
       countryId: s.countryId,
       cities: citiesByState.get(s.id) || [],
     })),
@@ -559,6 +637,273 @@ async function updateCityHierarchical(id, { name, sortOrder, active, stateId }) 
   return city.toJSON();
 }
 
+// --- Case statuses --------------------------------------------------------
+//
+// Admin-managed lookup of court case status codes (ABATED, DISPOSED, …).
+// Stable `value` field is the enum key referenced by other rows as plain
+// strings; `description` is the human label rendered in dropdowns.
+
+function normalizeValue(raw) {
+  return String(raw || '')
+    .toUpperCase()
+    .trim()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+async function listCaseStatusesAdmin({ search } = {}) {
+  const where = {};
+  if (search && String(search).trim()) {
+    const q = `%${String(search).trim()}%`;
+    where[Op.or] = [{ value: { [Op.like]: q } }, { description: { [Op.like]: q } }];
+  }
+  return CaseStatus.findAll({
+    where,
+    order: [
+      ['sortOrder', 'ASC'],
+      ['value', 'ASC'],
+    ],
+    raw: true,
+  });
+}
+
+async function listCaseStatusesPublic() {
+  return CaseStatus.findAll({
+    where: { active: true },
+    order: [
+      ['sortOrder', 'ASC'],
+      ['value', 'ASC'],
+    ],
+    attributes: ['id', 'value', 'description'],
+    raw: true,
+  });
+}
+
+async function createCaseStatus({ value, description, sortOrder, active }) {
+  const v = normalizeValue(value);
+  if (!v) throw httpError(400, 'Case status value is required.');
+  const desc = String(description || '').trim();
+  if (!desc) throw httpError(400, 'Case status description is required.');
+  const dup = await CaseStatus.findOne({ where: { value: v } });
+  if (dup) throw httpError(409, `Case status "${v}" already exists.`);
+  return CaseStatus.create({
+    value: v,
+    description: desc,
+    sortOrder: Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : 0,
+    active: active === false ? false : true,
+  });
+}
+
+async function updateCaseStatus(id, { value, description, sortOrder, active }) {
+  const row = await CaseStatus.findByPk(id);
+  if (!row) throw httpError(404, 'Case status not found.');
+  const patch = {};
+  if (value !== undefined) {
+    const v = normalizeValue(value);
+    if (!v) throw httpError(400, 'Case status value cannot be empty.');
+    if (v !== row.value) {
+      const dup = await CaseStatus.findOne({
+        where: { value: v, id: { [Op.ne]: id } },
+      });
+      if (dup) throw httpError(409, `Case status "${v}" already exists.`);
+      patch.value = v;
+    }
+  }
+  if (description !== undefined) {
+    const trimmed = String(description).trim();
+    if (!trimmed) throw httpError(400, 'Description cannot be empty.');
+    patch.description = trimmed;
+  }
+  if (sortOrder !== undefined && Number.isFinite(Number(sortOrder))) {
+    patch.sortOrder = Number(sortOrder);
+  }
+  if (active !== undefined) patch.active = Boolean(active);
+  await row.update(patch);
+  return row.toJSON();
+}
+
+async function deleteCaseStatus(id) {
+  const row = await CaseStatus.findByPk(id);
+  if (!row) throw httpError(404, 'Case status not found.');
+  await row.destroy();
+  return { id };
+}
+
+// --- Case types -----------------------------------------------------------
+//
+// Same shape as CaseStatus, but the `value` field is case-sensitive
+// because the partner taxonomy mixes uppercase (CC, WP_C) with mixed
+// case (Arb, MCrA, Tax_Ref). The normaliser trims + collapses runs of
+// non-alphanumeric chars to underscores, but does NOT uppercase.
+
+function normalizeCaseTypeValue(raw) {
+  return String(raw || '')
+    .trim()
+    .replace(/[^A-Za-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+async function listCaseTypesAdmin({ search } = {}) {
+  const where = {};
+  if (search && String(search).trim()) {
+    const q = `%${String(search).trim()}%`;
+    where[Op.or] = [{ value: { [Op.like]: q } }, { description: { [Op.like]: q } }];
+  }
+  return CaseType.findAll({
+    where,
+    order: [
+      ['sortOrder', 'ASC'],
+      ['value', 'ASC'],
+    ],
+    raw: true,
+  });
+}
+
+async function listCaseTypesPublic() {
+  return CaseType.findAll({
+    where: { active: true },
+    order: [
+      ['sortOrder', 'ASC'],
+      ['value', 'ASC'],
+    ],
+    attributes: ['id', 'value', 'description'],
+    raw: true,
+  });
+}
+
+async function createCaseType({ value, description, sortOrder, active }) {
+  const v = normalizeCaseTypeValue(value);
+  if (!v) throw httpError(400, 'Case type value is required.');
+  const desc = String(description || '').trim();
+  if (!desc) throw httpError(400, 'Case type description is required.');
+  const dup = await CaseType.findOne({ where: { value: v } });
+  if (dup) throw httpError(409, `Case type "${v}" already exists.`);
+  return CaseType.create({
+    value: v,
+    description: desc,
+    sortOrder: Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : 0,
+    active: active === false ? false : true,
+  });
+}
+
+async function updateCaseType(id, { value, description, sortOrder, active }) {
+  const row = await CaseType.findByPk(id);
+  if (!row) throw httpError(404, 'Case type not found.');
+  const patch = {};
+  if (value !== undefined) {
+    const v = normalizeCaseTypeValue(value);
+    if (!v) throw httpError(400, 'Case type value cannot be empty.');
+    if (v !== row.value) {
+      const dup = await CaseType.findOne({
+        where: { value: v, id: { [Op.ne]: id } },
+      });
+      if (dup) throw httpError(409, `Case type "${v}" already exists.`);
+      patch.value = v;
+    }
+  }
+  if (description !== undefined) {
+    const trimmed = String(description).trim();
+    if (!trimmed) throw httpError(400, 'Description cannot be empty.');
+    patch.description = trimmed;
+  }
+  if (sortOrder !== undefined && Number.isFinite(Number(sortOrder))) {
+    patch.sortOrder = Number(sortOrder);
+  }
+  if (active !== undefined) patch.active = Boolean(active);
+  await row.update(patch);
+  return row.toJSON();
+}
+
+async function deleteCaseType(id) {
+  const row = await CaseType.findByPk(id);
+  if (!row) throw httpError(404, 'Case type not found.');
+  await row.destroy();
+  return { id };
+}
+
+// --- Cause list types -----------------------------------------------------
+//
+// Tiny enum (CIVIL / CRIMINAL / UNKNOWN). Same normaliser as
+// CaseStatus — uppercase + underscores.
+
+async function listCauseListTypesAdmin({ search } = {}) {
+  const where = {};
+  if (search && String(search).trim()) {
+    const q = `%${String(search).trim()}%`;
+    where[Op.or] = [{ value: { [Op.like]: q } }, { description: { [Op.like]: q } }];
+  }
+  return CauseListType.findAll({
+    where,
+    order: [
+      ['sortOrder', 'ASC'],
+      ['value', 'ASC'],
+    ],
+    raw: true,
+  });
+}
+
+async function listCauseListTypesPublic() {
+  return CauseListType.findAll({
+    where: { active: true },
+    order: [
+      ['sortOrder', 'ASC'],
+      ['value', 'ASC'],
+    ],
+    attributes: ['id', 'value', 'description'],
+    raw: true,
+  });
+}
+
+async function createCauseListType({ value, description, sortOrder, active }) {
+  const v = normalizeValue(value);
+  if (!v) throw httpError(400, 'Cause list type value is required.');
+  const desc = String(description || '').trim();
+  if (!desc) throw httpError(400, 'Cause list type description is required.');
+  const dup = await CauseListType.findOne({ where: { value: v } });
+  if (dup) throw httpError(409, `Cause list type "${v}" already exists.`);
+  return CauseListType.create({
+    value: v,
+    description: desc,
+    sortOrder: Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : 0,
+    active: active === false ? false : true,
+  });
+}
+
+async function updateCauseListType(id, { value, description, sortOrder, active }) {
+  const row = await CauseListType.findByPk(id);
+  if (!row) throw httpError(404, 'Cause list type not found.');
+  const patch = {};
+  if (value !== undefined) {
+    const v = normalizeValue(value);
+    if (!v) throw httpError(400, 'Cause list type value cannot be empty.');
+    if (v !== row.value) {
+      const dup = await CauseListType.findOne({
+        where: { value: v, id: { [Op.ne]: id } },
+      });
+      if (dup) throw httpError(409, `Cause list type "${v}" already exists.`);
+      patch.value = v;
+    }
+  }
+  if (description !== undefined) {
+    const trimmed = String(description).trim();
+    if (!trimmed) throw httpError(400, 'Description cannot be empty.');
+    patch.description = trimmed;
+  }
+  if (sortOrder !== undefined && Number.isFinite(Number(sortOrder))) {
+    patch.sortOrder = Number(sortOrder);
+  }
+  if (active !== undefined) patch.active = Boolean(active);
+  await row.update(patch);
+  return row.toJSON();
+}
+
+async function deleteCauseListType(id) {
+  const row = await CauseListType.findByPk(id);
+  if (!row) throw httpError(404, 'Cause list type not found.');
+  await row.destroy();
+  return { id };
+}
+
 module.exports = {
   listCategoriesAdmin,
   listCategoriesPublic,
@@ -584,4 +929,22 @@ module.exports = {
   deleteState,
   createCityForState,
   updateCityHierarchical,
+  // Case statuses
+  listCaseStatusesAdmin,
+  listCaseStatusesPublic,
+  createCaseStatus,
+  updateCaseStatus,
+  deleteCaseStatus,
+  // Case types
+  listCaseTypesAdmin,
+  listCaseTypesPublic,
+  createCaseType,
+  updateCaseType,
+  deleteCaseType,
+  // Cause list types
+  listCauseListTypesAdmin,
+  listCauseListTypesPublic,
+  createCauseListType,
+  updateCauseListType,
+  deleteCauseListType,
 };

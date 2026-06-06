@@ -147,6 +147,87 @@ export async function adminDeleteCityHierarchical(id) {
   return unwrap(res);
 }
 
+// --- Case statuses --------------------------------------------------------
+
+export async function listCaseStatuses() {
+  const res = await get('/api/app-settings/case-statuses');
+  return unwrap(res) || [];
+}
+
+export async function adminListCaseStatuses(params = {}) {
+  const res = await get('/api/admin/case-statuses', { params });
+  return unwrap(res) || [];
+}
+
+export async function adminCreateCaseStatus(data) {
+  const res = await post('/api/admin/case-statuses', data);
+  return unwrap(res);
+}
+
+export async function adminUpdateCaseStatus(id, data) {
+  const res = await patch(`/api/admin/case-statuses/${id}`, data);
+  return unwrap(res);
+}
+
+export async function adminDeleteCaseStatus(id) {
+  const res = await del(`/api/admin/case-statuses/${id}`);
+  return unwrap(res);
+}
+
+// --- Case types -----------------------------------------------------------
+
+export async function listCaseTypes() {
+  const res = await get('/api/app-settings/case-types');
+  return unwrap(res) || [];
+}
+
+export async function adminListCaseTypes(params = {}) {
+  const res = await get('/api/admin/case-types', { params });
+  return unwrap(res) || [];
+}
+
+export async function adminCreateCaseType(data) {
+  const res = await post('/api/admin/case-types', data);
+  return unwrap(res);
+}
+
+export async function adminUpdateCaseType(id, data) {
+  const res = await patch(`/api/admin/case-types/${id}`, data);
+  return unwrap(res);
+}
+
+export async function adminDeleteCaseType(id) {
+  const res = await del(`/api/admin/case-types/${id}`);
+  return unwrap(res);
+}
+
+// --- Cause list types -----------------------------------------------------
+
+export async function listCauseListTypes() {
+  const res = await get('/api/app-settings/cause-list-types');
+  return unwrap(res) || [];
+}
+
+export async function adminListCauseListTypes(params = {}) {
+  const res = await get('/api/admin/cause-list-types', { params });
+  return unwrap(res) || [];
+}
+
+export async function adminCreateCauseListType(data) {
+  const res = await post('/api/admin/cause-list-types', data);
+  return unwrap(res);
+}
+
+export async function adminUpdateCauseListType(id, data) {
+  const res = await patch(`/api/admin/cause-list-types/${id}`, data);
+  return unwrap(res);
+}
+
+export async function adminDeleteCauseListType(id) {
+  const res = await del(`/api/admin/cause-list-types/${id}`);
+  return unwrap(res);
+}
+
 export default {
   listCategories,
   listCities,
@@ -161,4 +242,19 @@ export default {
   adminCreateCity,
   adminUpdateCity,
   adminDeleteCity,
+  listCaseStatuses,
+  adminListCaseStatuses,
+  adminCreateCaseStatus,
+  adminUpdateCaseStatus,
+  adminDeleteCaseStatus,
+  listCaseTypes,
+  adminListCaseTypes,
+  adminCreateCaseType,
+  adminUpdateCaseType,
+  adminDeleteCaseType,
+  listCauseListTypes,
+  adminListCauseListTypes,
+  adminCreateCauseListType,
+  adminUpdateCauseListType,
+  adminDeleteCauseListType,
 };

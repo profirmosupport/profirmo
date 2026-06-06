@@ -492,19 +492,25 @@ const styles = StyleSheet.create({
   tabLabelActive: { color: colors.textPrimary },
 
   otpFooter: {
-    marginTop: spacing.sm,
+    marginTop: spacing.md,
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   linkMuted: {
-    fontSize: 12,
+    fontSize: fontSize.sm,
     fontWeight: fontWeight.semibold,
     color: colors.textSecondary,
+    textDecorationLine: 'underline',
+    textDecorationColor: colors.textSecondary,
   },
   linkAccent: {
-    fontSize: 12,
-    fontWeight: fontWeight.semibold,
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.bold,
     color: colors.primary,
+    textDecorationLine: 'underline',
+    textDecorationColor: colors.primary,
   },
 
   banner: {

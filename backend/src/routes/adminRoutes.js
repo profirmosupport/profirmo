@@ -129,6 +129,24 @@ router.delete('/states/:id', appSettings.adminDeleteState);
 router.post('/locations/cities', appSettings.adminCreateCityForState);
 router.patch('/locations/cities/:id', appSettings.adminUpdateCityHierarchical);
 
+// --- Case statuses (admin-managed enum) ---------------------------------
+router.get('/case-statuses', appSettings.adminListCaseStatuses);
+router.post('/case-statuses', appSettings.adminCreateCaseStatus);
+router.patch('/case-statuses/:id', appSettings.adminUpdateCaseStatus);
+router.delete('/case-statuses/:id', appSettings.adminDeleteCaseStatus);
+
+// --- Case types (admin-managed enum) ------------------------------------
+router.get('/case-types', appSettings.adminListCaseTypes);
+router.post('/case-types', appSettings.adminCreateCaseType);
+router.patch('/case-types/:id', appSettings.adminUpdateCaseType);
+router.delete('/case-types/:id', appSettings.adminDeleteCaseType);
+
+// --- Cause list types (admin-managed enum) ------------------------------
+router.get('/cause-list-types', appSettings.adminListCauseListTypes);
+router.post('/cause-list-types', appSettings.adminCreateCauseListType);
+router.patch('/cause-list-types/:id', appSettings.adminUpdateCauseListType);
+router.delete('/cause-list-types/:id', appSettings.adminDeleteCauseListType);
+
 // --- Leads pipeline -------------------------------------------------------
 router.get('/leads', leads.adminListLeads);
 router.post('/leads', leads.adminCreateLead);

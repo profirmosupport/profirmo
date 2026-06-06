@@ -15,12 +15,29 @@ const notFoundHandler = (req, res) => {
 // eslint-disable-next-line no-unused-vars
 const errorHandler = (err, req, res, next) => {
   const statusCode = err.statusCode || 500;
-  const message = err.message || 'Internal Server Error';
+  // err.message can be a string OR an object — when upstream services
+  // surface a structured error envelope (e.g. partner APIs) we end up
+  // with an object here. Coerce to a readable string so logs and the
+  // HTTP response body don't collapse to "[object Object]".
+  const stringify = (v) => {
+    if (v == null) return '';
+    if (typeof v === 'string') return v;
+    if (v.message && typeof v.message === 'string') return v.message;
+    try {
+      return JSON.stringify(v);
+    } catch {
+      return String(v);
+    }
+  };
+  const message = stringify(err.message) || 'Internal Server Error';
 
   if (statusCode >= 500) {
     console.error(`[Error] ${req.method} ${req.originalUrl} -`, err);
   } else {
-    console.warn(`[Warn] ${req.method} ${req.originalUrl} - ${message}`);
+    console.warn(
+      `[Warn] ${req.method} ${req.originalUrl} - ${statusCode} ${message}`,
+      err.upstreamCode ? `(upstream=${err.upstreamCode})` : ''
+    );
   }
 
   return errorResponse(res, statusCode, message, err.errors || null);

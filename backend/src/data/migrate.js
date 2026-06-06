@@ -856,6 +856,39 @@ async function runMigrations() {
   //     migrate practiceCities city-names to city-ids. Idempotent.
   await runLocationsSeed();
 
+  // 18-bis. Ensure every Indian state / UT has its 2-letter eCourts
+  //     code on file (AN, DL, MH, …) and create rows for any code
+  //     that's missing entirely (e.g. Telangana, Ladakh, the SC
+  //     "Supreme Court" venue code). Idempotent.
+  await runStateCodesSeed();
+
+  // 18-ter. Seed comprehensive city lists (district HQs + major
+  //     cities) for every Indian state / UT. Idempotent — keyed on
+  //     (stateId, lowercased name) so re-runs don't duplicate. New
+  //     rows get state-prefixed slugs (mh-aurangabad, br-aurangabad)
+  //     so same-named cities across states don't collide on the
+  //     global slug-unique constraint.
+  await runStateCitiesSeed();
+
+  // 18-quater. Populate the "Legal" professional category with the
+  //     admin-supplied taxonomy of 50 main practice areas + their
+  //     deeper specialisations. The 50 mains get featured=true so they
+  //     surface in the primary professional-search dropdown; deeper
+  //     items are featured=false. Idempotent — re-runs only add
+  //     genuinely-missing names.
+  await runLegalPracticeAreasSeed();
+
+  // 18a. Seed the case-status enum (ABATED, DISPOSED, PENDING, …).
+  //      Admins can add/edit/delete from /admin/case-statuses. Idempotent.
+  await runCaseStatusSeed();
+
+  // 18b. Seed the case-type enum (CC, WP_C, MCrA, …) and the tiny
+  //      cause-list-type enum (CIVIL, CRIMINAL, UNKNOWN). Same pattern
+  //      as the case-status seed — admins can edit from the
+  //      respective /admin/* pages. Both idempotent.
+  await runCaseTypeSeed();
+  await runCauseListTypeSeed();
+
   // 19. Razorpay subscription columns. SubscriptionPlan gains the
   //     plan_xxx ids that Razorpay needs to create recurring
   //     subscriptions; ProfessionalSubscription gains the mandate ids we
@@ -928,6 +961,34 @@ async function runMigrations() {
           `[Migrate] Could not add cases.${col}: ${err.message}`
         );
       }
+    }
+  }
+
+  // Add parentSubCategoryId to sub_categories so the Legal taxonomy
+  // can store a 2-tier hierarchy (tier-1: featured headings; tier-2:
+  // the deeper specialisations beneath each). Nullable + additive.
+  try {
+    await sequelize.query(
+      'ALTER TABLE `sub_categories` ADD COLUMN IF NOT EXISTS `parentSubCategoryId` VARCHAR(64) NULL'
+    );
+  } catch (err) {
+    if (!/doesn'?t exist|Unknown table/i.test(err.message)) {
+      console.warn(
+        `[Migrate] Could not add sub_categories.parentSubCategoryId: ${err.message}`
+      );
+    }
+  }
+
+  // Add the 2-letter `code` column to the existing `states` table.
+  // Nullable + additive — legacy rows simply have a NULL code until the
+  // states-code backfill (`runStateCodesSeed`) runs.
+  try {
+    await sequelize.query(
+      'ALTER TABLE `states` ADD COLUMN IF NOT EXISTS `code` VARCHAR(8) NULL'
+    );
+  } catch (err) {
+    if (!/doesn'?t exist|Unknown table/i.test(err.message)) {
+      console.warn(`[Migrate] Could not add states.code: ${err.message}`);
     }
   }
 
@@ -1426,15 +1487,10 @@ async function runAppSettingsSeed() {
         slug: 'legal',
         name: 'Legal',
         sortOrder: 1,
-        subs: [
-          'Advocate',
-          'Divorce Lawyer',
-          'Family Lawyer',
-          'Criminal Lawyer',
-          'Civil Lawyer',
-          'Property Lawyer',
-          'Corporate Lawyer',
-        ],
+        // Sub-categories under Legal are owned by runLegalPracticeAreasSeed
+        // (2-tier taxonomy). Keeping this empty so the two seeds don't
+        // fight on each boot.
+        subs: [],
       },
       {
         slug: 'tax',
@@ -1964,6 +2020,973 @@ async function runLocationsSeed() {
     }
   } catch (err) {
     console.warn(`[Migrate] Locations seed failed: ${err.message}`);
+  }
+}
+
+// runCaseStatusSeed — populate the `case_statuses` lookup on first boot.
+// Idempotent: skips rows whose `value` already exists. Admins can edit
+// any of these (description, sortOrder, active) or add/delete from
+// /admin/case-statuses without touching this seed list.
+async function runCaseStatusSeed() {
+  const { CaseStatus } = require('../models');
+  // Sequence is the default sort order — also matches alphabetical so
+  // admins editing the list see entries in a predictable order.
+  const SEED = [
+    ['ABATED', 'Abated'],
+    ['ADJOURNED', 'Adjourned'],
+    ['ADMITTED', 'Admitted'],
+    ['ALLOWED', 'Allowed'],
+    ['ALLOWED_NO_COSTS', 'Allowed (No Costs)'],
+    ['APPEARANCE', 'Appearance'],
+    ['ARGUMENTS', 'Arguments'],
+    ['BAIL_GRANTED', 'Bail Granted'],
+    ['BAIL_REJECTED', 'Bail Rejected'],
+    ['CHARGE_FRAMED', 'Charge Framed'],
+    ['CLOSED', 'Closed'],
+    ['COMPLIANCE_PENDING', 'Compliance Pending'],
+    ['COMPROMISE', 'Compromise'],
+    ['CONTEMPT_PENDING', 'Contempt Pending'],
+    ['COUNTER_AFFIDAVIT_FILED', 'Counter Affidavit Filed'],
+    ['CROSS_EXAMINATION', 'Cross Examination'],
+    ['CURATIVE_PENDING', 'Curative Pending'],
+    ['DECREED', 'Decreed'],
+    ['DEFECTIVE', 'Defective'],
+    ['DEFENCE_EVIDENCE', 'Defence Evidence'],
+    ['DISMISSED', 'Dismissed'],
+    ['DISMISSED_AS_WITHDRAWN', 'Dismissed as Withdrawn'],
+    ['DISMISSED_IN_DEFAULT', 'Dismissed in Default'],
+    ['DISMISSED_NO_COSTS', 'Dismissed (No Costs)'],
+    ['DISPOSED', 'Disposed'],
+    ['EVIDENCE', 'Evidence'],
+    ['EXECUTION_PENDING', 'Execution Pending'],
+    ['FILED', 'Filed'],
+    ['FIRST_HEARING', 'First Hearing'],
+    ['FOR_ADMISSION', 'For Admission'],
+    ['FOR_JUDGMENT', 'For Judgment'],
+    ['FOR_ORDERS', 'For Orders'],
+    ['FOR_STEPS', 'For Steps'],
+    ['FRAMING_OF_ISSUES', 'Framing of Issues'],
+    ['HEARING', 'Hearing'],
+    ['INFRUCTUOUS', 'Infructuous'],
+    ['INTERIM_ORDER_PASSED', 'Interim Order Passed'],
+    ['JUDGMENT', 'Judgment'],
+    ['LISTED', 'Listed'],
+    ['LOK_ADALAT', 'Lok Adalat'],
+    ['LPA_PENDING', 'LPA Pending'],
+    ['MAINTENANCE_PENDING', 'Maintenance Pending'],
+    ['MEDIATION', 'Mediation'],
+    ['MENTIONED', 'Mentioned'],
+    ['NOTICE_ISSUED', 'Notice Issued'],
+    ['NOT_ADMITTED', 'Not Admitted'],
+    ['PARTLY_ALLOWED', 'Partly Allowed'],
+    ['PART_HEARD', 'Part Heard'],
+    ['PENDING', 'Pending'],
+    ['PENDING_AFTER_NOTICE', 'Pending After Notice'],
+    ['PENDING_BEFORE_NOTICE', 'Pending Before Notice'],
+    ['PIL_PENDING', 'PIL Pending'],
+    ['PLAINTIFF_EVIDENCE', 'Plaintiff Evidence'],
+    ['PROSECUTION_EVIDENCE', 'Prosecution Evidence'],
+    ['READY_FOR_REGISTRATION', 'Ready for Registration'],
+    ['REGISTERED', 'Registered'],
+    ['REJECTED', 'Rejected'],
+    ['REJOINDER_FILED', 'Rejoinder Filed'],
+    ['REMANDED', 'Remanded'],
+    ['RESERVED', 'Reserved'],
+    ['REVIEW_PENDING', 'Review Pending'],
+    ['RULE_ABSOLUTE', 'Rule Absolute'],
+    ['RULE_DISCHARGED', 'Rule Discharged'],
+    ['SERVICE_PENDING', 'Service Pending'],
+    ['STAYED', 'Stayed'],
+    ['SUMMONS_ISSUED', 'Summons Issued'],
+    ['TRANSFERRED', 'Transferred'],
+    ['TRIAL', 'Trial'],
+    ['UNKNOWN', 'Unknown Status'],
+    ['WITHDRAWN', 'Withdrawn'],
+    ['WRITTEN_STATEMENT_FILED', 'Written Statement Filed'],
+  ];
+
+  try {
+    let added = 0;
+    for (let i = 0; i < SEED.length; i++) {
+      const [value, description] = SEED[i];
+      const [, created] = await CaseStatus.findOrCreate({
+        where: { value },
+        defaults: {
+          value,
+          description,
+          sortOrder: (i + 1) * 10,
+          active: true,
+        },
+      });
+      if (created) added += 1;
+    }
+    console.log(`[Migrate] Case-status seed: +${added} row(s).`);
+  } catch (err) {
+    console.warn(`[Migrate] Case-status seed failed: ${err.message}`);
+  }
+}
+
+// runLegalPracticeAreasSeed — populate the "Legal" professional category
+// with the admin-supplied taxonomy from `data/legalPracticeAreasSeed.js`.
+// The 50 main practice areas (Civil Litigation, Criminal Law, …) become
+// featured=true SubCategories that surface in primary dropdowns; each
+// deeper item below them becomes a featured=false SubCategory for
+// fine-grained tagging on professional profiles. Idempotent: existing
+// rows are left untouched, only genuinely-missing names are inserted.
+async function runLegalPracticeAreasSeed() {
+  const { Category, SubCategory } = require('../models');
+  const SEED = require('./legalPracticeAreasSeed');
+  const slugify = (s) =>
+    String(s || '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+  try {
+    const legal = await Category.findOne({ where: { slug: 'legal' } });
+    if (!legal) {
+      console.warn(
+        '[Migrate] Legal taxonomy seed skipped: parent category missing.'
+      );
+      return;
+    }
+
+    // Fast-path: if the row count already matches the seed exactly,
+    // assume the tree is in good shape and skip the heavy wipe + reinsert.
+    // This makes nodemon restarts during development feel snappy instead
+    // of paying 30-60s on every code change. To force a re-seed, drop
+    // sub_categories under Legal in MySQL and bounce the server.
+    let expectedTotal = 0;
+    for (const [, tier2Groups] of SEED) {
+      expectedTotal += 1;
+      for (const [, tier3Items] of tier2Groups) {
+        expectedTotal += 1 + (tier3Items || []).length;
+      }
+    }
+    const existingCount = await SubCategory.count({
+      where: { categoryId: legal.id },
+    });
+    if (existingCount === expectedTotal && expectedTotal > 0) {
+      console.log(
+        `[Migrate] Legal taxonomy seed: already populated (${existingCount} rows) — skipping reseed.`
+      );
+      return;
+    }
+
+    // Hard reset: wipe everything under Legal and rebuild from scratch.
+    // Runs only when the row count drifts from the expected total
+    // (manual deletes, taxonomy file edits, or first-time boot).
+    const wiped = await SubCategory.destroy({
+      where: { categoryId: legal.id },
+    });
+
+    // Slug-uniqueness helper. Slug column has a global unique index, so
+    // two rows can't share one even across different categories. Since
+    // we've just wiped everything under Legal, the only collisions
+    // possible are with other categories' rows — bump a numeric suffix
+    // if so.
+    const uniqueSlug = async (base) => {
+      let cand = base;
+      let n = 2;
+      while (true) {
+        const dup = await SubCategory.findOne({ where: { slug: cand } });
+        if (!dup) return cand;
+        cand = `${base}-${n}`;
+        n += 1;
+        if (n > 30) throw new Error(`Could not generate unique slug for ${base}`);
+      }
+    };
+
+    const stats = { c1: 0, c2: 0, c3: 0 };
+
+    async function createRow({ name, slugBase, parentId, featured, sortOrder }) {
+      const slug = await uniqueSlug(slugBase);
+      return SubCategory.create({
+        categoryId: legal.id,
+        parentSubCategoryId: parentId,
+        name,
+        slug,
+        sortOrder,
+        featured,
+        active: true,
+      });
+    }
+
+    // --- Walk the 3-tier seed --------------------------------------
+    // [tier1Name, [[tier2Name, [tier3Name, …]], …]]
+    for (let i = 0; i < SEED.length; i++) {
+      const [tier1Name, tier2Groups] = SEED[i];
+      const tier1SlugBase = `${legal.slug}-${slugify(tier1Name)}`;
+      const t1 = await createRow({
+        name: tier1Name,
+        slugBase: tier1SlugBase,
+        parentId: null,
+        featured: true,
+        sortOrder: (i + 1) * 10,
+      });
+      stats.c1 += 1;
+
+      for (let j = 0; j < tier2Groups.length; j++) {
+        const [tier2Name, tier3Items] = tier2Groups[j];
+        const tier2SlugBase = `${tier1SlugBase}-${slugify(tier2Name)}`;
+        const t2 = await createRow({
+          name: tier2Name,
+          slugBase: tier2SlugBase,
+          parentId: t1.id,
+          featured: false,
+          sortOrder: (j + 1) * 10,
+        });
+        stats.c2 += 1;
+
+        for (let k = 0; k < tier3Items.length; k++) {
+          const tier3Name = tier3Items[k];
+          const tier3SlugBase = `${tier2SlugBase}-${slugify(tier3Name)}`;
+          await createRow({
+            name: tier3Name,
+            slugBase: tier3SlugBase,
+            parentId: t2.id,
+            featured: false,
+            sortOrder: (k + 1) * 10,
+          });
+          stats.c3 += 1;
+        }
+      }
+    }
+
+    console.log(
+      `[Migrate] Legal taxonomy seed: ` +
+        `wiped ${wiped}, ` +
+        `tier-1 ${stats.c1}, tier-2 ${stats.c2}, tier-3 ${stats.c3}.`
+    );
+  } catch (err) {
+    console.warn(`[Migrate] Legal taxonomy seed failed: ${err.message}`);
+  }
+}
+
+// runStateCitiesSeed — populate the `cities` table with district HQs +
+// major population centres for every Indian state / UT. Seeded list
+// covers the cities most likely to be picked from a court-locator or
+// address dropdown. Idempotent: (stateId, lowercased-name) is the dedupe
+// key, so re-runs only add genuinely-missing rows. New rows get a
+// state-prefixed slug (`mh-aurangabad`, `br-aurangabad`) so the same
+// name across two states doesn't collide on the global slug-unique
+// index. Admins can extend the list from /admin/locations.
+async function runStateCitiesSeed() {
+  const { State, City } = require('../models');
+  const slugify = (s) =>
+    String(s || '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+  // Cities grouped by state code (matches the 2-letter codes seeded by
+  // runStateCodesSeed). Each list focuses on district headquarters
+  // plus a handful of major non-HQ population centres.
+  const CITIES = {
+    AN: ['Port Blair', 'Mayabunder', 'Diglipur', 'Rangat', 'Car Nicobar', 'Campbell Bay', 'Hut Bay'],
+    AP: [
+      'Visakhapatnam', 'Vijayawada', 'Guntur', 'Tirupati', 'Nellore', 'Kurnool',
+      'Rajahmundry', 'Kakinada', 'Anantapur', 'Kadapa', 'Chittoor', 'Eluru',
+      'Ongole', 'Srikakulam', 'Vizianagaram', 'Machilipatnam', 'Tenali',
+      'Proddatur', 'Bhimavaram', 'Nandyal', 'Amaravati',
+    ],
+    AR: [
+      'Itanagar', 'Naharlagun', 'Pasighat', 'Tawang', 'Bomdila', 'Ziro', 'Tezu',
+      'Roing', 'Aalo', 'Anini', 'Khonsa', 'Yingkiong', 'Daporijo', 'Changlang',
+      'Namsai', 'Seppa', 'Basar', 'Koloriang', 'Yupia',
+    ],
+    AS: [
+      'Guwahati', 'Dibrugarh', 'Silchar', 'Jorhat', 'Tezpur', 'Nagaon',
+      'Tinsukia', 'Sivasagar', 'Lakhimpur', 'Karimganj', 'Goalpara',
+      'Bongaigaon', 'Dhubri', 'Barpeta', 'Diphu', 'Hailakandi', 'Mangaldoi',
+      'Haflong', 'Kokrajhar', 'Nalbari', 'North Lakhimpur',
+    ],
+    BR: [
+      'Patna', 'Gaya', 'Bhagalpur', 'Muzaffarpur', 'Darbhanga', 'Purnia',
+      'Bihar Sharif', 'Arrah', 'Begusarai', 'Katihar', 'Munger', 'Chapra',
+      'Bettiah', 'Saharsa', 'Hajipur', 'Sasaram', 'Siwan', 'Motihari',
+      'Nawada', 'Buxar', 'Kishanganj', 'Sitamarhi', 'Jamui', 'Khagaria',
+      'Madhubani', 'Aurangabad', 'Banka', 'Lakhisarai', 'Sheikhpura',
+      'Supaul', 'Jehanabad', 'Madhepura', 'Araria', 'Vaishali',
+      'Samastipur', 'Rohtas',
+    ],
+    CG: [
+      'Raipur', 'Bhilai', 'Bilaspur', 'Korba', 'Durg', 'Rajnandgaon',
+      'Raigarh', 'Jagdalpur', 'Ambikapur', 'Dhamtari', 'Mahasamund', 'Kanker',
+      'Kawardha', 'Bemetara', 'Janjgir', 'Mungeli', 'Surajpur',
+      'Manendragarh', 'Balod', 'Baloda Bazar', 'Sukma', 'Dantewada',
+      'Bijapur', 'Narayanpur', 'Gariaband', 'Kondagaon',
+    ],
+    CH: ['Chandigarh', 'Mani Majra'],
+    DD: ['Silvassa', 'Daman', 'Diu', 'Naroli', 'Dadra', 'Vapi (DD area)'],
+    DL: [
+      'New Delhi', 'Delhi', 'Dwarka', 'Rohini', 'Karol Bagh', 'Connaught Place',
+      'Mehrauli', 'Najafgarh', 'Narela', 'Saket', 'Hauz Khas', 'Pitam Pura',
+      'Shahdara', 'Janakpuri', 'Rajouri Garden', 'Lajpat Nagar',
+      'Greater Kailash', 'Vasant Kunj', 'Defence Colony', 'Punjabi Bagh',
+      'Mayur Vihar', 'Preet Vihar', 'Laxmi Nagar', 'Civil Lines', 'Kalkaji',
+      'Patel Nagar',
+    ],
+    GA: [
+      'Panaji', 'Margao', 'Vasco da Gama', 'Mapusa', 'Ponda', 'Bicholim',
+      'Curchorem', 'Sanguem', 'Quepem', 'Canacona', 'Pernem', 'Valpoi',
+      'Calangute', 'Old Goa', 'Porvorim',
+    ],
+    GJ: [
+      'Ahmedabad', 'Surat', 'Vadodara', 'Rajkot', 'Bhavnagar', 'Gandhinagar',
+      'Jamnagar', 'Junagadh', 'Anand', 'Navsari', 'Mehsana', 'Bharuch', 'Vapi',
+      'Nadiad', 'Morbi', 'Surendranagar', 'Gandhidham', 'Veraval', 'Porbandar',
+      'Patan', 'Godhra', 'Valsad', 'Ankleshwar', 'Botad', 'Amreli', 'Bhuj',
+      'Palanpur', 'Dahod', 'Himatnagar', 'Modasa', 'Kalol', 'Bardoli',
+      'Visnagar', 'Diu', 'Halol', 'Vadnagar',
+    ],
+    HP: [
+      'Shimla', 'Dharamshala', 'Solan', 'Mandi', 'Palampur', 'Sundarnagar',
+      'Una', 'Kullu', 'Hamirpur', 'Bilaspur', 'Chamba', 'Nahan', 'Kangra',
+      'Manali', 'Kasauli', 'Dalhousie', 'Reckong Peo', 'Keylong',
+      'Paonta Sahib', 'Nalagarh', 'Baddi', 'Parwanoo', 'Rampur',
+    ],
+    HR: [
+      'Faridabad', 'Gurugram', 'Panipat', 'Ambala', 'Yamunanagar', 'Rohtak',
+      'Hisar', 'Karnal', 'Sonipat', 'Panchkula', 'Bhiwani', 'Sirsa',
+      'Bahadurgarh', 'Jind', 'Thanesar', 'Kaithal', 'Rewari', 'Palwal',
+      'Mahendragarh', 'Charkhi Dadri', 'Fatehabad', 'Narnaul', 'Kurukshetra',
+      'Kalka', 'Tohana', 'Hansi', 'Gohana', 'Pehowa',
+    ],
+    JH: [
+      'Ranchi', 'Jamshedpur', 'Dhanbad', 'Bokaro Steel City', 'Deoghar',
+      'Hazaribagh', 'Giridih', 'Ramgarh', 'Medininagar', 'Chaibasa', 'Dumka',
+      'Sahibganj', 'Saraikela', 'Khunti', 'Lohardaga', 'Latehar', 'Pakur',
+      'Gumla', 'Simdega', 'Garhwa', 'Chatra', 'Koderma', 'Godda', 'Jamtara',
+      'Chakradharpur', 'Phusro',
+    ],
+    JK: [
+      'Srinagar', 'Jammu', 'Anantnag', 'Baramulla', 'Sopore', 'Kathua',
+      'Udhampur', 'Punch', 'Rajouri', 'Kupwara', 'Pulwama', 'Shopian',
+      'Ganderbal', 'Bandipora', 'Doda', 'Ramban', 'Reasi', 'Kishtwar', 'Samba',
+      'Akhnoor', 'Kulgam', 'Awantipora', 'Bhaderwah',
+    ],
+    KA: [
+      'Bengaluru', 'Mysuru', 'Hubballi', 'Mangaluru', 'Belagavi', 'Kalaburagi',
+      'Davangere', 'Bellary', 'Tumakuru', 'Shivamogga', 'Vijayapura', 'Raichur',
+      'Bidar', 'Hospet', 'Hassan', 'Gadag', 'Mandya', 'Chitradurga', 'Udupi',
+      'Kolar', 'Bagalkot', 'Karwar', 'Chikkamagaluru', 'Chamarajanagar',
+      'Bhadravati', 'Ramanagaram', 'Sirsi', 'Yadgir', 'Dharwad', 'Haveri',
+      'Madikeri', 'Chikkaballapura', 'Koppal',
+    ],
+    KL: [
+      'Thiruvananthapuram', 'Kochi', 'Kozhikode', 'Thrissur', 'Kollam',
+      'Kannur', 'Palakkad', 'Alappuzha', 'Malappuram', 'Pathanamthitta',
+      'Kasaragod', 'Idukki', 'Kottayam', 'Wayanad', 'Ernakulam', 'Manjeri',
+      'Tirur', 'Ponnani', 'Vatakara', 'Ottapalam', 'Chalakudy',
+      'Changanassery', 'Thalassery', 'Thiruvalla', 'Cherthala', 'Aluva',
+      'Muvattupuzha', 'Thodupuzha', 'Pala',
+    ],
+    LD: ['Kavaratti', 'Agatti', 'Andrott', 'Minicoy', 'Amini', 'Kalpeni', 'Kadmat', 'Kiltan'],
+    LW: ['Leh', 'Kargil', 'Drass', 'Padum', 'Diskit', 'Nubra', 'Khaltsi'],
+    MG: [
+      'Shillong', 'Tura', 'Jowai', 'Nongpoh', 'Williamnagar', 'Baghmara',
+      'Nongstoin', 'Resubelpara', 'Mawkyrwat', 'Khliehriat', 'Mairang', 'Ampati',
+    ],
+    MH: [
+      'Mumbai', 'Pune', 'Nagpur', 'Thane', 'Pimpri-Chinchwad', 'Nashik',
+      'Aurangabad', 'Solapur', 'Amravati', 'Kalyan-Dombivli', 'Vasai-Virar',
+      'Navi Mumbai', 'Kolhapur', 'Akola', 'Sangli', 'Jalgaon', 'Malegaon',
+      'Latur', 'Dhule', 'Ahmednagar', 'Chandrapur', 'Parbhani', 'Ichalkaranji',
+      'Jalna', 'Ambernath', 'Bhiwandi', 'Nanded', 'Wardha', 'Yavatmal', 'Beed',
+      'Satara', 'Ratnagiri', 'Osmanabad', 'Hingoli', 'Buldhana', 'Washim',
+      'Gondia', 'Bhandara', 'Panvel', 'Alibag', 'Karad', 'Sindhudurg',
+      'Sawantwadi', 'Lonavala',
+    ],
+    MN: [
+      'Imphal', 'Thoubal', 'Bishnupur', 'Churachandpur', 'Senapati',
+      'Tamenglong', 'Ukhrul', 'Chandel', 'Jiribam', 'Kakching', 'Moirang',
+      'Moreh', 'Kangpokpi', 'Kamjong', 'Pherzawl', 'Tengnoupal', 'Noney',
+    ],
+    MP: [
+      'Bhopal', 'Indore', 'Jabalpur', 'Gwalior', 'Ujjain', 'Sagar', 'Dewas',
+      'Satna', 'Ratlam', 'Rewa', 'Murwara', 'Singrauli', 'Burhanpur', 'Khandwa',
+      'Bhind', 'Chhindwara', 'Guna', 'Shivpuri', 'Vidisha', 'Chhatarpur',
+      'Damoh', 'Mandsaur', 'Khargone', 'Neemuch', 'Hoshangabad', 'Sehore',
+      'Morena', 'Betul', 'Datia', 'Tikamgarh', 'Sheopur', 'Shahdol', 'Sidhi',
+      'Panna', 'Raisen', 'Rajgarh', 'Jhabua', 'Dhar', 'Balaghat', 'Seoni',
+      'Mandla', 'Anuppur', 'Umaria', 'Dindori', 'Katni', 'Harda', 'Barwani',
+    ],
+    MZ: [
+      'Aizawl', 'Lunglei', 'Champhai', 'Serchhip', 'Kolasib', 'Saiha',
+      'Lawngtlai', 'Mamit', 'Khawzawl', 'Hnahthial', 'Saitual',
+    ],
+    NL: [
+      'Kohima', 'Dimapur', 'Mokokchung', 'Tuensang', 'Wokha', 'Zunheboto',
+      'Mon', 'Phek', 'Kiphire', 'Longleng', 'Peren', 'Noklak', 'Chumukedima',
+    ],
+    OD: [
+      'Bhubaneswar', 'Cuttack', 'Rourkela', 'Berhampur', 'Sambalpur', 'Puri',
+      'Balasore', 'Bhadrak', 'Baripada', 'Jharsuguda', 'Jeypore', 'Khordha',
+      'Bargarh', 'Paradeep', 'Sundargarh', 'Rayagada', 'Phulbani', 'Koraput',
+      'Talcher', 'Angul', 'Dhenkanal', 'Kendrapara', 'Boudh', 'Kendujhar',
+      'Nuapada', 'Nayagarh', 'Subarnapur', 'Deogarh', 'Gajapati',
+      'Jagatsinghpur', 'Jajpur', 'Kalahandi', 'Kandhamal', 'Malkangiri',
+      'Mayurbhanj', 'Nabarangpur',
+    ],
+    PB: [
+      'Ludhiana', 'Amritsar', 'Jalandhar', 'Patiala', 'Bathinda', 'Mohali',
+      'Hoshiarpur', 'Pathankot', 'Moga', 'Abohar', 'Khanna', 'Phagwara',
+      'Muktsar', 'Barnala', 'Rajpura', 'Firozpur', 'Kapurthala', 'Sangrur',
+      'Fazilka', 'Gurdaspur', 'Tarn Taran', 'Sunam', 'Mansa', 'Malerkotla',
+      'Nabha', 'Faridkot', 'Nangal', 'Zirakpur', 'Kharar', 'Rupnagar',
+      'Nawanshahr', 'Anandpur Sahib', 'Batala', 'Jagraon',
+    ],
+    PY: ['Puducherry', 'Karaikal', 'Yanam', 'Mahe', 'Villianur', 'Bahour', 'Ariankuppam'],
+    RJ: [
+      'Jaipur', 'Jodhpur', 'Kota', 'Bikaner', 'Ajmer', 'Udaipur', 'Bhilwara',
+      'Alwar', 'Bharatpur', 'Sikar', 'Pali', 'Sri Ganganagar', 'Tonk',
+      'Beawar', 'Hanumangarh', 'Dhaulpur', 'Chittorgarh', 'Banswara',
+      'Jhunjhunu', 'Churu', 'Nagaur', 'Sawai Madhopur', 'Karauli', 'Jaisalmer',
+      'Dungarpur', 'Rajsamand', 'Pratapgarh', 'Bundi', 'Baran', 'Sirohi',
+      'Jhalawar', 'Barmer', 'Jalore', 'Mount Abu', 'Pushkar',
+    ],
+    SC: ['New Delhi'],
+    SK: ['Gangtok', 'Namchi', 'Geyzing', 'Mangan', 'Jorethang', 'Rangpo', 'Singtam', 'Pakyong', 'Soreng', 'Ravangla'],
+    TN: [
+      'Chennai', 'Coimbatore', 'Madurai', 'Tiruchirappalli', 'Salem',
+      'Tirunelveli', 'Erode', 'Vellore', 'Thoothukudi', 'Dindigul', 'Thanjavur',
+      'Ranipet', 'Sivakasi', 'Karur', 'Udhagamandalam', 'Hosur', 'Nagercoil',
+      'Kanchipuram', 'Karaikkudi', 'Neyveli', 'Cuddalore', 'Kumbakonam',
+      'Tiruvannamalai', 'Pollachi', 'Rajapalayam', 'Pudukkottai',
+      'Nagapattinam', 'Sivaganga', 'Krishnagiri', 'Dharmapuri', 'Tindivanam',
+      'Virudhunagar', 'Mayiladuthurai', 'Tirupathur', 'Theni', 'Tiruvarur',
+      'Namakkal', 'Tenkasi', 'Ariyalur', 'Perambalur',
+    ],
+    TR: [
+      'Agartala', 'Udaipur', 'Dharmanagar', 'Kailashahar', 'Belonia', 'Ambassa',
+      'Khowai', 'Sabroom', 'Sonamura', 'Teliamura', 'Bishalgarh', 'Amarpur',
+    ],
+    TS: [
+      'Hyderabad', 'Warangal', 'Nizamabad', 'Karimnagar', 'Khammam',
+      'Ramagundam', 'Mahbubnagar', 'Adilabad', 'Suryapet', 'Siddipet',
+      'Miryalaguda', 'Nalgonda', 'Jagityal', 'Mancherial', 'Bhongir',
+      'Sangareddy', 'Vikarabad', 'Medak', 'Nirmal', 'Wanaparthy', 'Jangaon',
+      'Kothagudem', 'Mahabubabad', 'Asifabad', 'Mulugu', 'Narayanpet',
+      'Rajanna Sircilla', 'Peddapalli', 'Kamareddy',
+    ],
+    UK: [
+      'Dehradun', 'Haridwar', 'Roorkee', 'Haldwani', 'Kashipur', 'Rudrapur',
+      'Rishikesh', 'Pithoragarh', 'Almora', 'Mussoorie', 'Nainital', 'Pauri',
+      'Tehri', 'Bageshwar', 'Chamoli', 'Uttarkashi', 'Rudraprayag',
+      'Champawat', 'Ramnagar', 'Kotdwar', 'Khatima',
+    ],
+    UP: [
+      'Lucknow', 'Kanpur', 'Ghaziabad', 'Agra', 'Meerut', 'Varanasi',
+      'Prayagraj', 'Bareilly', 'Aligarh', 'Moradabad', 'Saharanpur',
+      'Gorakhpur', 'Faizabad', 'Firozabad', 'Jhansi', 'Muzaffarnagar',
+      'Mathura', 'Shahjahanpur', 'Rampur', 'Mau', 'Hapur', 'Etawah',
+      'Mirzapur', 'Bulandshahr', 'Sambhal', 'Amroha', 'Hardoi', 'Fatehpur',
+      'Raebareli', 'Orai', 'Sitapur', 'Bahraich', 'Unnao', 'Jaunpur',
+      'Lakhimpur Kheri', 'Hathras', 'Banda', 'Pilibhit', 'Barabanki',
+      'Gonda', 'Mainpuri', 'Lalitpur', 'Etah', 'Deoria', 'Ghazipur',
+      'Sultanpur', 'Azamgarh', 'Bijnor', 'Basti', 'Ballia', 'Greater Noida',
+      'Noida', 'Shamli', 'Sant Kabir Nagar', 'Kushinagar', 'Maharajganj',
+      'Siddharthnagar', 'Balrampur', 'Shravasti', 'Ayodhya', 'Ambedkar Nagar',
+      'Pratapgarh', 'Kaushambi', 'Chitrakoot', 'Mahoba', 'Hamirpur',
+    ],
+    WB: [
+      'Kolkata', 'Asansol', 'Siliguri', 'Durgapur', 'Bardhaman', 'Malda',
+      'Baharampur', 'Habra', 'Kharagpur', 'Shantipur', 'Ranaghat', 'Haldia',
+      'Raiganj', 'Krishnanagar', 'Nabadwip', 'Medinipur', 'Jalpaiguri',
+      'Balurghat', 'Basirhat', 'Bankura', 'Chakdaha', 'Darjeeling',
+      'Alipurduar', 'Purulia', 'Jangipur', 'Kurseong', 'Suri', 'Cooch Behar',
+      'Bolpur', 'Diamond Harbour', 'Tamluk', 'Contai', 'Howrah', 'Barrackpore',
+      'Kanchrapara', 'Barasat', 'Hooghly', 'Kalyani', 'New Town',
+      'Dakshin Dinajpur', 'Uttar Dinajpur', 'Jhargram', 'Paschim Bardhaman',
+      'Purba Bardhaman',
+    ],
+  };
+
+  try {
+    // Fetch every India-linked state in one query.
+    const { Country } = require('../models');
+    const country = await Country.findOne({ where: { slug: 'india' } });
+    if (!country) {
+      console.warn('[Migrate] Cities seed skipped: India country missing.');
+      return;
+    }
+    const states = await State.findAll({
+      where: { countryId: country.id },
+      raw: true,
+    });
+    const byCode = new Map();
+    for (const s of states) if (s.code) byCode.set(s.code, s);
+
+    // --- Dedupe pass --------------------------------------------------
+    // Earlier boots (before the per-(stateId, lowercased-name) guard
+    // was solid) created duplicates of the same city within the same
+    // state — "AN — Campbell Bay" appears 3x, etc. No FK references
+    // cityId in this schema, so it's safe to drop the extras. Keep the
+    // row with the smallest id (alphabetically earliest, which for our
+    // genId pattern correlates with oldest creation time).
+    const stateIds = states.map((s) => s.id);
+    if (stateIds.length > 0) {
+      const allCities = await City.findAll({
+        where: { stateId: stateIds },
+        attributes: ['id', 'name', 'stateId'],
+        raw: true,
+      });
+      const buckets = new Map();
+      for (const c of allCities) {
+        const key = `${c.stateId}|${String(c.name || '').trim().toLowerCase()}`;
+        if (!buckets.has(key)) buckets.set(key, []);
+        buckets.get(key).push(c);
+      }
+      const toDelete = [];
+      for (const arr of buckets.values()) {
+        if (arr.length <= 1) continue;
+        // Sort by id ascending so the oldest (alphabetically smallest
+        // id) wins; everything after the keeper is redundant.
+        arr.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+        for (let i = 1; i < arr.length; i++) toDelete.push(arr[i].id);
+      }
+      if (toDelete.length > 0) {
+        const removed = await City.destroy({ where: { id: toDelete } });
+        console.log(
+          `[Migrate] Cities dedupe: removed ${removed} duplicate row(s).`
+        );
+      }
+    }
+
+    let totalCreated = 0;
+    let totalSkipped = 0;
+    for (const [code, list] of Object.entries(CITIES)) {
+      const state = byCode.get(code);
+      if (!state) {
+        console.warn(`[Migrate] Cities seed: no state for code ${code}.`);
+        continue;
+      }
+
+      // Snapshot existing cities for THIS state, lowercased name as key,
+      // so we don't pay a SELECT per row.
+      const existing = await City.findAll({
+        where: { stateId: state.id },
+        attributes: ['id', 'name'],
+        raw: true,
+      });
+      const seen = new Set(
+        existing.map((c) => String(c.name || '').trim().toLowerCase())
+      );
+
+      let createdForState = 0;
+      let sortOrder = 1;
+      for (const cityName of list) {
+        const key = cityName.trim().toLowerCase();
+        if (seen.has(key)) {
+          sortOrder += 1;
+          totalSkipped += 1;
+          continue;
+        }
+        // State-prefixed slug so same-named cities across states don't
+        // collide on the global slug-unique constraint.
+        const prefix = (state.code || code).toLowerCase();
+        let baseSlug = `${prefix}-${slugify(cityName)}`;
+        // Defensive: if a slug already exists (e.g. an admin manually
+        // created an oddly-prefixed entry), bump a counter suffix.
+        let attempt = baseSlug;
+        let n = 2;
+        while (await City.findOne({ where: { slug: attempt } })) {
+          attempt = `${baseSlug}-${n}`;
+          n += 1;
+        }
+        await City.create({
+          name: cityName,
+          slug: attempt,
+          stateId: state.id,
+          sortOrder,
+          active: true,
+        });
+        seen.add(key);
+        createdForState += 1;
+        totalCreated += 1;
+        sortOrder += 1;
+      }
+      if (createdForState > 0) {
+        console.log(
+          `[Migrate] Cities seed: ${state.code} ${state.name} +${createdForState}.`
+        );
+      }
+    }
+    console.log(
+      `[Migrate] Cities seed total: +${totalCreated} created, ${totalSkipped} already present.`
+    );
+  } catch (err) {
+    console.warn(`[Migrate] Cities seed failed: ${err.message}`);
+  }
+}
+
+// runStateCodesSeed — ensure every Indian state / UT has its 2-letter
+// eCourts code recorded, and create rows for any entry that's missing
+// entirely. The pair list is the authoritative seed supplied by the
+// admin; existing rows are patched (code only — names + slugs are left
+// alone so user-customised values aren't clobbered). Idempotent.
+async function runStateCodesSeed() {
+  const { Country, State, City } = require('../models');
+  const slugify = (s) =>
+    String(s || '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+  // Lenient name key — collapses common spelling differences so
+  // "Andaman & Nicobar Islands", "Andaman and Nicobar Islands" and
+  // "The Andaman and Nicobar Islands" all map to the same bucket.
+  const nameKey = (s) =>
+    String(s || '')
+      .toLowerCase()
+      .trim()
+      .replace(/^the\s+/, '')
+      .replace(/\s+and\s+/g, ' & ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  // (code, name) pairs. The "SC India (Supreme Court)" entry is the
+  // eCourts venue code — not a real state, but kept here so it shows
+  // up in the same state/UT dropdown the partner API uses.
+  const SEED = [
+    ['AN', 'Andaman & Nicobar Islands'],
+    ['AP', 'Andhra Pradesh'],
+    ['AR', 'Arunachal Pradesh'],
+    ['AS', 'Assam'],
+    ['BR', 'Bihar'],
+    ['CG', 'Chhattisgarh'],
+    ['CH', 'Chandigarh'],
+    ['DD', 'The Dadra And Nagar Haveli And Daman And Diu'],
+    ['DL', 'Delhi'],
+    ['GA', 'Goa'],
+    ['GJ', 'Gujarat'],
+    ['HP', 'Himachal Pradesh'],
+    ['HR', 'Haryana'],
+    ['JH', 'Jharkhand'],
+    ['JK', 'Jammu & Kashmir'],
+    ['KA', 'Karnataka'],
+    ['KL', 'Kerala'],
+    ['LD', 'Lakshadweep'],
+    ['LW', 'Ladakh'],
+    ['MG', 'Meghalaya'],
+    ['MH', 'Maharashtra'],
+    ['MN', 'Manipur'],
+    ['MP', 'Madhya Pradesh'],
+    ['MZ', 'Mizoram'],
+    ['NL', 'Nagaland'],
+    ['OD', 'Odisha'],
+    ['PB', 'Punjab'],
+    ['PY', 'Puducherry'],
+    ['RJ', 'Rajasthan'],
+    ['SC', 'India (Supreme Court)'],
+    ['SK', 'Sikkim'],
+    ['TN', 'Tamil Nadu'],
+    ['TR', 'Tripura'],
+    ['TS', 'Telangana'],
+    ['UK', 'Uttarakhand'],
+    ['UP', 'Uttar Pradesh'],
+    ['WB', 'West Bengal'],
+  ];
+
+  try {
+    const country = await Country.findOne({ where: { slug: 'india' } });
+    if (!country) {
+      console.warn(
+        '[Migrate] State-codes seed skipped: India country row missing.'
+      );
+      return;
+    }
+
+    // Pull every state currently linked to India once.
+    const existing = await State.findAll({
+      where: { countryId: country.id },
+    });
+
+    // Pre-pass — merge duplicates introduced by spelling variants
+    // ("and" vs "&", "The " prefix). For each nameKey bucket with >1
+    // rows we keep the one with the most cities (or the oldest as
+    // tiebreaker), transfer the code from any sibling that has one,
+    // re-link the sibling's cities, then delete the sibling.
+    const buckets = new Map();
+    for (const s of existing) {
+      const k = nameKey(s.name);
+      if (!buckets.has(k)) buckets.set(k, []);
+      buckets.get(k).push(s);
+    }
+    let merged = 0;
+    for (const [, group] of buckets) {
+      if (group.length < 2) continue;
+      const counts = await Promise.all(
+        group.map((s) => City.count({ where: { stateId: s.id } }))
+      );
+      let keeperIdx = 0;
+      for (let i = 1; i < group.length; i++) {
+        if (
+          counts[i] > counts[keeperIdx] ||
+          (counts[i] === counts[keeperIdx] &&
+            new Date(group[i].createdAt) < new Date(group[keeperIdx].createdAt))
+        ) {
+          keeperIdx = i;
+        }
+      }
+      const keeper = group[keeperIdx];
+      let keeperCode = keeper.code;
+      for (let i = 0; i < group.length; i++) {
+        if (i === keeperIdx) continue;
+        const sibling = group[i];
+        if (!keeperCode && sibling.code) keeperCode = sibling.code;
+        // Re-home any cities pointing at the doomed sibling.
+        await City.update(
+          { stateId: keeper.id },
+          { where: { stateId: sibling.id } }
+        );
+        await sibling.destroy();
+        merged += 1;
+      }
+      if (keeperCode && keeperCode !== keeper.code) {
+        await keeper.update({ code: keeperCode });
+      }
+    }
+
+    // Refresh the working set + index by nameKey so the seed loop
+    // never re-creates a row that the merge pass just consolidated.
+    const stateRows = await State.findAll({
+      where: { countryId: country.id },
+    });
+    const byKey = new Map();
+    for (const s of stateRows) byKey.set(nameKey(s.name), s);
+
+    let created = 0;
+    let patched = 0;
+    let sortOrder = 1;
+    for (const [code, name] of SEED) {
+      const k = nameKey(name);
+      const row = byKey.get(k);
+      if (row) {
+        if (!row.code || row.code !== code) {
+          await row.update({ code });
+          patched += 1;
+        }
+      } else {
+        const stateSlug = `${country.slug}-${slugify(name)}`;
+        const fresh = await State.create({
+          countryId: country.id,
+          name,
+          slug: stateSlug,
+          code,
+          sortOrder,
+          active: true,
+        });
+        byKey.set(k, fresh);
+        created += 1;
+      }
+      sortOrder += 1;
+    }
+    console.log(
+      `[Migrate] State-codes seed: ${merged} duplicate(s) merged, ${created} created, ${patched} code(s) backfilled.`
+    );
+  } catch (err) {
+    console.warn(`[Migrate] State-codes seed failed: ${err.message}`);
+  }
+}
+
+// runCaseTypeSeed — populate `case_types` lookup on first boot. Values
+// are case-sensitive because the partner taxonomy mixes uppercase codes
+// (CONMT) with mixed-case ones (Arb, MCrA, Tax_Ref).
+async function runCaseTypeSeed() {
+  const { CaseType } = require('../models');
+  const SEED = [
+    ['ABA', 'Anticipatory Bail Application'],
+    ['ADM', 'Admission Matter'],
+    ['AFT_APPEAL', 'Appeal from Armed Forces Tribunal'],
+    ['ARB_A', 'Arbitration Appeal'],
+    ['ARB_PET', 'Arbitration Petition'],
+    ['AS', 'Appeal from Subordinate Court'],
+    ['Arb', 'Arbitration Case (DC)'],
+    ['Arb_Pet', 'Arbitration Petition'],
+    ['BA', 'Bail Application'],
+    ['CA', 'Civil Appeal'],
+    ['CAPP_AT', 'Company Appeal (AT)'],
+    ['CAPP_AT_INS', 'Company Appeal (AT) (Insolvency)'],
+    ['CAPP_CA', 'Company Appeal (Companies Act)'],
+    ['CAPP_IBC', 'Company Appeal (IBC)'],
+    ['CAV', 'Caveat'],
+    ['CA_CA', 'Company Application (Companies Act)'],
+    ['CA_IBC', 'Company Application (IBC)'],
+    ['CA_MA_CA', 'Company Application - Merger & Amalgamation (Companies Act)'],
+    ['CC', 'Criminal Complaint Case'],
+    ['CMA', 'Civil Miscellaneous Appeal'],
+    ['CMAppl', 'Civil Miscellaneous Application'],
+    ['COMP_APP', 'Compensation Application'],
+    ['COMP_APPEAL', 'Competition Appeal (AT)'],
+    ['COM_S', 'Commercial Suit'],
+    ['CONMT', 'Contempt Petition'],
+    ['CONT_AT', 'Contempt Case (AT)'],
+    ['CONT_CA', 'Contempt Petition (Companies Act)'],
+    ['CONT_IBC', 'Contempt Petition (IBC)'],
+    ['COP', 'Company Petition'],
+    ['CP_CA', 'Company Petition (Companies Act)'],
+    ['CP_IBC', 'Company Petition (IBC)'],
+    ['CP_MA_CA', 'Company Petition - Merger & Amalgamation (Companies Act)'],
+    ['CR', 'Civil Revision (short form)'],
+    ['CRA', 'Criminal Appeal (DC)'],
+    ['CRLP', 'Criminal Leave Petition'],
+    ['CRLRC', 'Criminal Revision Case'],
+    ['CRL_A', 'Criminal Appeal'],
+    ['CRL_MA', 'Criminal Miscellaneous Application (DC)'],
+    ['CROSS_APPEAL_CA', 'Cross Appeal (Companies Act)'],
+    ['CROSS_APPEAL_IBC', 'Cross Appeal (IBC)'],
+    ['CROSS_CA', 'Cross Application (Companies Act)'],
+    ['CROSS_IBC', 'Cross Application (IBC)'],
+    ['CRP', 'Civil Revision Petition'],
+    ['CRR', 'Criminal Revision (DC)'],
+    ['CR_MISC', 'Criminal Miscellaneous'],
+    ['CR_REV', 'Criminal Revision'],
+    ['CR_WJC', 'Criminal Writ Jurisdiction Case'],
+    ['CS', 'Civil Suit'],
+    ['CURP', 'Curative Petition'],
+    ['CWJC', 'Civil Writ Jurisdiction Case'],
+    ['C_REV', 'Civil Revision'],
+    ['DREF', 'Death Reference'],
+    ['DV', 'Domestic Violence Case'],
+    ['EA', 'Execution Application (Civil)'],
+    ['EP', 'Election Petition'],
+    ['FA', 'First Appeal'],
+    ['FEMA', 'FEMA Case'],
+    ['GP', 'Guardianship Petition'],
+    ['G_APP', 'General Appeal'],
+    ['HCP', 'Habeas Corpus Petition'],
+    ['IA', 'Interlocutory Application'],
+    ['IA_CA', 'Interlocutory Application (Companies Act)'],
+    ['IA_IBC', 'Interlocutory Application (IBC)'],
+    ['IA_IBC_DIS', 'Interlocutory Application - Disposal (IBC)'],
+    ['IA_IBC_LIQ', 'Interlocutory Application - Liquidation (IBC)'],
+    ['IA_IBC_PLAN', 'Interlocutory Application - Plan (IBC)'],
+    ['IA_LIQ_PR', 'IA Liquidation Progress Report'],
+    ['IB_PREPACK', 'Insolvency & Bankruptcy Pre-Packaged'],
+    ['INT_CA', 'Intervention Petition (Companies Act)'],
+    ['INT_IBC', 'Intervention Petition (IBC)'],
+    ['IP', 'Insolvency Petition'],
+    ['ITA', 'Income Tax Appeal'],
+    ['LC', 'Land Acquisition Case'],
+    ['LPA', 'Letters Patent Appeal'],
+    ['MA', 'Miscellaneous Application (Civil)'],
+    ['MACA', 'Motor Accident Claims Appeal'],
+    ['MA_CA', 'Miscellaneous Application (Companies Act)'],
+    ['MA_IBC', 'Miscellaneous Application (IBC)'],
+    ['MCOC', 'Maintenance Case'],
+    ['MCrA', 'Miscellaneous Criminal Application'],
+    ['MFA', 'Miscellaneous First Appeal'],
+    ['MJC', 'Miscellaneous Judicial Case (Civil)'],
+    ['NDPS', 'NDPS Act Case'],
+    ['NGT_APPEAL', 'Appeal from National Green Tribunal'],
+    ['OMP', 'Original Miscellaneous Petition'],
+    ['OS', 'Original Suit'],
+    ['PIL', 'Public Interest Litigation (HC)'],
+    ['PP', 'Probate Petition'],
+    ['RA_CA', 'Restoration Application (Companies Act)'],
+    ['RA_IBC', 'Restoration Application (IBC)'],
+    ['RC', 'Rent Control Case'],
+    ['RCP_CA', 'Restored Company Petition (Companies Act)'],
+    ['RCP_IBC', 'Restored Company Petition (IBC)'],
+    ['RCS_A', 'Regular Civil Suit - Class A'],
+    ['RCS_B', 'Regular Civil Suit - Class B'],
+    ['RCT', 'Regular Criminal Trial'],
+    ['REF', 'Reference (Advisory Jurisdiction)'],
+    ['REHAB_CA', 'Rehabilitation Petition (Companies Act)'],
+    ['REHAB_IBC', 'Rehabilitation Petition (IBC)'],
+    ['RERA', 'RERA Appeal'],
+    ['REST_APP', 'Restoration Application'],
+    ['REV_APP', 'Review Application'],
+    ['REV_CA', 'Review Application (Companies Act)'],
+    ['REV_IBC', 'Review Application (IBC)'],
+    ['RFA', 'Regular First Appeal'],
+    ['RP_C', 'Review Petition (Civil)'],
+    ['RP_CRL', 'Review Petition (Criminal)'],
+    ['RSA', 'Regular Second Appeal'],
+    ['RULE63_APPEAL', 'Rule 63 Appeal'],
+    ['SA', 'Second Appeal'],
+    ['SC', 'Sessions Case'],
+    ['SCA', 'Special Civil Application'],
+    ['SC_ST', 'SC/ST Act Case'],
+    ['SLP_C', 'Special Leave Petition (Civil)'],
+    ['SLP_CRL', 'Special Leave Petition (Criminal)'],
+    ['ST', 'Sessions Trial'],
+    ['SUM', 'Summary Trial'],
+    ['Special_Ref', 'Special Reference Case'],
+    ['TA_AT', 'Transfer Application (AT)'],
+    ['TA_CA', 'Transfer Application (Companies Act)'],
+    ['TA_IBC', 'Transfer Application (IBC)'],
+    ['TOP_AT', 'Transfer of Proceedings (AT)'],
+    ['TP_C', 'Transfer Petition (Civil)'],
+    ['TP_CA', 'Transfer Petition (Companies Act)'],
+    ['TP_CRL', 'Transfer Petition (Criminal)'],
+    ['TP_IBC', 'Transfer Petition (IBC)'],
+    ['TS', 'Testamentary Suit'],
+    ['Tax_Ref', 'Tax Reference Case'],
+    ['UNKNOWN', 'Unrecognized case type'],
+    ['VL_IBC', 'Voluntary Liquidation (IBC)'],
+    ['WA', 'Writ Appeal'],
+    ['WPC_O', 'Writ Petition (Original Jurisdiction)'],
+    ['WP_C', 'Writ Petition (Civil)'],
+    ['WP_CRL', 'Writ Petition (Criminal)'],
+    ['WP_C_PIL', 'Writ Petition (Public Interest Litigation)'],
+    ['WP_PIL', 'Writ Petition (Public Interest Litigation - simplified)'],
+    ['XOBJ', 'Cross Objection'],
+  ];
+
+  try {
+    let added = 0;
+    for (let i = 0; i < SEED.length; i++) {
+      const [value, description] = SEED[i];
+      const [, created] = await CaseType.findOrCreate({
+        where: { value },
+        defaults: {
+          value,
+          description,
+          sortOrder: (i + 1) * 10,
+          active: true,
+        },
+      });
+      if (created) added += 1;
+    }
+    console.log(`[Migrate] Case-type seed: +${added} row(s).`);
+  } catch (err) {
+    console.warn(`[Migrate] Case-type seed failed: ${err.message}`);
+  }
+}
+
+// runCauseListTypeSeed — tiny three-entry enum (CIVIL / CRIMINAL /
+// UNKNOWN) used to categorise cause-list rows. Idempotent.
+async function runCauseListTypeSeed() {
+  const { CauseListType } = require('../models');
+  const SEED = [
+    ['CIVIL', 'Civil'],
+    ['CRIMINAL', 'Criminal'],
+    ['UNKNOWN', 'Unknown'],
+  ];
+  try {
+    let added = 0;
+    for (let i = 0; i < SEED.length; i++) {
+      const [value, description] = SEED[i];
+      const [, created] = await CauseListType.findOrCreate({
+        where: { value },
+        defaults: {
+          value,
+          description,
+          sortOrder: (i + 1) * 10,
+          active: true,
+        },
+      });
+      if (created) added += 1;
+    }
+    console.log(`[Migrate] Cause-list-type seed: +${added} row(s).`);
+  } catch (err) {
+    console.warn(`[Migrate] Cause-list-type seed failed: ${err.message}`);
   }
 }
 

@@ -117,8 +117,11 @@ export function useSubCategoriesFlat() {
         id: s.id,
         name: s.name,
         slug: s.slug,
+        parentSubCategoryId: s.parentSubCategoryId || null,
+        featured: !!s.featured,
         categoryId: c.id,
         categoryName: c.name,
+        categorySlug: c.slug,
       });
     }
   }

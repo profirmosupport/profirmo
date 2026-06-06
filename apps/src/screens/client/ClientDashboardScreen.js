@@ -83,12 +83,6 @@ export default function ClientDashboardScreen({ navigation }) {
         subtitle="Find an expert and book in minutes."
         trailingPill="Client"
         trailingPillTone="ghost"
-        ctaLabel="Find a professional"
-        ctaIcon="search"
-        onPressCta={() => {
-          const parent = navigation.getParent?.()?.getParent?.();
-          parent?.navigate?.('GuestSearch', { screen: 'GuestSearchMain' });
-        }}
       />
 
       <Card style={{ marginTop: spacing.lg }}>

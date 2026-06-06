@@ -20,6 +20,10 @@ const State = sequelize.define(
     countryId: { type: DataTypes.STRING(64), allowNull: false },
     name: { type: DataTypes.STRING(120), allowNull: false },
     slug: { type: DataTypes.STRING(180), allowNull: false, unique: true },
+    // 2-letter state / UT code matching the eCourts partner taxonomy
+    // (DL = Delhi, MH = Maharashtra, …). Nullable so legacy rows
+    // imported before this column existed don't break.
+    code: { type: DataTypes.STRING(8), allowNull: true },
     sortOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     active: {
       type: DataTypes.BOOLEAN,

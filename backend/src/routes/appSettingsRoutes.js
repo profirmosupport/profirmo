@@ -10,5 +10,8 @@ const router = express.Router();
 router.get('/categories', ctrl.publicListCategories);
 router.get('/cities', ctrl.publicListCities);
 router.get('/locations', ctrl.publicListLocations);
+router.get('/case-statuses', ctrl.publicListCaseStatuses);
+router.get('/case-types', ctrl.publicListCaseTypes);
+router.get('/cause-list-types', ctrl.publicListCauseListTypes);
 
 module.exports = router;

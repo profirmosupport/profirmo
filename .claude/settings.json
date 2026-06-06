@@ -90,7 +90,21 @@
       "Bash(lsof -ti:5001 -ti:3000 -ti:8081)",
       "WebFetch(domain:ecourtsindia.com)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/ecourts)",
-      "Bash(curl -s -X POST -H 'Content-Type: application/json' -d '{\"courtType\":\"DC\",\"cnr\":\"RJJS010001272025\"}' http://localhost:5001/api/attestr/unified-case)"
+      "Bash(curl -s -X POST -H 'Content-Type: application/json' -d '{\"courtType\":\"DC\",\"cnr\":\"RJJS010001272025\"}' http://localhost:5001/api/attestr/unified-case)",
+      "WebFetch(domain:docs.ecourtsindia.com)",
+      "Bash(xargs -r kill)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5001/api/auth/razorpay-config)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5001/api/auth/razorpay-config)",
+      "Bash(curl -s -o /dev/null -w \"ecourts/enums: %{http_code}\\\\n\" http://localhost:5001/api/ecourts/enums)",
+      "Bash(ipconfig getifaddr *)",
+      "Bash(curl -s http://localhost:8081/ -H \"Expo-Platform: ios\" -H \"Accept: application/expo+json,application/json\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('hostUri:', d.get\\('hostUri'\\) or d.get\\('extra',{}\\).get\\('expoClient',{}\\).get\\('hostUri'\\) or 'n/a'\\)\")",
+      "Bash(grep -n \"^import.*ChipGroup\\\\|^import.*SearchableMultiSelect\\\\|ChipGroup$\" /Users/vishalchauhan/code/profirmo/apps/src/screens/auth/SignupScreen.js)",
+      "Bash(curl -s http://localhost:5001/api/app-settings/case-statuses)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); items=d.get\\('data',[]\\); print\\('count:', len\\(items\\)\\); print\\('first 3:', [\\(i['value'], i['description']\\) for i in items[:3]]\\)\")",
+      "Bash(./node_modules/.bin/eslint components/home/SearchSection.js components/professionals/ProfessionalFilters.js)",
+      "Bash(node -c src/data/migrate.js)",
+      "Bash(awk '{print; fflush\\(\\)} /Port: |app crashed/ {exit}')"
     ]
   }
 }

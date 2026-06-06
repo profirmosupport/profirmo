@@ -3,11 +3,22 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, X, ArrowRight, Languages, LogIn, UserPlus } from 'lucide-react';
+import {
+  Menu,
+  X,
+  ArrowRight,
+  Languages,
+  LogIn,
+  UserPlus,
+  LayoutDashboard,
+  LogOut,
+} from 'lucide-react';
 import { NAV_LINKS } from '@/utils/constants';
 import { useLanguage } from '@/components/LanguageProvider';
 import { useAuth } from '@/components/AuthProvider';
 import BrandLogo from '@/components/common/BrandLogo';
+// ProfileDropdown is used on the desktop bar; the mobile slide-down
+// uses explicit Dashboard / Logout buttons.
 import ProfileDropdown from '@/components/common/ProfileDropdown';
 import NotificationBell from '@/components/common/NotificationBell';
 import CurrentPlanBadge from '@/components/common/CurrentPlanBadge';
@@ -57,7 +68,7 @@ export default function Header() {
   const [scrolled, setScrolled] = useState(false);
   const pathname = usePathname();
   const { lang, setLang, t } = useLanguage();
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { isAuthenticated, loading: authLoading, logout } = useAuth();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -189,20 +200,29 @@ export default function Header() {
               {t(NAV_KEYS[link.href] || link.label)}
             </Link>
           ))}
-          {/* Signed-in users get a dashboard shortcut + profile menu here.
+          {/* Signed-in users get explicit Dashboard + Logout buttons.
               For signed-out visitors the login/signup CTAs live on the
               mobile header bar above, not in this slide-down panel. */}
           {!authLoading && isAuthenticated && (
             <div className="mt-3 flex flex-col gap-2 border-t border-slate-200 pt-4">
               <Link
                 href="/dashboard"
-                className="rounded-xl border border-slate-200 px-4 py-2.5 text-center text-sm font-semibold text-slate-700 transition hover:border-teal-300 hover:bg-slate-50"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-teal-300 hover:bg-slate-50"
               >
-                {t('nav.dashboard') || 'Dashboard'}
+                <LayoutDashboard className="h-4 w-4" />
+                {t('nav.dashboard')}
               </Link>
-              <div className="flex justify-start">
-                <ProfileDropdown />
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  logout?.();
+                }}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-50"
+              >
+                <LogOut className="h-4 w-4" />
+                {t('nav.logout')}
+              </button>
             </div>
           )}
         </nav>

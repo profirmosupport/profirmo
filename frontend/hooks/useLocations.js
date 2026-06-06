@@ -8,7 +8,7 @@
 //   countries: Array<{ id, name, slug, code, states: [...] }>
 //   statesByCountry(countryId): Array<{ id, name, ... }>
 //   citiesByState(stateId):     Array<{ id, name, ... }>
-//   flatCities:                 Array<{ id, name, stateId, stateName, countryName, label: 'State — City' }>
+//   flatCities:                 Array<{ id, name, stateId, stateName, stateCode, countryName, label: 'UP — Lucknow' }>, sorted by state code then city
 //   cityById(id):               object | null
 //   loading
 
@@ -82,21 +82,42 @@ export function useLocations() {
         countryName: country.name,
         countryId: country.id,
       });
+      // Prefer the admin-maintained 2-letter state code (e.g. UP, MH, DL)
+      // and fall back to the first two letters of the state name when a
+      // code has not been entered yet.
+      const stateCode =
+        String(state.code || '').trim() ||
+        String(state.name || '')
+          .trim()
+          .slice(0, 2)
+          .toUpperCase();
       for (const city of state.cities || []) {
         const enriched = {
           id: city.id,
           name: city.name,
           stateId: state.id,
           stateName: state.name,
+          stateCode,
           countryId: country.id,
           countryName: country.name,
-          label: `${state.name} — ${city.name}`,
+          label: `${stateCode} — ${city.name}`,
         };
         cityById.set(city.id, enriched);
         flatCities.push(enriched);
       }
     }
   }
+  // Order the flat list by state code (so all UP cities sit together
+  // alphabetically with the rest of the country), then by city name.
+  flatCities.sort(
+    (a, b) =>
+      String(a.stateCode).localeCompare(String(b.stateCode), undefined, {
+        sensitivity: 'base',
+      }) ||
+      String(a.name).localeCompare(String(b.name), undefined, {
+        sensitivity: 'base',
+      })
+  );
 
   function statesByCountry(countryId) {
     const c = countryById.get(countryId);

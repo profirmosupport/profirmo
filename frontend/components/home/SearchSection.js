@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Search, Briefcase, MapPin, Sparkles } from 'lucide-react';
+import { Search, Briefcase, MapPin, Sparkles, Scale, Calculator } from 'lucide-react';
 import { useLanguage } from '@/components/LanguageProvider';
 import Combobox from '@/components/common/Combobox';
 import { useSubCategoriesFlat } from '@/hooks/useAppSettings';
@@ -18,8 +18,12 @@ export default function SearchSection() {
   const [profession, setProfession] = useState('');
   const [city, setCity] = useState('');
 
-  // Up to five active sub-categories make the "popular" chip row.
-  const popular = subCategories.slice(0, 5);
+  // The "popular" chip row is curated by admins via the `featured`
+  // flag on each sub-category. We cap the row at eight chips so the
+  // strip doesn't wrap into a wall on small screens.
+  const popular = subCategories
+    .filter((s) => s.featured)
+    .slice(0, 8);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -84,10 +88,30 @@ export default function SearchSection() {
               onChange={(e) => setProfession(e.target.value)}
               placeholder={t('search.allProfessions')}
               leftIcon={<Briefcase size={16} />}
-              options={subCategories.map((s) => ({
-                value: s.id,
-                label: `${s.categoryName} — ${s.name}`,
-              }))}
+              options={subCategories
+                // Only top-level sub-categories — deeper tiers are
+                // search-only refinements, not landing entry points.
+                .filter((s) => !s.parentSubCategoryId)
+                .slice()
+                .sort((a, b) =>
+                  String(a.name).localeCompare(String(b.name), undefined, {
+                    sensitivity: 'base',
+                  })
+                )
+                .map((s) => {
+                  const slug = String(s.categorySlug || '').toLowerCase();
+                  const Icon =
+                    slug === 'legal'
+                      ? Scale
+                      : slug === 'tax'
+                        ? Calculator
+                        : Briefcase;
+                  return {
+                    value: s.id,
+                    label: s.name,
+                    icon: <Icon size={16} />,
+                  };
+                })}
             />
 
             {/* City — admin-managed list, searchable */}
@@ -114,22 +138,25 @@ export default function SearchSection() {
           </div>
         </form>
 
-        {/* Popular searches */}
-        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-500">
-            <Sparkles className="h-3.5 w-3.5 text-green-500" />
-            {t('search.popular')}
-          </span>
-          {popular.map((s) => (
-            <Link
-              key={s.id}
-              href={`/professionals?subCategoryId=${encodeURIComponent(s.id)}`}
-              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 transition hover:-translate-y-0.5 hover:border-teal-300 hover:bg-teal-50 hover:text-teal-700"
-            >
-              {s.name}
-            </Link>
-          ))}
-        </div>
+        {/* Popular searches — admin curates these via the
+            `featured` toggle on each sub-category. */}
+        {popular.length > 0 && (
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-500">
+              <Sparkles className="h-3.5 w-3.5 text-green-500" />
+              {t('search.popular')}
+            </span>
+            {popular.map((s) => (
+              <Link
+                key={s.id}
+                href={`/professionals?subCategoryId=${encodeURIComponent(s.id)}`}
+                className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 transition hover:-translate-y-0.5 hover:border-teal-300 hover:bg-teal-50 hover:text-teal-700"
+              >
+                {s.name}
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );

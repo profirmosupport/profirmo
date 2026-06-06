@@ -171,7 +171,7 @@ export default function SideNavDrawer({
               colors={['#0b1220', '#1e293b']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={[styles.header, { paddingTop: insets.top + spacing.md }]}
+              style={[styles.header, { paddingTop: insets.top + spacing['2xl'] }]}
             >
               <View style={styles.headerRow}>
                 {/* Initials live at the BASE layer — always rendered.
@@ -322,9 +322,10 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: spacing.lg,
-    // paddingTop is set inline = insets.top + spacing.md so the
-    // gradient paints under the status bar.
-    paddingBottom: spacing.lg,
+    // paddingTop is set inline = insets.top + spacing['2xl'] so the
+    // gradient paints under the status bar with extra top breathing
+    // room for a taller, more prominent banner.
+    paddingBottom: spacing['2xl'],
   },
   headerRow: {
     flexDirection: 'row',

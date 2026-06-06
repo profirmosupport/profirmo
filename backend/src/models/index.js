@@ -62,6 +62,13 @@ const SubCategory = require('./SubCategory');
 const Country = require('./Country');
 const State = require('./State');
 const City = require('./City');
+// Admin-managed lookup of court case status codes (ABATED, PENDING, …)
+// — surfaced by the Cases module + E-Courts integration.
+const CaseStatus = require('./CaseStatus');
+// Sibling lookups for case-type + cause-list-type. Same shape as
+// CaseStatus, used in the same dropdowns.
+const CaseType = require('./CaseType');
+const CauseListType = require('./CauseListType');
 
 // --- Sales pipeline: Lead -> Opportunity -> Client -------------------------
 // Lead captured from the homepage CTA and the gated advanced-search popup,
@@ -405,6 +412,9 @@ module.exports = {
   Country,
   State,
   City,
+  CaseStatus,
+  CaseType,
+  CauseListType,
   Lead,
   Opportunity,
   LeadActivity,

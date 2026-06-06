@@ -68,11 +68,44 @@ async function callPartner(path, { query, method = 'GET' } = {}) {
 
   if (!res.ok) {
     // Map common partner errors to friendlier messages while keeping the
-    // status code intact so the browser can switch on it.
+    // status code intact so the browser can switch on it. Upstream may
+    // return `message`, `error.message`, a nested `errors[].message`, or
+    // a plain string — normalise to a single human-readable string so
+    // we don't surface "[object Object]" to clients or logs.
+    const pickStr = (v) => {
+      if (!v) return '';
+      if (typeof v === 'string') return v;
+      if (typeof v === 'object') {
+        if (typeof v.message === 'string') return v.message;
+        if (Array.isArray(v) && v.length > 0) return pickStr(v[0]);
+        try {
+          return JSON.stringify(v);
+        } catch {
+          return '';
+        }
+      }
+      return String(v);
+    };
     const upstreamMsg =
-      (payload && (payload.message || payload.error)) ||
+      pickStr(payload && payload.message) ||
+      pickStr(payload && payload.error) ||
+      pickStr(payload && payload.errors) ||
       `E-Courts API error (HTTP ${res.status}).`;
-    const code = payload && (payload.code || payload.errorCode);
+    const code =
+      (payload && (payload.code || payload.errorCode)) ||
+      (payload && payload.error && payload.error.code) ||
+      null;
+    // Log the full upstream envelope so we can diagnose unexpected
+    // shapes — without this, errors collapsed to "[object Object]" in
+    // the central error handler.
+    try {
+      console.warn(
+        `[ecourts] upstream ${res.status} ${method} ${path} — ${upstreamMsg}`,
+        payload ? JSON.stringify(payload).slice(0, 600) : '(no body)'
+      );
+    } catch {
+      /* logging must never throw */
+    }
     throw {
       statusCode: res.status,
       message:
@@ -141,6 +174,132 @@ async function getCase(cnr) {
 }
 
 /**
+ * AI-extracted analysis for a single order/judgment file. Returns:
+ *   { markdown, aiAnalysis: { summary, keyPoints, outcome, relief, statutes } }
+ * Upstream call takes 10-60 seconds the first time per file (it OCRs +
+ * runs the LLM), then caches; subsequent calls are fast.
+ */
+async function getOrderAi(cnr, filename) {
+  if (!cnr) throw { statusCode: 400, message: 'cnr is required.' };
+  if (!filename) throw { statusCode: 400, message: 'filename is required.' };
+  const basename = String(filename).split('/').filter(Boolean).pop() || '';
+  const safeName = basename.replace(/[^A-Za-z0-9._-]/g, '');
+  if (!safeName) throw { statusCode: 400, message: 'Invalid filename.' };
+  const res = await callPartner(
+    `/api/partner/case/${encodeURIComponent(cnr)}/order-ai/${encodeURIComponent(
+      safeName
+    )}`
+  );
+  const data = (res && res.data) || {};
+  return {
+    markdown:
+      data.markdown ||
+      data.markdownContent ||
+      (data.files && (data.files.markdownContent || data.files.markdown)) ||
+      '',
+    aiAnalysis:
+      data.aiAnalysis ||
+      data.analysis ||
+      data.ai ||
+      (data.result && (data.result.aiAnalysis || data.result.analysis)) ||
+      null,
+  };
+}
+
+/**
+ * Trigger an upstream rescrape and wait for it to settle. The partner
+ * API returns immediately; metadata becomes visible within seconds via
+ * `entityInfo.dateModified` ticking forward. We poll up to `maxWaitMs`,
+ * then return whatever's freshest.
+ */
+/**
+ * "Refresh-as-add" — useful when a user types a valid CNR that the
+ * partner search index doesn't know yet. We POST /refresh, then poll
+ * /case/{cnr} every 4s until either the case shows up or `maxWaitMs`
+ * elapses. Returns the freshly-pulled `courtCaseData` blob, or null if
+ * the upstream rescrape hasn't yielded anything in time.
+ */
+async function refreshAsAdd(cnr) {
+  if (!cnr) throw { statusCode: 400, message: 'cnr is required.' };
+
+  // Step 1 — direct case-detail probe. The partner SEARCH INDEX lags
+  // 1-2 hours behind /case/{cnr}, so the case may already be in the
+  // DB even though search returned no hits. Cheaper than refresh +
+  // skips the 5-10 minute upstream wait when the case is already
+  // cached.
+  try {
+    const data = await getCase(cnr);
+    if (data && data.courtCaseData) {
+      console.log(`[ecourts] ${cnr} resolved from partner cache (no refresh needed).`);
+      return { ready: true, case: data, queue: null };
+    }
+  } catch (err) {
+    // 404 here is the expected miss path — fall through to refresh.
+    if (err && err.statusCode !== 404) throw err;
+  }
+
+  // Step 2 — kick an upstream rescrape. POST is mandatory (the docs
+  // call out that GET returns 405). For unknown CNRs the partner API
+  // queues a fresh scrape and responds with
+  // `{status:"QUEUED", estimatedTime:"5-10 minutes"}`. We surface that
+  // envelope to the client and let it poll /case/{cnr} from the
+  // browser — the request handler can't reasonably stay open that long.
+  console.log(`[ecourts] ${cnr} not in partner DB — POST /case/${cnr}/refresh.`);
+  const queueRes = await callPartner(
+    `/api/partner/case/${encodeURIComponent(cnr)}/refresh`,
+    { method: 'POST' }
+  );
+  const queue = (queueRes && queueRes.data) || null;
+  console.log(`[ecourts] ${cnr} upstream queue:`, JSON.stringify(queue));
+  return { ready: false, case: null, queue };
+}
+
+async function requestRefresh(cnr, { maxWaitMs = 60000 } = {}) {
+  if (!cnr) throw { statusCode: 400, message: 'cnr is required.' };
+  // Capture the pre-refresh dateModified so we know when upstream
+  // has actually settled the new copy.
+  let before = null;
+  try {
+    const cur = await getCase(cnr);
+    before =
+      (cur && cur.entityInfo && cur.entityInfo.dateModified) ||
+      (cur && cur.entityInfo && cur.entityInfo.lastUpdated) ||
+      null;
+  } catch {
+    /* unknown CNR — refresh-as-add will pull it in below */
+  }
+
+  await callPartner(`/api/partner/case/${encodeURIComponent(cnr)}/refresh`, {
+    method: 'POST',
+  }).catch((err) => {
+    // 404 here means the CNR was unknown AND upstream couldn't queue —
+    // surface the error. Other transient errors fall through so we still
+    // try a GET below.
+    if (err && err.statusCode === 404) throw err;
+  });
+
+  const deadline = Date.now() + Math.max(5000, Number(maxWaitMs) || 60000);
+  let latest = null;
+  // Poll every 4s. The blog guide says metadata settles in seconds,
+  // so 4s × 15 = 60s gives plenty of headroom without smashing rate
+  // limits (each iteration costs one case-detail credit).
+  while (Date.now() < deadline) {
+    try {
+      latest = await getCase(cnr);
+      const after =
+        (latest && latest.entityInfo && latest.entityInfo.dateModified) ||
+        (latest && latest.entityInfo && latest.entityInfo.lastUpdated) ||
+        null;
+      if (after && (!before || String(after) !== String(before))) break;
+    } catch {
+      /* swallow transient — retry on next tick */
+    }
+    await new Promise((r) => setTimeout(r, 4000));
+  }
+  return latest;
+}
+
+/**
  * Fetch the actual PDF binary of an order/judgment for a case. The partner
  * API returns the watermarked PDF as base64 inside the `/order-md/`
  * endpoint — we decode and stream it back as a real `application/pdf`
@@ -151,8 +310,12 @@ async function getCase(cnr) {
 async function getOrderPdf(cnr, filename) {
   if (!cnr) throw { statusCode: 400, message: 'cnr is required.' };
   if (!filename) throw { statusCode: 400, message: 'filename is required.' };
-  // The partner API expects the bare filename (e.g. "order-1.pdf").
-  const safeName = String(filename).replace(/[^A-Za-z0-9._-]/g, '');
+  // Partner expects only the bare filename component (`order-1.pdf`).
+  // The frontend sometimes passes a full path (e.g. `/orderDocuments/UP/...`)
+  // when the upstream record stores it that way; strip down to the
+  // basename so the path-segment encoding still works.
+  const basename = String(filename).split('/').filter(Boolean).pop() || '';
+  const safeName = basename.replace(/[^A-Za-z0-9._-]/g, '');
   if (!safeName) throw { statusCode: 400, message: 'Invalid filename.' };
 
   const res = await callPartner(
@@ -161,11 +324,28 @@ async function getOrderPdf(cnr, filename) {
     )}`
   );
   const data = (res && res.data) || {};
+  // Different partner endpoints return the PDF blob under different
+  // keys — accept any of the known shapes.
   const b64 =
     data.pdfBase64 ||
-    (data.files && data.files.pdfBase64) ||
+    data.pdf ||
+    data.fileContent ||
+    data.content ||
+    (data.files && (data.files.pdfBase64 || data.files.pdf || data.files.fileContent)) ||
+    (data.file && (data.file.pdfBase64 || data.file.content)) ||
     null;
   if (!b64) {
+    // Surface a slice of the upstream envelope so we can diagnose the
+    // shape without leaking the full payload.
+    try {
+      console.warn(
+        `[ecourts] getOrderPdf(${cnr}, ${safeName}) — no PDF in upstream response. keys=${Object.keys(
+          data
+        ).join(',')}`
+      );
+    } catch {
+      /* logging must never throw */
+    }
     throw {
       statusCode: 502,
       message:
@@ -389,7 +569,18 @@ async function syncCase(caseId, user) {
   }
 
   const oldSnap = row.eciSnapshot || {};
-  const detail = await getCase(row.cnr);
+  // Async refresh first — POSTs /case/{cnr}/refresh and polls
+  // entityInfo.dateModified until upstream finishes rescraping the
+  // source. Falls back to a plain GET if the refresh API times out.
+  let detail = null;
+  try {
+    detail = await requestRefresh(row.cnr, { maxWaitMs: 45000 });
+  } catch {
+    detail = null;
+  }
+  if (!detail) {
+    detail = await getCase(row.cnr);
+  }
   const eciCase = (detail && detail.courtCaseData) || null;
   if (!eciCase) {
     throw {
@@ -450,14 +641,130 @@ function newItems(prev, next, keyFn) {
   return next.filter((x) => !seen.has(keyFn(x)));
 }
 
+// -------------------------------------------------------------------------
+// Causelist + free taxonomy. The court-structure endpoints don't consume
+// credits per the API guide; the causelist search does (3 INR / 1 INR per
+// call on PayG / Enterprise) so the controller leaves it auth-gated.
+// -------------------------------------------------------------------------
+
+async function getEnums(types) {
+  // `/api/partner/enums` — free, cached upstream for ~1h. `types` is an
+  // optional comma-separated whitelist (caseType, caseStatus, courtCode,
+  // stateCode); empty means "everything".
+  const res = await callPartner('/api/partner/enums', {
+    query: types ? { types } : undefined,
+  });
+  return (res && res.data) || {};
+}
+
+async function getStates() {
+  const res = await callPartner(
+    '/api/CauseList/court-structure/states'
+  );
+  return (res && res.data) || [];
+}
+
+async function getDistricts(state) {
+  if (!state) throw { statusCode: 400, message: 'state is required.' };
+  const res = await callPartner(
+    `/api/CauseList/court-structure/states/${encodeURIComponent(
+      state
+    )}/districts`
+  );
+  return (res && res.data) || [];
+}
+
+async function getComplexes(state, districtCode) {
+  if (!state || !districtCode) {
+    throw { statusCode: 400, message: 'state and districtCode are required.' };
+  }
+  const res = await callPartner(
+    `/api/CauseList/court-structure/states/${encodeURIComponent(
+      state
+    )}/districts/${encodeURIComponent(districtCode)}/complexes`
+  );
+  return (res && res.data) || [];
+}
+
+async function getCourts(state, districtCode, complexCode) {
+  if (!state || !districtCode || !complexCode) {
+    throw {
+      statusCode: 400,
+      message: 'state, districtCode and courtComplexCode are required.',
+    };
+  }
+  const res = await callPartner(
+    `/api/CauseList/court-structure/states/${encodeURIComponent(
+      state
+    )}/districts/${encodeURIComponent(
+      districtCode
+    )}/complexes/${encodeURIComponent(complexCode)}/courts`
+  );
+  return (res && res.data) || [];
+}
+
+async function getCauselistAvailableDates({
+  state,
+  districtCode,
+  courtComplexCode,
+} = {}) {
+  const res = await callPartner('/api/partner/causelist/available-dates', {
+    query: {
+      state: state || undefined,
+      districtCode: districtCode || undefined,
+      courtComplexCode: courtComplexCode || undefined,
+    },
+  });
+  return (res && res.data) || { dates: [] };
+}
+
+async function searchCauselist(params = {}) {
+  const allowed = [
+    'q',
+    'date',
+    'startDate',
+    'endDate',
+    'judge',
+    'advocate',
+    'litigant',
+    'state',
+    'districtCode',
+    'courtComplexCode',
+    'court',
+    'courtNo',
+    'bench',
+    'listType',
+    'page',
+    'pageSize',
+  ];
+  const query = {};
+  for (const k of allowed) {
+    const v = params[k];
+    if (v === undefined || v === null || v === '') continue;
+    query[k] = v;
+  }
+  const res = await callPartner('/api/partner/causelist/search', { query });
+  return (res && res.data) || { results: [], totalHits: 0 };
+}
+
 module.exports = {
   search,
   getCase,
   getOrderPdf,
+  getOrderAi,
+  requestRefresh,
+  refreshAsAdd,
   listFavorites,
   addFavorite,
   removeFavorite,
   findImportedCase,
   importCase,
   syncCase,
+  getEnums,
+  getStates,
+  getDistricts,
+  getComplexes,
+  getCourts,
+  getCauselistAvailableDates,
+  searchCauselist,
 };

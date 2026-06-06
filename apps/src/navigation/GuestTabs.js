@@ -24,6 +24,9 @@ import BlogDetailScreen from '../screens/guest/BlogDetailScreen';
 import ProfessionalDetailScreen from '../screens/guest/ProfessionalDetailScreen';
 import FirmDetailScreen from '../screens/guest/FirmDetailScreen';
 import BookingScreen from '../screens/guest/BookingScreen';
+import ECourtsSearchScreen from '../screens/guest/ECourtsSearchScreen';
+import ECourtsCaseDetailScreen from '../screens/guest/ECourtsCaseDetailScreen';
+import ECourtsHearingsScreen from '../screens/guest/ECourtsHearingsScreen';
 
 import DashboardScreen from '../screens/shared/DashboardScreen';
 import ProfileScreen from '../screens/shared/ProfileScreen';
@@ -84,6 +87,21 @@ function HomeStack() {
         name="Booking"
         component={BookingScreen}
         options={{ title: 'Book a consultation' }}
+      />
+      <Stack.Screen
+        name="ECourtsSearch"
+        component={ECourtsSearchScreen}
+        options={{ title: 'E-Courts India' }}
+      />
+      <Stack.Screen
+        name="ECourtsCaseDetail"
+        component={ECourtsCaseDetailScreen}
+        options={{ title: 'Case Details' }}
+      />
+      <Stack.Screen
+        name="ECourtsHearings"
+        component={ECourtsHearingsScreen}
+        options={{ title: 'Daily cause list' }}
       />
     </Stack.Navigator>
   );

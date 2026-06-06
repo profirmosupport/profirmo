@@ -32,13 +32,16 @@ import Footer from '@/components/common/Footer';
 import Card from '@/components/common/Card';
 import Button from '@/components/common/Button';
 import EmptyState from '@/components/common/EmptyState';
+import Modal from '@/components/common/Modal';
 import { useAuth } from '@/components/AuthProvider';
 import {
   getCaseByCnr,
   getImportedCase,
+  getOrderAi,
   importCaseFromEcourts,
   orderDownloadUrl,
 } from '@/services/ecourtsService';
+import { getAccessToken } from '@/services/api';
 
 function fmtDate(iso) {
   if (!iso) return '—';
@@ -93,11 +96,12 @@ function PartyList({ label, items, icon: Icon, accent }) {
   );
 }
 
-function OrderRow({ order, cnr, downloading, onDownload }) {
+function OrderRow({ order, cnr, downloading, onDownload, aiBusy, onAi }) {
   const filename = order.orderUrl || order.filename;
   const label = order.orderType || order.description || 'Order';
   const id = `${order.orderDate || ''}|${filename || ''}`;
   const isBusy = downloading === id;
+  const isAiBusy = aiBusy === id;
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 transition hover:border-amber-300 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0 flex-1">
@@ -117,27 +121,152 @@ function OrderRow({ order, cnr, downloading, onDownload }) {
         </div>
       </div>
       {filename ? (
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={() => onDownload(id, filename)}
-          disabled={isBusy}
-        >
-          {isBusy ? (
-            <>
-              <Loader2 size={14} className="animate-spin" />
-              Fetching…
-            </>
-          ) : (
-            <>
-              <Download size={14} />
-              Download PDF
-            </>
-          )}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onAi(id, filename, label)}
+            disabled={isAiBusy}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60"
+            title="AI summary, key points, outcome, relief and statutes"
+          >
+            {isAiBusy ? (
+              <>
+                <Loader2 size={12} className="animate-spin" />
+                Analysing…
+              </>
+            ) : (
+              <>
+                <Sparkles size={12} />
+                AI summary
+              </>
+            )}
+          </button>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => onDownload(id, filename)}
+            disabled={isBusy}
+          >
+            {isBusy ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                Fetching…
+              </>
+            ) : (
+              <>
+                <Download size={14} />
+                Download PDF
+              </>
+            )}
+          </Button>
+        </div>
       ) : (
         <span className="text-xs text-slate-400">No file</span>
       )}
+    </div>
+  );
+}
+
+// AiSummaryBody — renders the structured AI analysis returned by the
+// /order-ai endpoint, plus the raw markdown for transparency. All fields
+// are optional; missing ones are silently dropped so partial payloads
+// still look clean.
+function AiSummaryBody({ data, error }) {
+  if (error) {
+    return (
+      <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+        <AlertCircle size={16} className="mt-0.5 shrink-0" />
+        <span>{error}</span>
+      </div>
+    );
+  }
+  if (!data) return null;
+  const ai = data.aiAnalysis || {};
+  const kp = Array.isArray(ai.keyPoints)
+    ? ai.keyPoints.filter(Boolean)
+    : [];
+  const statutes = Array.isArray(ai.statutes)
+    ? ai.statutes.filter(Boolean)
+    : [];
+  return (
+    <div className="space-y-4">
+      {ai.summary ? (
+        <section>
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Summary
+          </h4>
+          <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+            {ai.summary}
+          </p>
+        </section>
+      ) : null}
+      {ai.outcome ? (
+        <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-700">
+            Outcome
+          </h4>
+          <p className="mt-1 text-sm text-emerald-900">{ai.outcome}</p>
+        </section>
+      ) : null}
+      {ai.relief ? (
+        <section>
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Relief granted
+          </h4>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
+            {ai.relief}
+          </p>
+        </section>
+      ) : null}
+      {kp.length > 0 ? (
+        <section>
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Key points
+          </h4>
+          <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-slate-700">
+            {kp.map((p, i) => (
+              <li key={i}>{p}</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {statutes.length > 0 ? (
+        <section>
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Statutes referenced
+          </h4>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {statutes.map((s, i) => (
+              <span
+                key={`${s}-${i}`}
+                className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-700"
+              >
+                {s}
+              </span>
+            ))}
+          </div>
+        </section>
+      ) : null}
+      {data.markdown ? (
+        <details className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <summary className="cursor-pointer text-xs font-semibold text-slate-600 hover:text-slate-900">
+            View extracted markdown
+          </summary>
+          <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed text-slate-700">
+            {data.markdown}
+          </pre>
+        </details>
+      ) : null}
+      {!ai.summary &&
+      !ai.outcome &&
+      !ai.relief &&
+      kp.length === 0 &&
+      statutes.length === 0 ? (
+        <p className="text-sm text-slate-500">
+          E-Courts returned no AI fields for this order. The markdown below
+          may still be useful.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -163,6 +292,17 @@ export default function ECourtsCaseDetailPage() {
   const [error, setError] = useState('');
   const [downloading, setDownloading] = useState('');
   const [downloadError, setDownloadError] = useState('');
+
+  // AI summary state. `aiBusy` holds the OrderRow id whose request is
+  // in flight; `aiModal` carries { open, title, data, error } so the
+  // popup can render whichever order the user opened.
+  const [aiBusy, setAiBusy] = useState('');
+  const [aiModal, setAiModal] = useState({
+    open: false,
+    title: '',
+    data: null,
+    error: '',
+  });
   // Imported-case state — when the signed-in user has already saved this
   // CNR, we swap the "Save to my cases" CTA for a "Check in my cases"
   // link pointing at the relevant dashboard. `imported.caseId` is the
@@ -264,7 +404,15 @@ export default function ECourtsCaseDetailPage() {
     setDownloading(id);
     try {
       const url = orderDownloadUrl(cnr, filename);
-      const res = await fetch(url, { credentials: 'include' });
+      // The /download route is auth-gated; the rest of the app uses an
+      // in-memory bearer token (see services/api.js), so a bare fetch
+      // wouldn't carry credentials. Pull the current access token and
+      // forward it explicitly.
+      const token = getAccessToken();
+      const res = await fetch(url, {
+        credentials: 'include',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       if (!res.ok) {
         let msg = `Download failed (${res.status}).`;
         try {
@@ -293,6 +441,27 @@ export default function ECourtsCaseDetailPage() {
       setDownloadError(err.message || 'Download failed.');
     } finally {
       setDownloading('');
+    }
+  }
+
+  // Open the AI-summary modal for a single order. The upstream call is
+  // slow (10–60s on first hit per file), so we open the modal in a
+  // pending state immediately and let the body switch to the analysis
+  // once it lands.
+  async function handleAi(id, filename, title) {
+    if (aiBusy) return;
+    setAiBusy(id);
+    setAiModal({ open: true, title: title || 'AI summary', data: null, error: '' });
+    try {
+      const data = await getOrderAi(cnr, filename);
+      setAiModal((prev) => ({ ...prev, data, error: '' }));
+    } catch (err) {
+      setAiModal((prev) => ({
+        ...prev,
+        error: err.message || 'Could not generate the AI summary.',
+      }));
+    } finally {
+      setAiBusy('');
     }
   }
 
@@ -641,6 +810,8 @@ export default function ECourtsCaseDetailPage() {
                               cnr={cnr}
                               downloading={downloading}
                               onDownload={handleDownload}
+                              aiBusy={aiBusy}
+                              onAi={handleAi}
                             />
                           ))}
                         </div>
@@ -659,6 +830,8 @@ export default function ECourtsCaseDetailPage() {
                               cnr={cnr}
                               downloading={downloading}
                               onDownload={handleDownload}
+                              aiBusy={aiBusy}
+                              onAi={handleAi}
                             />
                           ))}
                         </div>
@@ -692,6 +865,40 @@ export default function ECourtsCaseDetailPage() {
         </div>
       </main>
       <Footer />
+
+      {/* AI-summary modal — opened from each order row */}
+      <Modal
+        open={aiModal.open}
+        onClose={() => setAiModal((p) => ({ ...p, open: false }))}
+        title={aiModal.title || 'AI summary'}
+        size="lg"
+        footer={
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setAiModal((p) => ({ ...p, open: false }))}
+          >
+            Close
+          </Button>
+        }
+      >
+        {!aiModal.data && !aiModal.error ? (
+          <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-600">
+            <Loader2 size={18} className="animate-spin text-violet-600" />
+            <div>
+              <p className="font-semibold text-slate-800">
+                Reading the order &amp; generating the summary…
+              </p>
+              <p className="text-xs text-slate-500">
+                First run takes 10–60 seconds. Subsequent opens are
+                instant.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <AiSummaryBody data={aiModal.data} error={aiModal.error} />
+        )}
+      </Modal>
     </div>
   );
 }

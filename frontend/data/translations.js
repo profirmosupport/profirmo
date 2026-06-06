@@ -17,6 +17,8 @@ export const translations = {
     'nav.getStarted': 'Get started',
     'nav.openMenu': 'Open menu',
     'nav.language': 'Language',
+    'nav.dashboard': 'Dashboard',
+    'nav.logout': 'Logout',
 
     // --- Footer ---
     'footer.about':
@@ -314,6 +316,8 @@ export const translations = {
     'nav.getStarted': 'शुरू करें',
     'nav.openMenu': 'मेन्यू खोलें',
     'nav.language': 'भाषा',
+    'nav.dashboard': 'डैशबोर्ड',
+    'nav.logout': 'लॉग आउट',
 
     // --- Footer ---
     'footer.about':

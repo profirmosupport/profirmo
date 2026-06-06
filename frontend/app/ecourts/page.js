@@ -26,13 +26,21 @@ import {
   ArrowRight,
   FileText,
   Calendar,
+  Loader2,
   MapPin,
 } from 'lucide-react';
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
 import Card from '@/components/common/Card';
 import Button from '@/components/common/Button';
-import { searchCases } from '@/services/ecourtsService';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/components/AuthProvider';
+import {
+  getCaseByCnr,
+  looksLikeCnr,
+  refreshAsAdd,
+  searchCases,
+} from '@/services/ecourtsService';
 
 const PAGE_SIZE = 12;
 
@@ -198,6 +206,8 @@ function ResultCard({ item }) {
 }
 
 export default function ECourtsPage() {
+  const router = useRouter();
+  const { isAuthenticated } = useAuth();
   const [filters, setFilters] = useState(EMPTY);
   const [searchedOnce, setSearchedOnce] = useState(false);
   const [page, setPage] = useState(1);
@@ -212,6 +222,14 @@ export default function ECourtsPage() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // Refresh-as-add fallback state. When a CNR-shaped query returns 0
+  // hits in the partner search index, the backend POSTs /refresh
+  // upstream (returns "QUEUED" with 5–10 min ETA), then we poll
+  // /case/:cnr from the browser until it lands.
+  const [fetchingFromSource, setFetchingFromSource] = useState(false);
+  const [fetchInfo, setFetchInfo] = useState(null); // { eta, elapsedS }
+  const [refreshHint, setRefreshHint] = useState('');
+  const fetchAbortRef = useRef(null);
   const requestIdRef = useRef(0);
 
   const activeCount = useMemo(
@@ -242,6 +260,7 @@ export default function ECourtsPage() {
       const myReq = ++requestIdRef.current;
       setLoading(true);
       setError('');
+      setRefreshHint('');
       try {
         const payload = await searchCases({
           ...filters,
@@ -264,6 +283,122 @@ export default function ECourtsPage() {
         if (typeof window !== 'undefined') {
           window.scrollTo({ top: 280, behavior: 'smooth' });
         }
+
+        // --- Refresh-as-add fallback -------------------------------
+        // Partner search index lags 1–2 hours behind the case-detail
+        // endpoint, and brand-new CNRs may not be in their DB at all.
+        // If the user typed a CNR-shaped value and we got 0 hits,
+        // ask the backend to trigger an upstream rescrape (which also
+        // adds unknown CNRs) and then deep-link straight to the
+        // detail page once it lands.
+        // Fire refresh-as-add whenever the main query box holds a
+        // CNR-shaped value and the search returned nothing — even if
+        // narrow filters are set (those don't apply to a CNR lookup).
+        // Only on the first page; pagination should never re-kick.
+        const q = String(filters.query || '').trim();
+        const cnrShaped = looksLikeCnr(q) && targetPage === 1;
+        if (rows.length === 0 && cnrShaped) {
+          if (!isAuthenticated) {
+            setRefreshHint(
+              'Looks like a CNR. Sign in to fetch this case directly from the source.'
+            );
+            return;
+          }
+          // Drop the search skeleton so the dedicated "Fetching from
+          // source…" card takes over while we run the kick-and-poll
+          // flow against the partner API.
+          setLoading(false);
+          setFetchingFromSource(true);
+          setFetchInfo({ eta: '5–10 minutes', elapsedS: 0 });
+
+          // Cancel any in-flight poll the moment a new search starts.
+          if (fetchAbortRef.current) {
+            fetchAbortRef.current.cancelled = true;
+          }
+          const ctrl = { cancelled: false };
+          fetchAbortRef.current = ctrl;
+
+          try {
+            const kicked = await refreshAsAdd(q);
+            if (requestIdRef.current !== myReq || ctrl.cancelled) return;
+
+            // Lucky path: partner had the case cached already.
+            if (kicked && kicked.ready && kicked.case) {
+              router.push(`/ecourts/${encodeURIComponent(q)}`);
+              return;
+            }
+
+            const queueEta =
+              (kicked && kicked.queue && kicked.queue.estimatedTime) ||
+              '5–10 minutes';
+            setFetchInfo({ eta: String(queueEta), elapsedS: 0 });
+
+            // Poll the case-detail endpoint from the browser. Each
+            // GET costs one case-detail credit upstream, so we space
+            // them generously (15s) and cap the loop at 2 minutes —
+            // past that the user gets a "check back later" hint so
+            // they aren't stuck watching a spinner.
+            const POLL_INTERVAL_MS = 15000;
+            const MAX_WAIT_MS = 2 * 60 * 1000;
+            const start = Date.now();
+            // Tick the elapsed counter every second so the UI shows a
+            // moving counter without driving each tick from the poll.
+            const tickHandle = setInterval(() => {
+              if (ctrl.cancelled) return;
+              setFetchInfo((prev) =>
+                prev
+                  ? { ...prev, elapsedS: Math.floor((Date.now() - start) / 1000) }
+                  : prev
+              );
+            }, 1000);
+
+            try {
+              while (
+                !ctrl.cancelled &&
+                Date.now() - start < MAX_WAIT_MS
+              ) {
+                await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+                if (ctrl.cancelled || requestIdRef.current !== myReq) return;
+                try {
+                  const data = await getCaseByCnr(q);
+                  if (ctrl.cancelled) return;
+                  if (data && data.courtCaseData) {
+                    router.push(`/ecourts/${encodeURIComponent(q)}`);
+                    return;
+                  }
+                } catch (pollErr) {
+                  // 404 just means the rescrape hasn't landed yet —
+                  // keep going. Anything else surfaces in the hint.
+                  if (pollErr && pollErr.status !== 404) {
+                    throw pollErr;
+                  }
+                }
+              }
+              if (!ctrl.cancelled) {
+                setRefreshHint(
+                  "E-Courts is still fetching this CNR. Check back in a few minutes — the case will be ready by then."
+                );
+              }
+            } finally {
+              clearInterval(tickHandle);
+            }
+          } catch (refreshErr) {
+            if (requestIdRef.current !== myReq || ctrl.cancelled) return;
+            // Defensive coercion — some upstream errors arrive with a
+            // non-string `message`. Guard against React rendering an
+            // object as text ("[object Object]").
+            const msg =
+              typeof refreshErr?.message === 'string'
+                ? refreshErr.message
+                : 'Could not fetch this CNR from source. Try again later.';
+            setRefreshHint(msg);
+          } finally {
+            if (requestIdRef.current === myReq && !ctrl.cancelled) {
+              setFetchingFromSource(false);
+              setFetchInfo(null);
+            }
+          }
+        }
       } catch (err) {
         if (requestIdRef.current !== myReq) return;
         setError(err.message || 'Search failed. Please try again.');
@@ -273,7 +408,7 @@ export default function ECourtsPage() {
         if (requestIdRef.current === myReq) setLoading(false);
       }
     },
-    [filters, activeCount]
+    [filters, activeCount, isAuthenticated, router]
   );
 
   function handleSubmit(e) {
@@ -444,16 +579,89 @@ export default function ECourtsPage() {
                 </div>
 
                 {results.length === 0 ? (
-                  <Card className="text-center">
-                    <Scale className="mx-auto h-10 w-10 text-slate-300" />
-                    <h3 className="mt-2 text-base font-semibold text-slate-900">
-                      No matching cases
-                    </h3>
-                    <p className="mt-1 text-sm text-slate-500">
-                      Try a different name spelling, a partial CNR, or remove
-                      one of the filters.
-                    </p>
-                  </Card>
+                  fetchingFromSource ? (
+                    <Card className="flex items-start gap-3 text-left">
+                      <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-sm font-semibold text-slate-900">
+                          Fetching this CNR directly from E-Courts…
+                        </h3>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          This case isn't in the partner index yet, so we've
+                          queued a fresh scrape from the source court site.
+                          Typical wait:{' '}
+                          <span className="font-semibold text-slate-700">
+                            {fetchInfo?.eta || '5–10 minutes'}
+                          </span>
+                          .
+                        </p>
+                        <p className="mt-1.5 text-[11px] font-semibold uppercase tracking-wider text-amber-700">
+                          Elapsed{' '}
+                          {Math.floor((fetchInfo?.elapsedS || 0) / 60)
+                            .toString()
+                            .padStart(2, '0')}
+                          :
+                          {((fetchInfo?.elapsedS || 0) % 60)
+                            .toString()
+                            .padStart(2, '0')}{' '}
+                          · checking every 15s
+                        </p>
+                        <p className="mt-2 text-[11px] text-slate-400">
+                          You can leave this tab — the page will navigate
+                          automatically when the case lands.
+                        </p>
+                      </div>
+                    </Card>
+                  ) : refreshHint ? (
+                    <Card className="text-center">
+                      <Sparkles className="mx-auto h-9 w-9 text-amber-500" />
+                      <h3 className="mt-2 text-base font-semibold text-slate-900">
+                        That looks like a CNR
+                      </h3>
+                      <p className="mt-1 text-sm text-slate-600">
+                        {String(refreshHint)}
+                      </p>
+                      <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => doSearch(1)}
+                          disabled={loading || fetchingFromSource}
+                        >
+                          {fetchingFromSource ? (
+                            <>
+                              <Loader2 size={14} className="animate-spin" />
+                              Fetching…
+                            </>
+                          ) : (
+                            'Try again'
+                          )}
+                        </Button>
+                        {!isAuthenticated ? (
+                          <Button
+                            href={`/login?next=${encodeURIComponent('/ecourts')}`}
+                            variant="outline"
+                            size="sm"
+                          >
+                            Sign in
+                          </Button>
+                        ) : null}
+                      </div>
+                    </Card>
+                  ) : (
+                    <Card className="text-center">
+                      <Scale className="mx-auto h-10 w-10 text-slate-300" />
+                      <h3 className="mt-2 text-base font-semibold text-slate-900">
+                        No matching cases
+                      </h3>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Try a different name spelling, a partial CNR, or
+                        remove one of the filters.
+                      </p>
+                    </Card>
+                  )
                 ) : (
                   <div className="space-y-3">
                     {results.map((item) => (
@@ -489,16 +697,43 @@ export default function ECourtsPage() {
                 ) : null}
               </>
             ) : (
-              <Card className="text-center">
-                <Scale className="mx-auto h-12 w-12 text-amber-400" />
-                <h3 className="mt-3 text-lg font-bold text-slate-900">
-                  Search for any case in India
-                </h3>
-                <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">
-                  Type a name or CNR above and hit Search. Results pull live
-                  from the eCourts national database.
-                </p>
-              </Card>
+              <div className="space-y-4">
+                <Card className="text-center">
+                  <Scale className="mx-auto h-12 w-12 text-amber-400" />
+                  <h3 className="mt-3 text-lg font-bold text-slate-900">
+                    Search for any case in India
+                  </h3>
+                  <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">
+                    Type a name or CNR above and hit Search. Results pull live
+                    from the eCourts national database.
+                  </p>
+                </Card>
+
+                {/* Quick link into the daily cause-list page, so the page
+                    surfaces the other primary partner-API capability
+                    without forcing the visitor to run a search first. */}
+                <Link
+                  href="/ecourts/hearings"
+                  className="group flex flex-col gap-3 rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-white p-5 shadow-card transition hover:-translate-y-0.5 hover:border-amber-400 hover:shadow-glow-amber sm:flex-row sm:items-center"
+                >
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 group-hover:bg-amber-200">
+                    <Sparkles className="h-6 w-6" />
+                  </span>
+                  <div className="flex-1">
+                    <h3 className="text-base font-semibold text-slate-900 group-hover:text-amber-800">
+                      When is your matter listed?
+                    </h3>
+                    <p className="mt-0.5 text-sm text-slate-600">
+                      Daily cause list across every court — filter by judge,
+                      advocate or party.
+                    </p>
+                  </div>
+                  <ArrowRight
+                    size={18}
+                    className="text-amber-700 transition group-hover:translate-x-1"
+                  />
+                </Link>
+              </div>
             )}
           </div>
         </section>

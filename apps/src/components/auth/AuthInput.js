@@ -23,6 +23,12 @@ export default function AuthInput({
   editable = true,
 }) {
   const [focused, setFocused] = useState(false);
+  // Password reveal toggle — only relevant when the input is masked.
+  // Kept local so every password field across sign-in / sign-up /
+  // forgot-password gets the eye icon for free.
+  const [revealed, setRevealed] = useState(false);
+  const isPassword = !!secureTextEntry;
+  const masked = isPassword && !revealed;
   const borderColor = error
     ? colors.danger
     : focused
@@ -59,14 +65,35 @@ export default function AuthInput({
           onChangeText={onChangeText}
           placeholder={placeholder}
           placeholderTextColor={colors.textMuted}
-          secureTextEntry={secureTextEntry}
+          secureTextEntry={masked}
           keyboardType={keyboardType}
-          autoCapitalize={autoCapitalize}
-          autoCorrect={autoCorrect}
+          // When revealed, force capitalize='none' + autoCorrect=false
+          // so the keyboard doesn't suddenly start suggesting words
+          // from the password the user just decided to peek at.
+          autoCapitalize={isPassword ? 'none' : autoCapitalize}
+          autoCorrect={isPassword ? false : autoCorrect}
+          // Don't let an OS-level dictionary surface a "remembered"
+          // password as a suggestion while it's revealed.
+          textContentType={isPassword ? 'password' : undefined}
           editable={editable}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
         />
+        {isPassword ? (
+          <Pressable
+            onPress={() => setRevealed((v) => !v)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={revealed ? 'Hide password' : 'Show password'}
+            style={styles.eyeBtn}
+          >
+            <Feather
+              name={revealed ? 'eye-off' : 'eye'}
+              size={16}
+              color={focused ? colors.primary : colors.textMuted}
+            />
+          </Pressable>
+        ) : null}
       </View>
       {error ? (
         <Text style={styles.error}>{error}</Text>
@@ -103,6 +130,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   iconPrefix: { marginRight: 8 },
+  eyeBtn: {
+    marginLeft: 8,
+    padding: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   input: {
     flex: 1,
     paddingVertical: 12,

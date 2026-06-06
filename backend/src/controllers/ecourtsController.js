@@ -22,6 +22,47 @@ const getCase = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'Case detail', data);
 });
 
+// GET /api/ecourts/case/:cnr/order/:filename/ai
+// Returns the AI-extracted summary + structured analysis for an order.
+// Upstream is slow (10–60s first time per file) and credit-billed, so
+// this endpoint is auth-gated.
+const getOrderAi = asyncHandler(async (req, res) => {
+  const { cnr, filename } = req.params;
+  const data = await ecourtsService.getOrderAi(cnr, filename);
+  return successResponse(res, 200, 'AI order analysis', data);
+});
+
+// POST /api/ecourts/refresh-as-add  body: { cnr }
+// Used by the search screens when a CNR-shaped query returns 0 hits in
+// the partner search index. Triggers an upstream rescrape (which also
+// adds unknown CNRs to the partner DB) and polls until the case lands.
+const refreshAsAdd = asyncHandler(async (req, res) => {
+  const cnr = String((req.body && req.body.cnr) || req.query.cnr || '').trim();
+  if (!cnr) throw { statusCode: 400, message: 'cnr is required.' };
+  // Kicks the upstream scrape and either returns the case (rare,
+  // already-cached) or the queue envelope so the client can poll
+  // `/api/ecourts/case/:cnr` itself. Upstream estimates 5–10 min for
+  // unknown CNRs, so holding the HTTP request open is the wrong shape.
+  const result = await ecourtsService.refreshAsAdd(cnr);
+  if (result.ready) {
+    return successResponse(res, 200, 'Case fetched from source', {
+      cnr,
+      ready: true,
+      case: result.case,
+    });
+  }
+  return successResponse(
+    res,
+    202,
+    "E-Courts is fetching this case. We'll show it as soon as it lands.",
+    {
+      cnr,
+      ready: false,
+      queue: result.queue || null,
+    }
+  );
+});
+
 // GET /api/ecourts/case/:cnr/order/:filename/download
 // Streams the watermarked PDF binary back to the browser.
 const downloadOrder = asyncHandler(async (req, res) => {
@@ -98,9 +139,55 @@ const syncCase = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'Case refreshed from E-Courts', result);
 });
 
+// --- Causelist + free taxonomy ------------------------------------------
+
+const getEnums = asyncHandler(async (req, res) => {
+  const data = await ecourtsService.getEnums(req.query.types);
+  return successResponse(res, 200, 'Enums', data);
+});
+
+const getStates = asyncHandler(async (_req, res) => {
+  const data = await ecourtsService.getStates();
+  return successResponse(res, 200, 'States', { items: data });
+});
+
+const getDistricts = asyncHandler(async (req, res) => {
+  const data = await ecourtsService.getDistricts(req.params.state);
+  return successResponse(res, 200, 'Districts', { items: data });
+});
+
+const getComplexes = asyncHandler(async (req, res) => {
+  const data = await ecourtsService.getComplexes(
+    req.params.state,
+    req.params.districtCode
+  );
+  return successResponse(res, 200, 'Court complexes', { items: data });
+});
+
+const getCourts = asyncHandler(async (req, res) => {
+  const data = await ecourtsService.getCourts(
+    req.params.state,
+    req.params.districtCode,
+    req.params.complexCode
+  );
+  return successResponse(res, 200, 'Courts', { items: data });
+});
+
+const causelistAvailableDates = asyncHandler(async (req, res) => {
+  const data = await ecourtsService.getCauselistAvailableDates(req.query);
+  return successResponse(res, 200, 'Causelist dates', data);
+});
+
+const causelistSearch = asyncHandler(async (req, res) => {
+  const data = await ecourtsService.searchCauselist(req.query);
+  return successResponse(res, 200, 'Causelist results', data);
+});
+
 module.exports = {
   search,
   getCase,
+  getOrderAi,
+  refreshAsAdd,
   downloadOrder,
   listFavorites,
   addFavorite,
@@ -108,4 +195,11 @@ module.exports = {
   getImportedCase,
   importCase,
   syncCase,
+  getEnums,
+  getStates,
+  getDistricts,
+  getComplexes,
+  getCourts,
+  causelistAvailableDates,
+  causelistSearch,
 };

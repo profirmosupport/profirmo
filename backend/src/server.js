@@ -71,6 +71,12 @@ const SYNC_ORDER = [
   db.Country,
   db.State,
   db.City,
+  // Admin-managed enum of court case statuses. No FKs — `value` is the
+  // stable code referenced from other rows as a plain string. Same
+  // shape for the sibling case-type + cause-list-type lookups.
+  db.CaseStatus,
+  db.CaseType,
+  db.CauseListType,
   // --- Sales pipeline -------------------------------------------------
   // Lead -> Opportunity -> User(client). LeadActivity is polymorphic on
   // (entityType, entityId), no FK constraint declared.

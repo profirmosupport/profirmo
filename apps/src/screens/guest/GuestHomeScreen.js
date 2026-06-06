@@ -143,22 +143,48 @@ export default function GuestHomeScreen({ navigation }) {
 
       {/* ---- Section 2: Search + experts + firms + expertise ---- */}
       <View style={styles.searchBlock}>
+        {/* "Search professionals & firms" — dark ink panel with amber
+            accent. Visually the headline tile on the landing page. */}
         <Pressable
           onPress={() => goToSearch(navigation)}
           style={({ pressed }) => [
             styles.searchCta,
+            styles.darkCta,
+            { opacity: pressed ? 0.9 : 1 },
+          ]}
+        >
+          <View style={[styles.searchIcon, styles.darkIcon]}>
+            <Feather name="search" size={16} color="#fbbf24" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.searchCtaTitle, styles.darkTitle]}>
+              Search professionals & firms
+            </Text>
+            <Text style={[styles.searchCtaSub, styles.darkSub]}>
+              Filter by city, profession, and expertise
+            </Text>
+          </View>
+          <Feather name="arrow-right" size={16} color="#fbbf24" />
+        </Pressable>
+
+        {/* E-Courts India — sibling tile under the Search CTA. Light
+            surface card. Taps into the Home stack's ECourtsSearch
+            screen for the full lookup + case detail + download flow. */}
+        <Pressable
+          onPress={() => navigation.navigate('ECourtsSearch')}
+          style={({ pressed }) => [
+            styles.searchCta,
+            styles.lightCta,
             { opacity: pressed ? 0.9 : 1 },
           ]}
         >
           <View style={styles.searchIcon}>
-            <Feather name="search" size={16} color={colors.primary} />
+            <Feather name="award" size={16} color={colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.searchCtaTitle}>
-              Search professionals & firms
-            </Text>
-            <Text style={styles.searchCtaSub}>
-              Filter by city, profession, and expertise
+            <Text style={styles.searchCtaTitle}>E-Courts India</Text>
+            <Text style={[styles.searchCtaSub, styles.lightAccentSub]}>
+              Powered By E-CourtsIndia.com
             </Text>
           </View>
           <Feather name="arrow-right" size={16} color={colors.textMuted} />
@@ -419,6 +445,32 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontSize: fontSize.xs,
     color: colors.textSecondary,
+  },
+
+  // Dark-ink variant — applied to the "Search professionals & firms"
+  // headline tile. Amber accent against a slate-950 background.
+  darkCta: {
+    backgroundColor: '#0f172a',
+    borderColor: 'rgba(245,158,11,0.4)',
+  },
+  darkIcon: {
+    backgroundColor: 'rgba(245,158,11,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.4)',
+  },
+  darkTitle: { color: '#fff' },
+  darkSub: { color: 'rgba(255,255,255,0.7)' },
+
+  // Light-surface sibling — applied to the E-Courts India tile. Uses
+  // the standard surface card with an amber accent on the "Powered By"
+  // caption to keep the brand attribution legible.
+  lightCta: {
+    marginTop: spacing.sm,
+  },
+  lightAccentSub: {
+    color: colors.primarySoftText,
+    fontWeight: fontWeight.bold,
+    letterSpacing: 0.3,
   },
 
   // Every Section after the search CTA gets a generous gap so the

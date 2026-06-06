@@ -1,7 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { SlidersHorizontal, Filter, ChevronDown } from 'lucide-react';
+import {
+  SlidersHorizontal,
+  Filter,
+  ChevronDown,
+  Scale,
+  Calculator,
+  Briefcase,
+} from 'lucide-react';
 import Card from '@/components/common/Card';
 import Input from '@/components/common/Input';
 import Select from '@/components/common/Select';
@@ -190,10 +197,30 @@ export default function ProfessionalFilters({
                 })
               }
               placeholder={t('profCmp.allProfessions')}
-              options={subCategories.map((s) => ({
-                value: s.id,
-                label: `${s.categoryName} — ${s.name}`,
-              }))}
+              options={subCategories
+                // Only top-level sub-categories — deeper tiers are
+                // search-only refinements, not landing entry points.
+                .filter((s) => !s.parentSubCategoryId)
+                .slice()
+                .sort((a, b) =>
+                  String(a.name).localeCompare(String(b.name), undefined, {
+                    sensitivity: 'base',
+                  })
+                )
+                .map((s) => {
+                  const slug = String(s.categorySlug || '').toLowerCase();
+                  const Icon =
+                    slug === 'legal'
+                      ? Scale
+                      : slug === 'tax'
+                        ? Calculator
+                        : Briefcase;
+                  return {
+                    value: s.id,
+                    label: s.name,
+                    icon: <Icon size={16} />,
+                  };
+                })}
             />
 
             {/* Specialization filter was removed — the new sub-category

@@ -67,6 +67,9 @@ export default function AdminCategoriesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expanded, setExpanded] = useState(() => new Set());
+  // Per-sub-category expand state for the nested tree
+  // (tier-1 row expands to reveal its tier-2 children, etc.).
+  const [expandedSubs, setExpandedSubs] = useState(() => new Set());
 
   // Category create/edit/delete modals.
   const [catModal, setCatModal] = useState(null); // { mode, target?, form }
@@ -106,6 +109,21 @@ export default function AdminCategoriesPage() {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      return next;
+    });
+  }
+  function toggleSubExpand(id) {
+    setExpandedSubs((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function expandSubChain(ids) {
+    setExpandedSubs((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => id && next.add(id));
       return next;
     });
   }
@@ -171,12 +189,14 @@ export default function AdminCategoriesPage() {
 
   // ----- Sub-category modal helpers ---------------------------------------
 
-  function openSubCreate(category) {
+  function openSubCreate(category, parentSub) {
     setSubError('');
     setSubModal({
       mode: 'create',
       categoryId: category.id,
       categoryName: category.name,
+      parentSubCategoryId: parentSub ? parentSub.id : null,
+      parentSubName: parentSub ? parentSub.name : null,
       form: { ...EMPTY_SUB_FORM },
     });
   }
@@ -186,6 +206,7 @@ export default function AdminCategoriesPage() {
       mode: 'edit',
       categoryId: category.id,
       categoryName: category.name,
+      parentSubCategoryId: sub.parentSubCategoryId || null,
       target: sub,
       form: {
         name: sub.name,
@@ -219,11 +240,15 @@ export default function AdminCategoriesPage() {
       if (subModal.mode === 'create') {
         await adminCreateSubCategory({
           categoryId: subModal.categoryId,
+          parentSubCategoryId: subModal.parentSubCategoryId || null,
           name: subModal.form.name.trim(),
           sortOrder: Number(subModal.form.sortOrder) || 0,
           active: subModal.form.active,
           featured: subModal.form.featured,
         });
+        if (subModal.parentSubCategoryId) {
+          expandSubChain([subModal.parentSubCategoryId]);
+        }
       } else if (subModal.mode === 'edit') {
         await adminUpdateSubCategory(subModal.target.id, {
           name: subModal.form.name.trim(),
@@ -247,11 +272,11 @@ export default function AdminCategoriesPage() {
   // ----- Guards ------------------------------------------------------------
 
   if (authLoading || !isAuthenticated) {
-    return <DashboardLayout role={ROLES.PLATFORM_ADMIN} title="Categories" />;
+    return <DashboardLayout role={ROLES.PLATFORM_ADMIN} title="Professional Categories" />;
   }
   if (!isAdmin) {
     return (
-      <DashboardLayout role={ROLES.PLATFORM_ADMIN} title="Categories">
+      <DashboardLayout role={ROLES.PLATFORM_ADMIN} title="Professional Categories">
         <EmptyState
           icon={<ShieldAlert size={24} />}
           title="Access denied"
@@ -323,6 +348,119 @@ export default function AdminCategoriesPage() {
             {categories.map((cat) => {
               const isOpen = expanded.has(cat.id);
               const subs = cat.subCategories || [];
+
+              // Group sub-categories by parent id so we can walk the
+              // tree without N² lookups. Each bucket is sort-ordered.
+              const childrenByParent = new Map();
+              for (const s of subs) {
+                const pid = s.parentSubCategoryId || null;
+                if (!childrenByParent.has(pid)) childrenByParent.set(pid, []);
+                childrenByParent.get(pid).push(s);
+              }
+              for (const arr of childrenByParent.values()) {
+                arr.sort(
+                  (a, b) =>
+                    (a.sortOrder ?? 0) - (b.sortOrder ?? 0) ||
+                    String(a.name).localeCompare(String(b.name))
+                );
+              }
+              const tier1 = childrenByParent.get(null) || [];
+
+              const tierLabel = (depth) => {
+                if (depth === 0) return 'Sub-category';
+                if (depth === 1) return 'Sub-sub-category';
+                return 'Practice area';
+              };
+
+              const renderSubRow = (row, depth) => {
+                const children = childrenByParent.get(row.id) || [];
+                const hasChildren = children.length > 0;
+                const open = expandedSubs.has(row.id);
+                return (
+                  <li key={row.id} className="space-y-2">
+                    <div
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                      style={{ marginLeft: depth * 20 }}
+                    >
+                      <div className="flex flex-1 flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            hasChildren && toggleSubExpand(row.id)
+                          }
+                          className={`flex h-5 w-5 items-center justify-center rounded ${
+                            hasChildren
+                              ? 'text-slate-500 hover:bg-slate-200'
+                              : 'text-transparent'
+                          }`}
+                          aria-label={open ? 'Collapse' : 'Expand'}
+                        >
+                          {hasChildren ? (
+                            open ? (
+                              <ChevronDown size={16} />
+                            ) : (
+                              <ChevronRight size={16} />
+                            )
+                          ) : (
+                            <span className="block h-2 w-2 rounded-full bg-slate-300" />
+                          )}
+                        </button>
+                        <span className="text-sm font-medium text-slate-800">
+                          {row.name}
+                        </span>
+                        <Badge variant={row.active ? 'green' : 'gray'}>
+                          {row.active ? 'Active' : 'Hidden'}
+                        </Badge>
+                        {row.featured && (
+                          <Badge variant="amber">Featured</Badge>
+                        )}
+                        {hasChildren && (
+                          <span className="text-xs text-slate-500">
+                            {children.length} {tierLabel(depth + 1).toLowerCase()}
+                            {children.length === 1 ? '' : 's'}
+                          </span>
+                        )}
+                        <span className="text-xs text-slate-400">
+                          Sort #{row.sortOrder}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openSubCreate(cat, row)}
+                          title={`Add ${tierLabel(depth + 1).toLowerCase()}`}
+                        >
+                          <Plus size={14} />
+                          Add child
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openSubEdit(cat, row)}
+                        >
+                          <Pencil size={14} />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openSubDelete(cat, row)}
+                        >
+                          <Trash2 size={14} />
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                    {open && hasChildren && (
+                      <ul className="space-y-2">
+                        {children.map((c) => renderSubRow(c, depth + 1))}
+                      </ul>
+                    )}
+                  </li>
+                );
+              };
+
               return (
                 <Card key={cat.id}>
                   <div className="flex flex-wrap items-center justify-between gap-3">
@@ -343,8 +481,7 @@ export default function AdminCategoriesPage() {
                         {cat.active ? 'Active' : 'Hidden'}
                       </Badge>
                       <span className="text-xs text-slate-500">
-                        {subs.length} sub-categor
-                        {subs.length === 1 ? 'y' : 'ies'}
+                        {tier1.length} top-level · {subs.length} total
                       </span>
                     </button>
                     <div className="flex items-center gap-2">
@@ -378,51 +515,13 @@ export default function AdminCategoriesPage() {
                           Add sub-category
                         </Button>
                       </div>
-                      {subs.length === 0 ? (
+                      {tier1.length === 0 ? (
                         <p className="text-sm text-slate-500">
                           No sub-categories yet.
                         </p>
                       ) : (
                         <ul className="space-y-2">
-                          {subs.map((s) => (
-                            <li
-                              key={s.id}
-                              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
-                            >
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="text-sm font-medium text-slate-800">
-                                  {s.name}
-                                </span>
-                                <Badge variant={s.active ? 'green' : 'gray'}>
-                                  {s.active ? 'Active' : 'Hidden'}
-                                </Badge>
-                                {s.featured && (
-                                  <Badge variant="amber">Featured</Badge>
-                                )}
-                                <span className="text-xs text-slate-400">
-                                  Sort #{s.sortOrder}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => openSubEdit(cat, s)}
-                                >
-                                  <Pencil size={14} />
-                                  Edit
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => openSubDelete(cat, s)}
-                                >
-                                  <Trash2 size={14} />
-                                  Delete
-                                </Button>
-                              </div>
-                            </li>
-                          ))}
+                          {tier1.map((s) => renderSubRow(s, 0))}
                         </ul>
                       )}
                     </div>
@@ -556,7 +655,9 @@ export default function AdminCategoriesPage() {
         title={
           subModal && subModal.mode === 'edit'
             ? `Edit sub-category — ${subModal.categoryName}`
-            : `Add sub-category — ${subModal ? subModal.categoryName : ''}`
+            : subModal && subModal.parentSubName
+              ? `Add under "${subModal.parentSubName}" — ${subModal.categoryName}`
+              : `Add sub-category — ${subModal ? subModal.categoryName : ''}`
         }
         footer={
           <>

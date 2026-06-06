@@ -116,7 +116,13 @@ export default function Combobox({
         aria-expanded={open}
         className={triggerClass}
       >
-        {leftIcon && <span className="text-slate-400">{leftIcon}</span>}
+        {(() => {
+          // Prefer the selected option's own icon when present; fall
+          // back to the combobox-level leftIcon otherwise.
+          const sel = options.find((o) => String(o.value) === String(value));
+          const icon = (sel && sel.icon) || leftIcon;
+          return icon ? <span className="text-slate-500">{icon}</span> : null;
+        })()}
         <span
           className={`flex-1 truncate ${
             selectedLabel ? 'text-slate-800' : 'text-slate-400'
@@ -186,13 +192,18 @@ export default function Combobox({
                     <button
                       type="button"
                       onClick={() => pick(opt.value)}
-                      className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-sm transition ${
+                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition ${
                         active
                           ? 'bg-amber-50 text-amber-800'
                           : 'text-slate-700 hover:bg-slate-50'
                       }`}
                     >
-                      <span className="truncate">{opt.label}</span>
+                      {opt.icon && (
+                        <span className="shrink-0 text-slate-500">
+                          {opt.icon}
+                        </span>
+                      )}
+                      <span className="flex-1 truncate">{opt.label}</span>
                       {active && (
                         <span className="ml-2 inline-flex h-1.5 w-1.5 rounded-full bg-amber-500" />
                       )}

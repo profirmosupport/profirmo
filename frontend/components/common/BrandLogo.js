@@ -32,7 +32,12 @@ export default function BrandLogo({
           className={`absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-teal-400 ring-2 ${ring}`}
         />
       </span>
-      <span className={`${word} font-bold tracking-tight ${wordColor}`}>
+      {/* Wordmark — hidden on small screens so the mobile header
+          shows just the brand mark, restored at the `sm` breakpoint
+          and up. */}
+      <span
+        className={`hidden sm:inline ${word} font-bold tracking-tight ${wordColor}`}
+      >
         Pro<span className={accent}> Firmo</span>
       </span>
     </span>
