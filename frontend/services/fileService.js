@@ -6,6 +6,48 @@
 
 import { getApiBaseUrl, getAccessToken, apiRequest } from '@/services/api';
 
+// Storage public config (driver + CDN base URL). Populated lazily on
+// first call to resolveFileUrl / fetchStorageConfig so a bare S3 key
+// like `profile-images/<uuid>.jpg` can be turned into an absolute URL.
+// The promise is cached so repeated lookups don't fan out network calls.
+let storageConfigCache = null;
+let storageConfigPromise = null;
+
+async function fetchStorageConfig() {
+  if (storageConfigCache) return storageConfigCache;
+  if (storageConfigPromise) return storageConfigPromise;
+  storageConfigPromise = fetch(`${getApiBaseUrl()}/api/app-settings/storage`, {
+    credentials: 'include',
+  })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j) => {
+      storageConfigCache = (j && (j.data || j)) || { driver: 'local', baseUrl: '' };
+      return storageConfigCache;
+    })
+    .catch(() => {
+      storageConfigCache = { driver: 'local', baseUrl: '' };
+      return storageConfigCache;
+    });
+  return storageConfigPromise;
+}
+
+/** Sync accessor — returns cached config or a local-driver default. */
+function readStorageConfigSync() {
+  return storageConfigCache || { driver: 'local', baseUrl: '' };
+}
+
+/** Force a refresh after the admin changes storage settings. */
+export function invalidateStorageConfig() {
+  storageConfigCache = null;
+  storageConfigPromise = null;
+}
+
+// Prime the cache opportunistically on first import in the browser so
+// the first resolveFileUrl() call doesn't fall back to the local path.
+if (typeof window !== 'undefined') {
+  fetchStorageConfig().catch(() => {});
+}
+
 // Allowed MIME types and max size mirror the backend validation.
 export const ALLOWED_MIME_TYPES = [
   'image/jpeg',
@@ -57,30 +99,62 @@ export function validateFile(file, { imageOnly = false } = {}) {
 
 /**
  * Resolve a stored file URL into an absolute URL.
- * - Absolute URLs (starting with http) are returned unchanged.
- * - Relative paths are prefixed with the API base URL.
+ * - Absolute URLs (`http(s)://...`) are returned unchanged (already-signed S3 URLs land here).
+ * - `/uploads/...` (legacy local) → prefixed with API base URL.
+ * - Bare S3 keys (e.g. `profile-images/xyz.jpg`) → prefixed with the
+ *   CDN/base URL fetched from /api/app-settings/storage when storage_driver=s3.
  * - Empty / null values return ''.
  */
 export function resolveFileUrl(url) {
   if (!url || typeof url !== 'string') return '';
   if (/^https?:\/\//i.test(url)) return url;
-  const base = getApiBaseUrl() || '';
-  const path = url.startsWith('/') ? url : `/${url}`;
-  return `${base}${path}`;
+  const apiBase = (getApiBaseUrl() || '').replace(/\/$/, '');
+  if (url.startsWith('/')) {
+    return `${apiBase}${url}`;
+  }
+  // Bare key — need storage config. If the cache hasn't populated yet
+  // (very first call before primer resolves), fall back to API base so
+  // the URL is at least pointable; the next render after the config
+  // arrives will produce the correct absolute URL.
+  const cfg = readStorageConfigSync();
+  if (cfg.driver === 's3' && cfg.baseUrl) {
+    return `${cfg.baseUrl.replace(/\/$/, '')}/${url}`;
+  }
+  return `${apiBase}/${url}`;
+}
+
+/** Async variant — guarantees the storage config has been loaded. */
+export async function resolveFileUrlAsync(url) {
+  if (!url || typeof url !== 'string') return '';
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith('/')) {
+    return `${(getApiBaseUrl() || '').replace(/\/$/, '')}${url}`;
+  }
+  const cfg = await fetchStorageConfig();
+  if (cfg.driver === 's3' && cfg.baseUrl) {
+    return `${cfg.baseUrl.replace(/\/$/, '')}/${url}`;
+  }
+  return `${(getApiBaseUrl() || '').replace(/\/$/, '')}/${url}`;
 }
 
 /**
  * Upload a single file to the backend.
- * @param {File} file - the file to upload.
- * @param {string} category - the file category (e.g. 'profile_photo').
+ * @param {File} file
+ * @param {string} category    - backend file category (e.g. 'profile_photo')
+ * @param {object} [opts]
+ * @param {string} [opts.caseId] - when set, the upload is scoped to a
+ *   specific case. Case-scoped categories (`case_note`, `booking_note`)
+ *   require this; the resulting object lands under
+ *   `case-files/<caseId>/<uuid>.<ext>`.
  * @returns {Promise<{id,url,originalName,mimeType,size,category,createdAt}>}
  */
-export async function uploadFile(file, category) {
+export async function uploadFile(file, category, opts = {}) {
   if (!file) throw new Error('No file selected.');
 
   // category appended FIRST, then the file (per the backend contract).
   const formData = new FormData();
   formData.append('category', category || '');
+  if (opts.caseId) formData.append('caseId', opts.caseId);
   formData.append('file', file);
 
   const headers = {};

@@ -13,5 +13,9 @@ router.get('/locations', ctrl.publicListLocations);
 router.get('/case-statuses', ctrl.publicListCaseStatuses);
 router.get('/case-types', ctrl.publicListCaseTypes);
 router.get('/cause-list-types', ctrl.publicListCauseListTypes);
+// Storage driver + CDN base URL so the web/mobile clients can resolve
+// bare S3 keys (e.g. `profile-images/<uuid>.jpg`) to absolute URLs.
+// Never exposes credentials.
+router.get('/storage', ctrl.publicGetStorage);
 
 module.exports = router;

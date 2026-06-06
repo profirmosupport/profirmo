@@ -2,6 +2,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const { successResponse } = require('../utils/responseHandler');
 const { logAudit } = require('../utils/auditLogger');
 const svc = require('../services/appSettingsService');
+const storageService = require('../services/storageService');
 
 // --- Public read endpoints ------------------------------------------------
 
@@ -13,6 +14,16 @@ const publicListCategories = asyncHandler(async (req, res) => {
 const publicListCities = asyncHandler(async (req, res) => {
   const cities = await svc.listCitiesPublic();
   return successResponse(res, 200, 'Cities fetched', cities);
+});
+
+// GET /api/app-settings/storage
+// Public-safe storage config — driver name + base URL only, never the
+// access key or secret. The web + mobile clients fetch this once at
+// startup so resolveFileUrl() can prefix bare S3 keys with the right
+// CDN host. Cached on the client; no auth required.
+const publicGetStorage = asyncHandler(async (req, res) => {
+  const cfg = await storageService.getPublicConfig();
+  return successResponse(res, 200, 'Storage config', cfg);
 });
 
 // --- Admin: categories ----------------------------------------------------
@@ -472,6 +483,7 @@ const adminDeleteCauseListType = asyncHandler(async (req, res) => {
 module.exports = {
   publicListCategories,
   publicListCities,
+  publicGetStorage,
   adminListCategories,
   adminCreateCategory,
   adminUpdateCategory,

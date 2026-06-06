@@ -176,6 +176,9 @@ router.post('/payments/:id/refund', adminPayments.refund);
 // --- Platform settings (markup %, etc.) ---------------------------------
 router.get('/settings', adminSettings.list);
 router.patch('/settings/:key', adminSettings.update);
+// One-click connectivity test for AWS S3 — puts + deletes a small file
+// in temp/ to verify credentials and bucket permissions.
+router.post('/settings/storage/test', adminSettings.testStorage);
 
 // --- Payouts -------------------------------------------------------------
 router.get('/payouts', payoutController.adminList);

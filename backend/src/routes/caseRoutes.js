@@ -51,6 +51,17 @@ router.patch(
 router.delete('/:id/notes/:noteId', caseController.deleteCaseNote);
 router.get('/:id/log', caseController.getCaseLog);
 
+// Auth-gated attachment URL resolver. The browser/mobile never holds
+// an S3 URL directly — it asks the backend, the backend verifies the
+// caller can access the case + that the key belongs to this case, then
+// returns a short-lived presigned URL. A leaked storage key is useless
+// without an auth-bearing request to this endpoint.
+router.get('/:id/attachments/url', caseController.getAttachmentUrl);
+// Body proxy — every request goes through the auth gate, so a leaked
+// URL is useless on its own. Preferred for new code; the /url variant
+// stays for back-compat callers that want a direct S3 presigned URL.
+router.get('/:id/attachments/stream', caseController.streamAttachment);
+
 // Updates — a richer note with date/time, optional next-hearing date, and
 // attachments. Only the body is required; the rest are optional.
 router.get('/:id/updates', caseController.listCaseUpdates);

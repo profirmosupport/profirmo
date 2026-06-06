@@ -4,13 +4,22 @@
 // heavy lifting (multer disk storage, MIME whitelist, size limit) happens
 // in the upload middleware; the database logic lives in fileService.
 
-const fs = require('fs');
 const fileService = require('../services/fileService');
+const caseService = require('../services/caseService');
 const asyncHandler = require('../utils/asyncHandler');
 const {
   successResponse,
   errorResponse,
 } = require('../utils/responseHandler');
+
+// Categories that scope to a specific case — uploads in these
+// categories MUST carry a `caseId` and the caller must be authorised
+// to view that case. The resulting object lands under
+// `case-files/<caseId>/<uuid>.<ext>`.
+const CASE_SCOPED_CATEGORIES = new Set([
+  'case_note',
+  'booking_note',
+]);
 
 // Known upload categories. `category` defaults to 'other' when omitted.
 const CATEGORIES = [
@@ -48,14 +57,6 @@ const toPublicUpload = (u) => ({
   createdAt: u.createdAt,
 });
 
-// Best-effort removal of a just-saved file when validation fails after
-// multer has already written it to disk.
-const cleanupTempFile = (file) => {
-  if (file && file.path) {
-    fs.promises.unlink(file.path).catch(() => {});
-  }
-};
-
 // POST /api/files/upload — store one file and record it.
 const uploadFile = asyncHandler(async (req, res) => {
   const { file } = req;
@@ -66,7 +67,6 @@ const uploadFile = asyncHandler(async (req, res) => {
   const category = (req.body.category || 'other').trim() || 'other';
 
   if (!CATEGORIES.includes(category)) {
-    cleanupTempFile(file);
     return errorResponse(
       res,
       400,
@@ -78,9 +78,9 @@ const uploadFile = asyncHandler(async (req, res) => {
   const isPdf = file.mimetype === 'application/pdf';
 
   // Photo/logo categories must be images; document categories accept
-  // images or PDFs.
+  // images or PDFs. With memory storage there's no temp file to clean
+  // up — multer's buffer is GC'd when the request ends.
   if (IMAGE_ONLY_CATEGORIES.includes(category) && !isImage) {
-    cleanupTempFile(file);
     return errorResponse(
       res,
       400,
@@ -88,7 +88,6 @@ const uploadFile = asyncHandler(async (req, res) => {
     );
   }
   if (!isImage && !isPdf) {
-    cleanupTempFile(file);
     return errorResponse(
       res,
       400,
@@ -96,12 +95,57 @@ const uploadFile = asyncHandler(async (req, res) => {
     );
   }
 
+  // Case-scoped categories (case_note, booking_note) carry the case
+  // they belong to so the object can land under
+  // `case-files/<caseId>/<uuid>.ext`. We authorise the upload against
+  // the case here so a stranger can't push junk into someone else's
+  // folder by guessing a caseId.
+  const rawCaseId =
+    (req.body && (req.body.caseId || req.body.case_id || req.body.caseID)) ||
+    '';
+  const caseId = String(rawCaseId || '').trim();
+  if (CASE_SCOPED_CATEGORIES.has(category)) {
+    if (!caseId) {
+      return errorResponse(
+        res,
+        400,
+        `Category "${category}" requires a caseId so the file can be filed under that case.`
+      );
+    }
+    if (!req.user || !req.user.id) {
+      return errorResponse(res, 401, 'Sign in required to attach case files.');
+    }
+    const access = await caseService.userCanAccessCase(req.user, caseId);
+    if (!access.allowed) {
+      return errorResponse(
+        res,
+        403,
+        'You do not have permission to attach files to this case.'
+      );
+    }
+  } else if (caseId && req.user && req.user.id) {
+    // Belt + braces — even when the caller passes a caseId on a
+    // non-case category we still authorise it, so legacy callers that
+    // tag `category=other` for case files don't accidentally upload
+    // into another tenant's folder.
+    const access = await caseService.userCanAccessCase(req.user, caseId);
+    if (!access.allowed) {
+      return errorResponse(
+        res,
+        403,
+        'You do not have permission to attach files to this case.'
+      );
+    }
+  }
+
   // Anonymous uploads (signup wizard, before account creation) are
-  // permitted — the row carries `userId: null` and the file lives until
-  // the registration links it via the profile-photo / doc URL fields.
+  // permitted for non-case categories — the row carries `userId: null`
+  // and the file lives until the registration links it via the
+  // profile-photo / doc URL fields.
   const upload = await fileService.createUpload({
     userId: (req.user && req.user.id) || null,
     category,
+    caseId: caseId || null,
     file,
   });
 

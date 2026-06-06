@@ -134,6 +134,35 @@ export function getByProfessional(professionalId) {
   return get(BASE, { params: { professionalId } });
 }
 
+/**
+ * Resolve a case-attachment storage key into a short-lived signed URL.
+ * The backend authorises against case access + verifies the key belongs
+ * to this case before responding. Cached per (caseId, key) for a few
+ * minutes so the same render pass doesn't fan out N HTTP calls when a
+ * list shows many attachments at once.
+ *
+ * @returns {Promise<{ url: string, expiresAt: string, expiryMinutes: number }>}
+ */
+const _urlCache = new Map();
+const _URL_TTL_MS = 4 * 60 * 1000; // refresh just before the 5-min server expiry
+export async function getAttachmentUrl(caseId, key) {
+  if (!caseId || !key) {
+    throw new Error('caseId and key are required.');
+  }
+  const cacheKey = `${caseId}::${key}`;
+  const hit = _urlCache.get(cacheKey);
+  if (hit && hit.expiry > Date.now()) return hit.value;
+  const res = await get(`${BASE}/${caseId}/attachments/url`, {
+    params: { key },
+  });
+  const data = unwrap(res);
+  _urlCache.set(cacheKey, {
+    value: data,
+    expiry: Date.now() + _URL_TTL_MS,
+  });
+  return data;
+}
+
 export default {
   getAll,
   getById,
@@ -142,6 +171,7 @@ export default {
   remove,
   getByClient,
   getByProfessional,
+  getAttachmentUrl,
   getMyCases,
   getMyClientCases,
   getFirmCases,

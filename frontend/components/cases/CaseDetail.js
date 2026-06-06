@@ -34,6 +34,7 @@ import EmptyState from '@/components/common/EmptyState';
 import FileUpload from '@/components/common/FileUpload';
 import AddCaseModal from '@/components/cases/AddCaseModal';
 import { resolveFileUrl } from '@/services/fileService';
+import CaseAttachmentLink from '@/components/cases/CaseAttachmentLink';
 import caseService from '@/services/caseService';
 import { getLawFirm } from '@/services/profileService';
 import { syncCaseFromEcourts } from '@/services/ecourtsService';
@@ -684,11 +685,14 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                 placeholder="Add a note / message for this case…"
                 className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-800 transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
               />
-              {/* Attachments uploader — any stakeholder can attach docs/pics. */}
+              {/* Attachments uploader — any stakeholder can attach docs/pics.
+                  category=case_note + caseId scopes the S3 object under
+                  `case-files/<caseId>/`, isolated per case. */}
               <FileUpload
                 value=""
                 onChange={(url) => addNoteAttachment(url)}
-                category="other"
+                category="case_note"
+                caseId={caseId}
                 accept=".pdf,.doc,.docx,image/*"
               />
               {noteAttachments.length > 0 && (
@@ -800,7 +804,8 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                           <FileUpload
                             value=""
                             onChange={(url) => addEditingNoteAttachment(url)}
-                            category="other"
+                            category="case_note"
+                            caseId={caseId}
                             accept=".pdf,.doc,.docx,image/*"
                           />
                           {editingNoteAttachments.length > 0 && (
@@ -855,25 +860,21 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                           {Array.isArray(n.attachments) &&
                             n.attachments.length > 0 && (
                               <ul className="mt-2 flex flex-wrap gap-1.5">
-                                {n.attachments.map((a, i) => {
-                                  const href = resolveFileUrl(a.url) || a.url;
-                                  return (
-                                    <li key={i}>
-                                      <a
-                                        href={href}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-                                      >
-                                        <Paperclip
-                                          size={10}
-                                          className="text-slate-400"
-                                        />
-                                        {a.name || `Attachment ${i + 1}`}
-                                      </a>
-                                    </li>
-                                  );
-                                })}
+                                {n.attachments.map((a, i) => (
+                                  <li key={i}>
+                                    <CaseAttachmentLink
+                                      caseId={caseId}
+                                      attachment={a}
+                                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                                    >
+                                      <Paperclip
+                                        size={10}
+                                        className="text-slate-400"
+                                      />
+                                      {a.name || `Attachment ${i + 1}`}
+                                    </CaseAttachmentLink>
+                                  </li>
+                                ))}
                               </ul>
                             )}
                           {didTruncate && (
@@ -1139,22 +1140,18 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                     Attachments
                   </h4>
                   <ul className="flex flex-wrap gap-2">
-                    {viewingNote.attachments.map((a, i) => {
-                      const href = resolveFileUrl(a.url) || a.url;
-                      return (
-                        <li key={i}>
-                          <a
-                            href={href}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-                          >
-                            <Paperclip size={12} className="text-slate-400" />
-                            {a.name || `Attachment ${i + 1}`}
-                          </a>
-                        </li>
-                      );
-                    })}
+                    {viewingNote.attachments.map((a, i) => (
+                      <li key={i}>
+                        <CaseAttachmentLink
+                          caseId={caseId}
+                          attachment={a}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                        >
+                          <Paperclip size={12} className="text-slate-400" />
+                          {a.name || `Attachment ${i + 1}`}
+                        </CaseAttachmentLink>
+                      </li>
+                    ))}
                   </ul>
                 </div>
               )}
@@ -1200,22 +1197,18 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                 </p>
                 {Array.isArray(n.attachments) && n.attachments.length > 0 && (
                   <ul className="mt-2 flex flex-wrap gap-1.5">
-                    {n.attachments.map((a, i) => {
-                      const href = resolveFileUrl(a.url) || a.url;
-                      return (
-                        <li key={i}>
-                          <a
-                            href={href}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-                          >
-                            <Paperclip size={10} className="text-slate-400" />
-                            {a.name || `Attachment ${i + 1}`}
-                          </a>
-                        </li>
-                      );
-                    })}
+                    {n.attachments.map((a, i) => (
+                      <li key={i}>
+                        <CaseAttachmentLink
+                          caseId={caseId}
+                          attachment={a}
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                        >
+                          <Paperclip size={10} className="text-slate-400" />
+                          {a.name || `Attachment ${i + 1}`}
+                        </CaseAttachmentLink>
+                      </li>
+                    ))}
                   </ul>
                 )}
               </li>
@@ -2004,7 +1997,8 @@ function AddUpdateModal({ open, caseId, onClose, onAdded, authorDisplayName }) {
           <FileUpload
             value=""
             onChange={(url) => addAttachment(url)}
-            category="other"
+            category="case_note"
+            caseId={caseId}
             accept=".pdf,.doc,.docx,image/*"
           />
           {attachments.length > 0 && (
@@ -2273,7 +2267,8 @@ function UpdateViewModal({
             <FileUpload
               value=""
               onChange={(url) => addAttachment(url)}
-              category="other"
+              category="case_note"
+              caseId={caseId}
               accept=".pdf,.doc,.docx,image/*"
             />
             {attachments.length > 0 && (
@@ -2328,22 +2323,18 @@ function UpdateViewModal({
                 Attachments
               </h4>
               <ul className="flex flex-wrap gap-2">
-                {update.attachments.map((a, i) => {
-                  const href = resolveFileUrl(a.url) || a.url;
-                  return (
-                    <li key={i}>
-                      <a
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-                      >
-                        <Paperclip size={12} className="text-slate-400" />
-                        {a.name || `Attachment ${i + 1}`}
-                      </a>
-                    </li>
-                  );
-                })}
+                {update.attachments.map((a, i) => (
+                  <li key={i}>
+                    <CaseAttachmentLink
+                      caseId={caseId}
+                      attachment={a}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                    >
+                      <Paperclip size={12} className="text-slate-400" />
+                      {a.name || `Attachment ${i + 1}`}
+                    </CaseAttachmentLink>
+                  </li>
+                ))}
               </ul>
             </div>
           )}

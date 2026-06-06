@@ -4,6 +4,7 @@
 
 const { AdminSetting } = require('../models');
 const env = require('../config/env');
+const { encryptSecret, decryptSecret, isEncrypted } = require('../utils/secretCrypto');
 
 // Registry of every setting we expose. Adding a new one only requires
 // dropping an entry here — the admin UI reads off the same list.
@@ -122,6 +123,98 @@ const SETTINGS = {
     coerce: stringCoerce,
     format: stringCoerce,
   },
+
+  // --- Storage / AWS S3 -------------------------------------------------
+  // The `storage_driver` key flips the entire upload pipeline between
+  // local disk and AWS S3 at runtime (no restart required). The S3
+  // sub-keys configure the SDK client. `aws_secret_access_key` is
+  // marked `encrypted: true` so it is stored as AES-GCM ciphertext.
+  storage_driver: {
+    label: 'Storage driver',
+    description:
+      'Where uploaded files are stored. "local" writes to backend/uploads on the server filesystem; "s3" pushes to the configured AWS S3 bucket. Switch live from this panel — existing local files keep resolving via /uploads regardless of this setting.',
+    defaultGetter: () => process.env.STORAGE_DRIVER || 'local',
+    type: 'string',
+    group: 'Storage / AWS S3',
+    coerce: (raw) => {
+      const v = stringCoerce(raw).toLowerCase();
+      if (v && v !== 'local' && v !== 's3') {
+        throw { statusCode: 422, message: 'storage_driver must be "local" or "s3".' };
+      }
+      return v || 'local';
+    },
+    format: stringCoerce,
+  },
+  aws_access_key_id: {
+    label: 'AWS Access Key ID',
+    description:
+      'IAM Access Key ID with s3:PutObject / s3:DeleteObject / s3:GetObject permission on the configured bucket. Used server-side only — never sent to the browser.',
+    defaultGetter: () => process.env.AWS_ACCESS_KEY_ID || '',
+    type: 'string',
+    group: 'Storage / AWS S3',
+    secret: true,
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  aws_secret_access_key: {
+    label: 'AWS Secret Access Key',
+    description:
+      'Secret half of the IAM access key. Stored encrypted (AES-256-GCM) using a key derived from JWT_SECRET. Re-enter to rotate.',
+    defaultGetter: () => process.env.AWS_SECRET_ACCESS_KEY || '',
+    type: 'string',
+    group: 'Storage / AWS S3',
+    secret: true,
+    encrypted: true,
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  aws_default_region: {
+    label: 'AWS Default Region',
+    description:
+      'AWS region of the bucket, e.g. "ap-south-1" (Mumbai), "us-east-1" (N. Virginia). Must match the bucket\'s region.',
+    defaultGetter: () => process.env.AWS_REGION || 'ap-south-1',
+    type: 'string',
+    group: 'Storage / AWS S3',
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  aws_bucket: {
+    label: 'AWS Bucket Name',
+    description:
+      'Name of the S3 bucket where uploads land — e.g. "profirmomain". Uploads are placed under prefixes such as profile-images/, documents/, case-files/.',
+    defaultGetter: () => process.env.AWS_BUCKET || 'profirmomain',
+    type: 'string',
+    group: 'Storage / AWS S3',
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  aws_url: {
+    label: 'AWS Base URL / CDN URL',
+    description:
+      'Public base URL used to build readable file URLs. Defaults to the bucket\'s virtual-hosted-style endpoint (https://<bucket>.s3.<region>.amazonaws.com) when blank. Set this to your CloudFront / custom domain to serve via CDN.',
+    defaultGetter: () => process.env.AWS_URL || '',
+    type: 'string',
+    group: 'Storage / AWS S3',
+    isPublic: true,
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  aws_use_path_style_endpoint: {
+    label: 'Use Path-Style Endpoint',
+    description:
+      '"true" forces path-style URLs (https://s3.region.amazonaws.com/<bucket>/<key>) instead of virtual-hosted-style. Only needed for S3-compatible providers like MinIO; leave "false" for AWS.',
+    defaultGetter: () => 'false',
+    type: 'string',
+    group: 'Storage / AWS S3',
+    coerce: (raw) => {
+      const v = stringCoerce(raw).toLowerCase();
+      if (v && v !== 'true' && v !== 'false') {
+        throw { statusCode: 422, message: 'aws_use_path_style_endpoint must be "true" or "false".' };
+      }
+      return v || 'false';
+    },
+    format: stringCoerce,
+  },
 };
 
 const KNOWN_KEYS = Object.keys(SETTINGS);
@@ -135,6 +228,26 @@ const maskSecret = (raw) => {
   return `••• ${s.length} characters set •••`;
 };
 
+// Read the raw column value, decrypting if the spec flags this key as
+// encrypted. Returns '' when nothing is stored so callers can fall back
+// to the spec's defaultGetter.
+const readStoredValue = (spec, row) => {
+  if (!row || row.value === null || row.value === undefined || row.value === '') {
+    return '';
+  }
+  if (spec.encrypted) {
+    return decryptSecret(row.value);
+  }
+  // Legacy rows written before a key was upgraded to encrypted will pass
+  // through verbatim (decryptSecret already handles the unprefixed case).
+  if (isEncrypted(row.value)) {
+    // Defensive: if the column happens to look like an encrypted blob,
+    // try to decrypt even when the spec doesn't ask for it.
+    return decryptSecret(row.value);
+  }
+  return row.value;
+};
+
 /**
  * Return every known setting with its current value. Secrets are masked
  * on the listing response so the admin UI never receives the raw bytes.
@@ -145,7 +258,12 @@ async function listAll() {
   return KNOWN_KEYS.map((key) => {
     const spec = SETTINGS[key];
     const stored = byKey.get(key);
-    const rawValue = stored ? spec.coerce(stored.value) : spec.defaultGetter();
+    // Decrypt encrypted values before coercing so the length-aware mask
+    // reflects the plaintext, not the ciphertext.
+    const decrypted = readStoredValue(spec, stored);
+    const rawValue = decrypted
+      ? spec.coerce(decrypted)
+      : spec.defaultGetter();
     const value = spec.secret ? maskSecret(rawValue) : rawValue;
     return {
       key,
@@ -160,6 +278,7 @@ async function listAll() {
       type: spec.type || 'number',
       group: spec.group || 'General',
       secret: !!spec.secret,
+      encrypted: !!spec.encrypted,
       isPublic: !!spec.isPublic,
       hasValue: Boolean(rawValue),
       updatedAt: stored ? stored.updatedAt : null,
@@ -182,7 +301,8 @@ async function getPublicConfig() {
     const spec = SETTINGS[key];
     if (!spec.isPublic) continue;
     const stored = byKey.get(key);
-    out[key] = stored ? spec.coerce(stored.value) : spec.defaultGetter();
+    const decrypted = readStoredValue(spec, stored);
+    out[key] = decrypted ? spec.coerce(decrypted) : spec.defaultGetter();
   }
   return out;
 }
@@ -195,11 +315,12 @@ async function getString(key) {
   const spec = SETTINGS[key];
   if (!spec) throw new Error(`Unknown admin setting: ${key}`);
   const row = await AdminSetting.findByPk(key);
-  if (!row || row.value === null || row.value === undefined || row.value === '') {
+  const decrypted = readStoredValue(spec, row && row.toJSON ? row.toJSON() : row);
+  if (!decrypted) {
     return spec.defaultGetter();
   }
   try {
-    return spec.coerce(row.value);
+    return spec.coerce(decrypted);
   } catch {
     return spec.defaultGetter();
   }
@@ -210,11 +331,12 @@ async function getNumber(key) {
   const spec = SETTINGS[key];
   if (!spec) throw new Error(`Unknown admin setting: ${key}`);
   const row = await AdminSetting.findByPk(key);
-  if (!row || row.value === null || row.value === undefined || row.value === '') {
+  const decrypted = readStoredValue(spec, row && row.toJSON ? row.toJSON() : row);
+  if (!decrypted) {
     return spec.defaultGetter();
   }
   try {
-    return spec.coerce(row.value);
+    return spec.coerce(decrypted);
   } catch {
     return spec.defaultGetter();
   }
@@ -232,10 +354,18 @@ async function set(key, value, actorUserId) {
   }
   const coerced = spec.coerce(value);
   const formatted = spec.format(coerced);
+  // Encrypted keys are stored as ciphertext; everything else stays as
+  // plain text in the DB. Empty values short-circuit to '' so a clear
+  // doesn't leave behind a misleading ciphertext blob.
+  const persisted = spec.encrypted
+    ? formatted
+      ? encryptSecret(formatted)
+      : ''
+    : formatted;
   const existing = await AdminSetting.findByPk(key);
   if (existing) {
     await existing.update({
-      value: formatted,
+      value: persisted,
       label: spec.label,
       description: spec.description,
       updatedByUserId: actorUserId || null,
@@ -243,7 +373,7 @@ async function set(key, value, actorUserId) {
   } else {
     await AdminSetting.create({
       key,
-      value: formatted,
+      value: persisted,
       label: spec.label,
       description: spec.description,
       updatedByUserId: actorUserId || null,

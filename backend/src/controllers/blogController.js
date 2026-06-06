@@ -15,6 +15,7 @@ const {
   paginatedResponse,
 } = require('../utils/responseHandler');
 const blogService = require('../services/blogService');
+const storageService = require('../services/storageService');
 const env = require('../config/env');
 
 // --- Public routes --------------------------------------------------------
@@ -146,8 +147,11 @@ const EXT_BY_MIME = {
 // POST /api/admin/blog/images
 // multipart with a single `file` field (uploadMiddleware.uploadSingle).
 //
-// We write the file to env.blogImageDir (defaults to frontend/public/
-// blog-images) and return the public URL the post should reference.
+// When storage_driver=s3, the image lands under blog-images/ in the S3
+// bucket and we return the public CDN URL.
+// When storage_driver=local, we keep the legacy behaviour: write into
+// env.blogImageDir so Next.js serves the file from /public/blog-images
+// — important for SEO (image lives on the same origin as the post).
 const adminUploadImage = asyncHandler(async (req, res) => {
   const file = req.file;
   if (!file) throw { statusCode: 400, message: 'No file uploaded.' };
@@ -157,21 +161,32 @@ const adminUploadImage = asyncHandler(async (req, res) => {
       message: 'Only JPG, PNG, WebP and GIF images are supported.',
     };
   }
+  const driver = await storageService.getDriver();
+  if (driver === 's3') {
+    const persisted = await storageService.uploadFile({
+      buffer: file.buffer,
+      mimeType: file.mimetype,
+      originalName: file.originalname,
+      type: 'blog_image',
+    });
+    const url = await storageService.getFileUrl(persisted.storedPath);
+    return successResponse(res, 201, 'Image uploaded', {
+      url,
+      fileName: persisted.storedName,
+      key: persisted.key,
+      size: persisted.size,
+      mimeType: file.mimetype,
+    });
+  }
+  // Local driver — keep the SEO-friendly behaviour of writing to the
+  // Next.js public folder so /blog-images/* is served by the frontend.
   const ext = EXT_BY_MIME[file.mimetype] || 'bin';
   const stem = crypto.randomBytes(10).toString('hex');
   const fileName = `${Date.now()}-${stem}.${ext}`;
   const destDir = env.blogImageDir;
   fs.mkdirSync(destDir, { recursive: true });
   const destPath = path.join(destDir, fileName);
-  fs.writeFileSync(destPath, file.buffer || fs.readFileSync(file.path));
-  // Best-effort cleanup of the multipart temp file.
-  if (file.path) {
-    try {
-      fs.unlinkSync(file.path);
-    } catch {
-      /* ignore */
-    }
-  }
+  fs.writeFileSync(destPath, file.buffer);
   const url = `${env.blogImageUrlPrefix.replace(/\/$/, '')}/${fileName}`;
   return successResponse(res, 201, 'Image uploaded', {
     url,

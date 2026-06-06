@@ -1,4 +1,5 @@
 const caseService = require('../services/caseService');
+const storageService = require('../services/storageService');
 const gates = require('../services/subscriptionGateService');
 const asyncHandler = require('../utils/asyncHandler');
 const {
@@ -263,6 +264,136 @@ const editCaseUpdate = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'Update edited', update);
 });
 
+/**
+ * Shared authorisation gate for attachment endpoints. Verifies:
+ *   - caller can access the case
+ *   - the requested key belongs to that case (new format under
+ *     `case-files/<caseId>/`, or a legacy key listed in this case's
+ *     note/update attachments)
+ *
+ * Throws on failure; on success returns `{ caseRow, key }` for the
+ * caller to use.
+ */
+const authoriseAttachmentAccess = async (req) => {
+  const caseId = req.params.id;
+  const key = String((req.query && req.query.key) || '').trim();
+  if (!key) {
+    throw { statusCode: 400, message: 'key query parameter is required.' };
+  }
+  const access = await caseService.userCanAccessCase(req.user, caseId);
+  if (!access.allowed) {
+    throw {
+      statusCode: 403,
+      message: 'You do not have permission to view this case.',
+    };
+  }
+  const expectedPrefix = `case-files/${storageService.safeCaseSegment(caseId)}/`;
+  let allowed = key.startsWith(expectedPrefix);
+  if (!allowed) {
+    const [notes, updates] = await Promise.all([
+      caseService.listNotes(caseId),
+      caseService.listUpdates(caseId),
+    ]);
+    const seen = new Set();
+    for (const list of [notes, updates]) {
+      for (const row of list || []) {
+        for (const att of row.attachments || []) {
+          if (att && att.url) seen.add(String(att.url));
+        }
+      }
+    }
+    allowed = seen.has(key);
+  }
+  if (!allowed) {
+    throw {
+      statusCode: 403,
+      message: 'This file does not belong to the requested case.',
+    };
+  }
+  return { caseRow: access.case, key };
+};
+
+// GET /api/cases/:id/attachments/url?key=<storedPath>
+// Returns a short-lived presigned URL. KEPT for legacy callers; new
+// frontend code prefers /attachments/stream which proxies the bytes
+// (so a leaked URL is useless without an auth-bearing request).
+const getAttachmentUrl = require('../utils/asyncHandler')(async (req, res) => {
+  const { key } = await authoriseAttachmentAccess(req);
+  const expiryMinutes = 5;
+  const url = await storageService.getTemporaryFileUrl(key, expiryMinutes);
+  const expiresAt = new Date(
+    Date.now() + expiryMinutes * 60 * 1000
+  ).toISOString();
+  return require('../utils/responseHandler').successResponse(
+    res,
+    200,
+    'Attachment URL',
+    { url, expiresAt, expiryMinutes }
+  );
+});
+
+// GET /api/cases/:id/attachments/stream?key=<storedPath>
+// Streams the file body through the backend so every request is
+// re-authorised. The browser never sees an S3 URL — even if someone
+// copies the backend URL, it returns 401/403 without an auth-bearing
+// request. Preferred over /attachments/url for new code.
+const streamAttachment = require('../utils/asyncHandler')(async (req, res) => {
+  const { key } = await authoriseAttachmentAccess(req);
+
+  // Legacy `/uploads/<file>` paths are served by the local static
+  // handler — redirect there. (The legacy attachment is auth-gated by
+  // virtue of having been listed in this case's notes/updates, which
+  // we just verified above.)
+  if (key.startsWith('/uploads/')) {
+    return res.redirect(302, key);
+  }
+
+  // Pull the S3 object and pipe it back. We resolve a presigned URL
+  // server-side and HTTP-GET it ourselves so we don't ship the AWS SDK
+  // streaming dependencies into every controller. Short cache header
+  // is safe because the URL is unique per request.
+  const presigned = await storageService.getTemporaryFileUrl(key, 1);
+  let upstream;
+  try {
+    upstream = await fetch(presigned);
+  } catch (err) {
+    throw {
+      statusCode: 502,
+      message: 'Could not reach storage for this attachment.',
+    };
+  }
+  if (!upstream.ok) {
+    throw {
+      statusCode: upstream.status === 404 ? 404 : 502,
+      message: `Storage returned ${upstream.status} for this attachment.`,
+    };
+  }
+  const contentType =
+    upstream.headers.get('content-type') || 'application/octet-stream';
+  const contentLength = upstream.headers.get('content-length');
+  res.setHeader('Content-Type', contentType);
+  if (contentLength) res.setHeader('Content-Length', contentLength);
+  // Inline by default — image/PDF previews work in <img>/<embed>.
+  // Filename comes from the trailing path segment so downloads pick a
+  // sensible name.
+  const baseName = key.split('/').filter(Boolean).pop() || 'attachment';
+  res.setHeader(
+    'Content-Disposition',
+    `inline; filename="${baseName.replace(/"/g, '')}"`
+  );
+  res.setHeader('Cache-Control', 'private, no-store');
+
+  // Node 20's fetch returns a web ReadableStream. Convert to Node and
+  // pipe through.
+  const { Readable } = require('stream');
+  if (upstream.body && typeof Readable.fromWeb === 'function') {
+    return Readable.fromWeb(upstream.body).pipe(res);
+  }
+  // Fallback: buffer the whole body (small files only).
+  const buf = Buffer.from(await upstream.arrayBuffer());
+  return res.end(buf);
+});
+
 module.exports = {
   listCases,
   getCase,
@@ -283,4 +414,6 @@ module.exports = {
   listCaseUpdates,
   addCaseUpdate,
   editCaseUpdate,
+  getAttachmentUrl,
+  streamAttachment,
 };

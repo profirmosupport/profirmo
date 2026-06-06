@@ -15,6 +15,8 @@ import {
   Eye,
   EyeOff,
   ChevronDown,
+  Cloud,
+  Loader2,
 } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import Card from '@/components/common/Card';
@@ -23,7 +25,9 @@ import Input from '@/components/common/Input';
 import {
   listSettings,
   updateSetting,
+  testStorageConnection,
 } from '@/services/adminSettingsService';
+import { invalidateStorageConfig } from '@/services/fileService';
 import { ROLES } from '@/utils/constants';
 
 // For secret rows the listing returns a masked placeholder. We keep the
@@ -79,11 +83,44 @@ export default function AdminSettingsPage() {
     try {
       await updateSetting(key, drafts[key]);
       setSavedKey(key);
+      // Storage keys affect the URL resolver in fileService — drop its
+      // cached driver/baseUrl so the next image render fetches fresh.
+      if (
+        key.startsWith('aws_') ||
+        key === 'storage_driver' ||
+        key === 'aws_use_path_style_endpoint'
+      ) {
+        invalidateStorageConfig();
+      }
       await load();
     } catch (err) {
       setError(err.message || `Failed to save ${key}.`);
     } finally {
       setSavingKey('');
+    }
+  }
+
+  // Storage / S3 connection test. Lives at group level rather than per-row
+  // because it spans the whole credential set.
+  const [storageTesting, setStorageTesting] = useState(false);
+  const [storageTestMsg, setStorageTestMsg] = useState(null); // { ok, message }
+  async function runStorageTest() {
+    if (storageTesting) return;
+    setStorageTesting(true);
+    setStorageTestMsg(null);
+    try {
+      const result = await testStorageConnection();
+      setStorageTestMsg({
+        ok: true,
+        message: `S3 reachable — bucket ${result?.bucket} (${result?.region}). Test object created and deleted.`,
+      });
+    } catch (err) {
+      setStorageTestMsg({
+        ok: false,
+        message: err?.message || 'Connection test failed.',
+      });
+    } finally {
+      setStorageTesting(false);
     }
   }
 
@@ -140,6 +177,7 @@ export default function AdminSettingsPage() {
         ) : (
           groups.map(([groupName, rows]) => {
             const collapsed = groupCollapsed(groupName);
+            const isStorageGroup = groupName === 'Storage / AWS S3';
             return (
               <section key={groupName} className="space-y-3">
                 <button
@@ -154,6 +192,7 @@ export default function AdminSettingsPage() {
                   className="group flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left transition hover:border-amber-300 hover:bg-amber-50/50"
                 >
                   <span className="flex items-center gap-2">
+                    {isStorageGroup && <Cloud size={14} className="text-amber-600" />}
                     <span className="text-xs font-bold uppercase tracking-widest text-slate-700">
                       {groupName}
                     </span>
@@ -168,6 +207,57 @@ export default function AdminSettingsPage() {
                     }`}
                   />
                 </button>
+                {!collapsed && isStorageGroup && (
+                  <Card>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="text-xs text-slate-600">
+                        <p className="font-semibold text-slate-800">
+                          Test S3 connection
+                        </p>
+                        <p>
+                          Uploads a tiny file to <code>temp/</code> using the
+                          credentials above and deletes it again. Catches
+                          typos in the key, region or bucket name before they
+                          break a real upload.
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={runStorageTest}
+                        disabled={storageTesting}
+                      >
+                        {storageTesting ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin" />
+                            Testing…
+                          </>
+                        ) : (
+                          <>
+                            <Cloud size={14} />
+                            Test S3 connection
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    {storageTestMsg && (
+                      <div
+                        className={`mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs ${
+                          storageTestMsg.ok
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                            : 'border-red-200 bg-red-50 text-red-700'
+                        }`}
+                      >
+                        {storageTestMsg.ok ? (
+                          <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+                        ) : (
+                          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                        )}
+                        <span>{storageTestMsg.message}</span>
+                      </div>
+                    )}
+                  </Card>
+                )}
                 {!collapsed &&
                   rows.map((s) => (
                     <SettingRow

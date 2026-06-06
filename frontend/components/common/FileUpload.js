@@ -57,6 +57,10 @@ export default function FileUpload({
   value,
   onChange,
   category,
+  // When set, the upload is filed under the given case (S3 key prefix:
+  // `case-files/<caseId>/`). Required by the backend for
+  // category="case_note" / "booking_note"; ignored for other categories.
+  caseId,
   accept = 'image/*,application/pdf',
   hint,
 }) {
@@ -94,7 +98,7 @@ export default function FileUpload({
 
     setUploading(true);
     try {
-      const data = await uploadFile(file, category);
+      const data = await uploadFile(file, category, { caseId });
       setFileMeta({
         id: data.id || null,
         mimeType: data.mimeType || file.type || '',

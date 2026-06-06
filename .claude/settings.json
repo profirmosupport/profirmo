@@ -105,7 +105,9 @@
       "Bash(./node_modules/.bin/eslint components/home/SearchSection.js components/professionals/ProfessionalFilters.js)",
       "Bash(node -c src/data/migrate.js)",
       "Bash(awk '{print; fflush\\(\\)} /Port: |app crashed/ {exit}')",
-      "Bash(./node_modules/.bin/eslint components/professionals/ProfessionalRegistrationForm.js)"
+      "Bash(./node_modules/.bin/eslint components/professionals/ProfessionalRegistrationForm.js)",
+      "Bash(npm start *)",
+      "Bash(awk '{print; fflush\\(\\)} /Waiting on|Logs for|exp:\\\\/\\\\/|EADDRINUSE|Failed/ {exit}')"
     ]
   }
 }

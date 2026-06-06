@@ -1,18 +1,16 @@
-// Upload middleware for the Profirmo backend (Phase 4).
+// Upload middleware for the Profirmo backend.
 //
-// Configures multer for local-disk storage with strict security defaults:
-//   - Stored filenames are server-generated UUIDs (the client filename is
-//     NEVER used on disk -> no path traversal / overwrite attacks).
-//   - A strict MIME-type whitelist rejects everything that is not an image
-//     or a PDF.
-//   - A hard size limit is enforced by multer.
+// Multer is configured with MEMORY storage so the resulting buffer can be
+// handed to storageService — which then decides whether to write it to
+// local disk (driver=local) or push to AWS S3 (driver=s3). Keeping multer
+// disk-free means flipping the storage driver from the admin panel takes
+// effect immediately, with no fs side-effects when S3 is the target.
 //
 // `uploadSingle` accepts one file under the form field `file`.
 // `handleUploadErrors` converts any multer error into a clean 400 JSON
 // response so a bad upload never crashes the process.
 
 const multer = require('multer');
-const crypto = require('crypto');
 const env = require('../config/env');
 const { errorResponse } = require('../utils/responseHandler');
 
@@ -25,18 +23,7 @@ const ALLOWED_MIME_TYPES = {
   'application/pdf': '.pdf',
 };
 
-const storage = multer.diskStorage({
-  // All files land in the configured uploads directory.
-  destination: (req, file, cb) => {
-    cb(null, env.uploadsDir);
-  },
-  // Server-generated unique name + extension derived from the validated
-  // MIME type. The client-supplied filename is intentionally ignored.
-  filename: (req, file, cb) => {
-    const ext = ALLOWED_MIME_TYPES[file.mimetype] || '';
-    cb(null, `${crypto.randomUUID()}${ext}`);
-  },
-});
+const storage = multer.memoryStorage();
 
 // Reject any file whose MIME type is not on the whitelist.
 const fileFilter = (req, file, cb) => {

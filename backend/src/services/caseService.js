@@ -106,10 +106,23 @@ const notifyCaseStakeholders = async (caseRow, actor, payload) => {
 /** Write a single CaseLog row. Failures are non-fatal. */
 const writeLog = async (caseId, actor, action, message, metadata) => {
   try {
+    // The JWT only carries id/role/linkedId — never the full name. So
+    // displayName(actor) is empty for any caller that passes req.user
+    // directly. Resolve from the User row when that happens so the
+    // case timeline shows the real person, not "System".
+    let actorName = displayName(actor);
+    if (!actorName && actor && actor.id) {
+      try {
+        const u = await User.findByPk(actor.id, { raw: true });
+        actorName = displayName(u);
+      } catch {
+        /* swallow — lookup failure shouldn't break log write */
+      }
+    }
     await CaseLog.create({
       caseId,
       actorUserId: (actor && actor.id) || null,
-      actorName: displayName(actor) || '',
+      actorName: actorName || '',
       action,
       message: message || null,
       metadata: metadata ? JSON.stringify(metadata) : null,
@@ -1138,6 +1151,62 @@ const deleteUpdate = async (updateId, user) => {
   return { id, caseId };
 };
 
+/**
+ * Authorization gate for everything that touches case-scoped resources
+ * (notes, updates, file attachments). Returns true when the caller is:
+ *   - the case's client (primary clientId, or in clientIds[])
+ *   - an assigned professional (linkedId or detail.id match)
+ *   - a member of the case's firm
+ *   - a platform admin
+ * Returns false otherwise. The case row itself is also returned so the
+ * caller can avoid a second DB lookup.
+ */
+async function userCanAccessCase(user, caseId) {
+  if (!user || !user.id || !caseId) return { allowed: false, case: null };
+  const c = await Case.findByPk(caseId, { raw: true });
+  if (!c) return { allowed: false, case: null };
+
+  // Platform admins see every case.
+  if (user.role === 'platform_admin' || user.role === 'admin') {
+    return { allowed: true, case: c };
+  }
+
+  // Client side: matches primary clientId OR clientIds[] JSON array.
+  if (c.clientId === user.id) return { allowed: true, case: c };
+  const clientIds = Array.isArray(c.clientIds) ? c.clientIds : [];
+  if (clientIds.includes(user.id)) return { allowed: true, case: c };
+
+  // Professional / firm side: build alias list and match against
+  // primary professionalId + professionalIds[] JSON array.
+  const aliases = new Set();
+  if (user.linkedId) aliases.add(user.linkedId);
+  const detail = await ProfessionalDetail.findOne({
+    where: { userId: user.id },
+    raw: true,
+  });
+  if (detail) aliases.add(detail.id);
+  if (aliases.size > 0) {
+    if (c.professionalId && aliases.has(c.professionalId)) {
+      return { allowed: true, case: c };
+    }
+    const profIds = Array.isArray(c.professionalIds) ? c.professionalIds : [];
+    if (profIds.some((id) => aliases.has(id))) {
+      return { allowed: true, case: c };
+    }
+  }
+
+  // Firm membership: if the case carries a firmId, allow if the user is
+  // a member of that firm.
+  if (c.firmId) {
+    const userFirmId = await resolveActorFirmId(user);
+    if (userFirmId && String(userFirmId) === String(c.firmId)) {
+      return { allowed: true, case: c };
+    }
+  }
+
+  return { allowed: false, case: c };
+}
+
 module.exports = {
   list,
   getById,
@@ -1158,4 +1227,5 @@ module.exports = {
   listUpdates,
   editUpdate,
   deleteUpdate,
+  userCanAccessCase,
 };
