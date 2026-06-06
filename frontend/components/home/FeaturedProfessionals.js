@@ -34,9 +34,15 @@ export default function FeaturedProfessionals() {
     let active = true;
     (async () => {
       try {
+        // Curated by the admin via the "Featured" toggle in
+        // /admin/professionals — not ranked by rating. Bar Council of
+        // India advertising rules don't permit "top/best/highest rated"
+        // language; the home page is a directory of admin-picked
+        // entries, ordered alphabetically once filtered.
         const res = await professionalService.getAll({
           limit: 6,
-          sort: 'rating',
+          featured: true,
+          sort: 'featured',
         });
         if (!active) return;
         setItems(Array.isArray(res && res.data) ? res.data : []);

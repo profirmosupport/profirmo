@@ -375,6 +375,7 @@ const normalizeLegacyFirm = (f, overlay = null) => {
         : toArray(f.services),
     rating: toNum(f.rating),
     reviewsCount: toNum(f.reviewsCount),
+    featured: !!f.featured,
     professionalCount: toNum(f.professionalCount),
   };
 };
@@ -396,6 +397,7 @@ const normalizeLawFirm = (f, professionalCount = 0, owner = null) => ({
   practiceAreas: toArray(f.practiceAreas),
   rating: toNum(f.rating),
   reviewsCount: toNum(f.reviewsCount),
+  featured: !!f.featured,
   // Derived from the firm_members table (the firm's actual roster).
   professionalCount: toNum(professionalCount),
   // Self-declared values entered while creating / editing the firm. Distinct
@@ -598,8 +600,22 @@ const list = async ({ filters = {}, page, limit } = {}) => {
   if (minRating !== undefined) {
     rows = rows.filter((f) => f.rating >= minRating);
   }
+  if (
+    filters.featured === true ||
+    filters.featured === 'true' ||
+    filters.featured === '1'
+  ) {
+    rows = rows.filter((f) => f.featured);
+  }
   if (filters.sort === 'rating') {
     rows.sort((a, b) => b.rating - a.rating);
+  } else if (filters.sort === 'featured') {
+    rows.sort((a, b) => {
+      const af = a.featured ? 1 : 0;
+      const bf = b.featured ? 1 : 0;
+      if (bf !== af) return bf - af;
+      return String(a.firmName || '').localeCompare(String(b.firmName || ''));
+    });
   }
 
   const total = rows.length;

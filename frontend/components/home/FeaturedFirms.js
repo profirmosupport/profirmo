@@ -131,7 +131,14 @@ export default function FeaturedFirms() {
     let active = true;
     (async () => {
       try {
-        const res = await firmService.getAll({ limit: 4, sort: 'rating' });
+        // Admin curates which firms surface here via the "Featured"
+        // checkbox in /admin/law-firms — not a ranking. Same rationale
+        // as FeaturedProfessionals (Bar Council India ad rules).
+        const res = await firmService.getAll({
+          limit: 4,
+          featured: true,
+          sort: 'featured',
+        });
         if (!active) return;
         setItems(Array.isArray(res && res.data) ? res.data : []);
       } catch {

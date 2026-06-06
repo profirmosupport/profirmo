@@ -32,6 +32,19 @@ export async function listPendingProfessionals({ page, limit } = {}) {
 }
 
 /**
+ * Toggle the home-page directory spotlight flag on an already-approved
+ * professional. Admin-only. The id is whichever canonical id came back
+ * from the public /api/professionals list (linkedId or detail id).
+ */
+export async function setProfessionalFeatured(id, featured) {
+  const res = await patch(
+    `/api/admin/professionals/${encodeURIComponent(id)}/featured`,
+    { featured: !!featured }
+  );
+  return unwrap(res);
+}
+
+/**
  * Fetch the full review payload for one approval.
  * @param {string} approvalId
  * @returns {Promise<{approval,user,address,professionalDetail,lawyerDetail,taxConsultantDetail}>}

@@ -17,6 +17,7 @@ const {
   SubscriptionPlan,
   ProfessionalSubscription,
   PayoutRequest,
+  ProfessionalDetail,
 } = require('../models');
 const { hashPassword } = require('../utils/password');
 
@@ -712,6 +713,35 @@ const createLawFirm = async (data = {}, actingUserId) => {
 };
 
 /** Edit a law firm. Validates status if provided. */
+/**
+ * Flip a professional's home-page `featured` flag. `id` accepts either
+ * the legacy linkedId (`prof-N`) or the new ProfessionalDetail.id, so
+ * the admin UI can pass whichever it has on hand. Returns the updated
+ * row + the resolved canonical id.
+ */
+const setProfessionalFeatured = async (id, featured) => {
+  let detail = null;
+  // First try linkedId via the users table.
+  const user = await User.findOne({ where: { linkedId: id }, raw: true });
+  if (user) {
+    detail = await ProfessionalDetail.findOne({ where: { userId: user.id } });
+  }
+  if (!detail) {
+    detail = await ProfessionalDetail.findByPk(id);
+  }
+  if (!detail) {
+    throw { statusCode: 404, message: 'Professional not found.' };
+  }
+  const next = !!(
+    featured === true ||
+    featured === 'true' ||
+    featured === 1 ||
+    featured === '1'
+  );
+  await detail.update({ featured: next });
+  return { id: detail.id, userId: detail.userId, featured: next };
+};
+
 const updateLawFirm = async (id, changes = {}) => {
   const firm = await LawFirm.findByPk(id);
   if (!firm) throw { statusCode: 404, message: 'Firm not found' };
@@ -732,6 +762,16 @@ const updateLawFirm = async (id, changes = {}) => {
   ];
   for (const key of editable) {
     if (changes[key] !== undefined) patch[key] = changes[key];
+  }
+  // Admin-curated home-page spotlight. Coerce to a strict boolean so the
+  // column stays clean (truthy strings + 0/1 both flow through admin UIs).
+  if (changes.featured !== undefined) {
+    patch.featured = !!(
+      changes.featured === true ||
+      changes.featured === 'true' ||
+      changes.featured === 1 ||
+      changes.featured === '1'
+    );
   }
   if (changes.status !== undefined) {
     const next = String(changes.status).toUpperCase();
@@ -1012,4 +1052,5 @@ module.exports = {
   createLawFirm,
   updateLawFirm,
   deleteLawFirm,
+  setProfessionalFeatured,
 };

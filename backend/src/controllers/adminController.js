@@ -413,6 +413,28 @@ const updateLawFirm = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'Firm updated', firm);
 });
 
+// PATCH /api/admin/professionals/:id/featured
+// Body: { featured: boolean }
+// Flips the home-page directory spotlight flag. Audit-logged so we can
+// trace who curated the list.
+const setProfessionalFeatured = asyncHandler(async (req, res) => {
+  const adminId = req.user.id || req.user.sub;
+  const result = await adminService.setProfessionalFeatured(
+    req.params.id,
+    req.body && req.body.featured
+  );
+  await logAudit({
+    req,
+    userId: adminId,
+    action: 'admin.professional_featured_changed',
+    entity: 'professional_detail',
+    entityId: result.id,
+    status: 'success',
+    metadata: { featured: result.featured },
+  });
+  return successResponse(res, 200, 'Featured flag updated', result);
+});
+
 // DELETE /api/admin/law-firms/:id
 const deleteLawFirm = asyncHandler(async (req, res) => {
   const adminId = req.user.id || req.user.sub;
@@ -546,4 +568,5 @@ module.exports = {
   createLawFirm,
   updateLawFirm,
   deleteLawFirm,
+  setProfessionalFeatured,
 };

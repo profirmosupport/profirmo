@@ -81,6 +81,15 @@ const ProfessionalDetail = sequelize.define(
       allowNull: true,
       defaultValue: 0,
     },
+    // Admin-curated flag. Featured rows surface on the public home page
+    // "Verified Consultants" section. NOT a quality ranking — the panel
+    // simply picks which directory entries to spotlight. Defaults to
+    // false; toggled from the admin professionals page.
+    featured: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
     // --- 3-step signup unification --------------------------------------
     // Top-level mirrors of fields previously split between LawyerDetail /
     // TaxConsultantDetail so the new signup wizard and the listing API can

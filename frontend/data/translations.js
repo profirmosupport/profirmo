@@ -211,19 +211,19 @@ export const translations = {
     'howItWorks.teamLabel': 'Live consultants online now',
 
     // --- Featured professionals section ---
-    'featuredProfessionals.eyebrow': 'Verified marketplace',
-    'featuredProfessionals.heading': 'Top verified consultants',
+    'featuredProfessionals.eyebrow': 'Directory',
+    'featuredProfessionals.heading': 'Talk to Verified Consultants',
     'featuredProfessionals.subtext':
-      'Hand-picked experts our clients rate the highest — all identity-verified.',
+      'Browse our directory of identity-verified legal and tax professionals and connect with the right one for your matter.',
     'featuredProfessionals.viewAll': 'View all',
     'featuredProfessionals.viewProfile': 'View profile',
     'featuredProfessionals.book': 'Book',
 
     // --- Featured firms section ---
-    'featuredFirms.eyebrow': 'Established practices',
-    'featuredFirms.heading': 'Trusted legal & tax firms',
+    'featuredFirms.eyebrow': 'Firm directory',
+    'featuredFirms.heading': 'Find a Law or Tax Firm',
     'featuredFirms.subtext':
-      'Full-service firms with vetted teams of specialists, ready to take on complex matters.',
+      'Browse verified firms and connect with teams of specialists who can take on complex matters.',
     'featuredFirms.professionals': 'professionals',
     'featuredFirms.viewFirm': 'View firm',
 
@@ -510,19 +510,19 @@ export const translations = {
     'howItWorks.teamLabel': 'अभी ऑनलाइन लाइव सलाहकार',
 
     // --- Featured professionals section ---
-    'featuredProfessionals.eyebrow': 'सत्यापित मार्केटप्लेस',
-    'featuredProfessionals.heading': 'शीर्ष सत्यापित सलाहकार',
+    'featuredProfessionals.eyebrow': 'डायरेक्टरी',
+    'featuredProfessionals.heading': 'सत्यापित सलाहकारों से बात करें',
     'featuredProfessionals.subtext':
-      'हमारे ग्राहकों द्वारा सर्वोच्च रेटिंग पाए चुनिंदा विशेषज्ञ — सभी पहचान-सत्यापित।',
+      'पहचान-सत्यापित कानूनी व कर पेशेवरों की हमारी डायरेक्टरी देखें और अपने मामले के लिए सही व्यक्ति से जुड़ें।',
     'featuredProfessionals.viewAll': 'सभी देखें',
     'featuredProfessionals.viewProfile': 'प्रोफ़ाइल देखें',
     'featuredProfessionals.book': 'बुक करें',
 
     // --- Featured firms section ---
-    'featuredFirms.eyebrow': 'स्थापित प्रैक्टिस',
-    'featuredFirms.heading': 'भरोसेमंद कानूनी व कर फर्म',
+    'featuredFirms.eyebrow': 'फर्म डायरेक्टरी',
+    'featuredFirms.heading': 'कानूनी या कर फर्म खोजें',
     'featuredFirms.subtext':
-      'जाँची-परखी विशेषज्ञ टीमों वाली पूर्ण-सेवा फर्म, जटिल मामले संभालने के लिए तैयार।',
+      'सत्यापित फर्म देखें और जटिल मामले संभालने वाले विशेषज्ञों की टीम से जुड़ें।',
     'featuredFirms.professionals': 'प्रोफेशनल',
     'featuredFirms.viewFirm': 'फर्म देखें',
 

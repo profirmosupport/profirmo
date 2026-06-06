@@ -69,11 +69,14 @@ const LISTING_COLUMNS = {
   professional_details: [
     ['rating', 'DECIMAL(3,2) DEFAULT 0'],
     ['reviewsCount', 'INT DEFAULT 0'],
+    // Admin-curated home-page spotlight flag.
+    ['featured', 'TINYINT(1) NOT NULL DEFAULT 0'],
   ],
   law_firms: [
     ['rating', 'DECIMAL(3,2) DEFAULT 0'],
     ['reviewsCount', 'INT DEFAULT 0'],
     ['numberOfProfessionals', 'INT NULL'],
+    ['featured', 'TINYINT(1) NOT NULL DEFAULT 0'],
   ],
 };
 

@@ -21,7 +21,12 @@ import EmptyState from '@/components/common/EmptyState';
 import { useAuth } from '@/components/AuthProvider';
 import { ROLES } from '@/utils/constants';
 import { formatDate, getInitials } from '@/utils/formatters';
-import { listPendingProfessionals } from '@/services/adminService';
+import {
+  listPendingProfessionals,
+  setProfessionalFeatured,
+} from '@/services/adminService';
+import { getAll as listApprovedProfessionals } from '@/services/professionalService';
+import { Star } from 'lucide-react';
 
 /** Build a display name from a row's nested user object. */
 function userName(user) {
@@ -126,6 +131,9 @@ export default function AdminProfessionalsPage() {
       subtitle="Review and decide on professionals awaiting verification"
     >
       <div className="space-y-6">
+        {/* Curate which approved professionals surface on the home page. */}
+        <FeaturedProfessionalsPanel />
+
         {/* Header row with count + refresh */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -290,5 +298,141 @@ export default function AdminProfessionalsPage() {
         )}
       </div>
     </DashboardLayout>
+  );
+}
+
+// FeaturedProfessionalsPanel — admin-curates which approved
+// professionals appear in the public home page "Talk to Verified
+// Consultants" directory. Lists all approved entries with a Featured
+// checkbox. Toggling immediately POSTs the change (optimistic UI).
+function FeaturedProfessionalsPanel() {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+  const [savingId, setSavingId] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setErr('');
+    try {
+      const res = await listApprovedProfessionals({ limit: 200 });
+      setItems(Array.isArray(res && res.data) ? res.data : []);
+    } catch (e) {
+      setErr(e.message || 'Failed to load professionals.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function toggle(row) {
+    const next = !row.featured;
+    setSavingId(row.id);
+    // Optimistic — flip locally first; rollback on failure.
+    setItems((arr) =>
+      arr.map((r) => (r.id === row.id ? { ...r, featured: next } : r))
+    );
+    try {
+      await setProfessionalFeatured(row.id, next);
+    } catch (e) {
+      setItems((arr) =>
+        arr.map((r) =>
+          r.id === row.id ? { ...r, featured: !next } : r
+        )
+      );
+      setErr(e.message || `Failed to update ${row.name || row.id}.`);
+    } finally {
+      setSavingId('');
+    }
+  }
+
+  const featuredCount = items.filter((r) => r.featured).length;
+
+  return (
+    <Card>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+            <Star size={18} />
+          </span>
+          <div>
+            <p className="text-sm font-semibold text-slate-900">
+              Home page directory
+            </p>
+            <p className="mt-0.5 text-xs text-slate-600">
+              Tick a professional to surface them in the public &ldquo;Talk
+              to Verified Consultants&rdquo; section. Admin-curated; not a
+              ranking — Bar Council India ad rules don&apos;t permit
+              promoting individual advocates as best/top.
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              {loading
+                ? 'Loading…'
+                : `${featuredCount} of ${items.length} marked featured`}
+            </p>
+          </div>
+        </div>
+        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+          <RefreshCw size={14} />
+          Refresh
+        </Button>
+      </div>
+
+      {err && (
+        <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+          <span>{err}</span>
+        </div>
+      )}
+
+      <div className="mt-4 max-h-96 overflow-y-auto rounded-lg border border-slate-200">
+        {loading ? (
+          <div className="space-y-2 p-3">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="h-10 w-full animate-pulse rounded bg-slate-100"
+              />
+            ))}
+          </div>
+        ) : items.length === 0 ? (
+          <p className="px-3 py-6 text-center text-xs text-slate-500">
+            No approved professionals yet.
+          </p>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {items.map((row) => (
+              <li
+                key={row.id}
+                className="flex items-center justify-between gap-3 px-3 py-2"
+              >
+                <label className="flex flex-1 cursor-pointer items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={!!row.featured}
+                    onChange={() => toggle(row)}
+                    disabled={savingId === row.id}
+                    className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-slate-800">
+                      {row.name || row.fullName || row.id}
+                    </p>
+                    <p className="truncate text-[11px] text-slate-500">
+                      {row.professionalType || '—'}
+                      {row.city ? ` · ${row.city}` : ''}
+                    </p>
+                  </div>
+                </label>
+                {row.featured && <Badge variant="amber">Featured</Badge>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Card>
   );
 }

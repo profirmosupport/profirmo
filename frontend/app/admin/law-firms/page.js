@@ -339,6 +339,9 @@ function buildFirmPayload(form) {
   if (form.status) payload.status = form.status;
   if (trim(form.ownerUserId)) payload.ownerUserId = trim(form.ownerUserId);
   if (trim(form.about)) payload.about = trim(form.about);
+  // Pass through unchanged — undefined keeps the existing value; the
+  // backend coerces strings/numbers back into a boolean.
+  if (form.featured !== undefined) payload.featured = !!form.featured;
 
   return payload;
 }
@@ -512,6 +515,7 @@ export default function AdminLawFirmsPage() {
       status: row.status || 'ACTIVE',
       ownerUserId: row.ownerUserId || '',
       about: row.about || '',
+      featured: !!row.featured,
     });
   }
 
@@ -1253,6 +1257,26 @@ export default function AdminLawFirmsPage() {
               onChange={onEditChange}
               options={STATUS_FORM_OPTIONS}
             />
+            <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+              <input
+                type="checkbox"
+                checked={!!editForm.featured}
+                onChange={(e) =>
+                  setEditForm((f) => ({ ...f, featured: e.target.checked }))
+                }
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+              />
+              <span className="text-sm">
+                <span className="font-medium text-slate-800">
+                  Feature on home page
+                </span>
+                <span className="block text-xs text-slate-500">
+                  Surfaces this firm in the public &ldquo;Find a Law or Tax
+                  Firm&rdquo; directory section. Admin-curated; not a
+                  ranking.
+                </span>
+              </span>
+            </label>
             <OwnerPicker
               currentOwner={editTarget && editTarget.owner}
               selected={editSelectedOwner}

@@ -60,6 +60,13 @@ const LawFirm = sequelize.define(
       allowNull: true,
       defaultValue: 0,
     },
+    // Admin-curated flag. Featured firms surface on the public home
+    // page; toggled from /admin/law-firms.
+    featured: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
   },
   {
     tableName: 'law_firms',

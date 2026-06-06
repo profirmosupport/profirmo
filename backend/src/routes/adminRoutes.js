@@ -60,6 +60,13 @@ router.get(
   '/professionals/:approvalId',
   adminController.getProfessionalApproval
 );
+// Toggle whether a (already-approved) professional appears in the
+// "Verified Consultants" directory section on the public home page.
+// Accepts either a linkedId (`prof-N`) or a ProfessionalDetail.id.
+router.patch(
+  '/professionals/:id/featured',
+  adminController.setProfessionalFeatured
+);
 
 // --- Phase 8: firm approval workflow --------------------------------------
 // /firms/pending is declared BEFORE /firms/:approvalId so it is not shadowed

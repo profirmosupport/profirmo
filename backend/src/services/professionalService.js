@@ -164,6 +164,7 @@ const normalizeLegacyProfessional = (p, overlay = null) => {
     ),
     rating: toNum(p.rating),
     reviewsCount: toNum(p.reviewsCount),
+    featured: !!p.featured,
     verified: Boolean(p.verified),
     availableNow: Boolean(p.availableNow),
     // Legacy rows can override via the new-model detail; default to true.
@@ -239,6 +240,7 @@ const normalizeProfileProfessional = ({ user, address, detail }) => {
     consultationFee: toNum(detail.consultationFee),
     rating: toNum(detail.rating),
     reviewsCount: toNum(detail.reviewsCount),
+    featured: !!detail.featured,
     // Listing only surfaces APPROVED professionals, so every result is
     // implicitly verified. `verificationStatus` is exposed separately for
     // the verification badge on cards/detail pages.
@@ -361,6 +363,16 @@ const numParam = (v) => {
  */
 const filterProfessionals = (items, filters = {}) => {
   let rows = items;
+
+  // Admin-curated home-page spotlight. Accepted values: true / 'true' /
+  // '1'. Anything falsy means "no filter — return everything".
+  if (
+    filters.featured === true ||
+    filters.featured === 'true' ||
+    filters.featured === '1'
+  ) {
+    rows = rows.filter((p) => p.featured);
+  }
 
   const search = filters.search ? String(filters.search).toLowerCase() : '';
   if (search) {
@@ -506,6 +518,16 @@ const filterProfessionals = (items, filters = {}) => {
  */
 const sortProfessionals = (rows, sort) => {
   switch (sort) {
+    case 'featured':
+      // Featured rows first; ties broken by name so the order is stable
+      // across reloads (rating-based ordering would re-shuffle as
+      // reviews land — surprising for a curated section).
+      return rows.sort((a, b) => {
+        const af = a.featured ? 1 : 0;
+        const bf = b.featured ? 1 : 0;
+        if (bf !== af) return bf - af;
+        return String(a.name || '').localeCompare(String(b.name || ''));
+      });
     case 'rating':
       return rows.sort((a, b) => b.rating - a.rating);
     case 'experience':

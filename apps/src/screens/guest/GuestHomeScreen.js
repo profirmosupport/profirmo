@@ -83,9 +83,13 @@ export default function GuestHomeScreen({ navigation }) {
     setLoadingFirms(true);
     setLoadingCats(true);
     setLoadingPosts(true);
+    // Admin-curated directory entries — not a "top rated" ranking.
+    // Bar Council India ad rules don't permit promoting specific
+    // advocates as best/top; the home directory shows whichever
+    // verified professionals + firms the admin has flagged Featured.
     const [proRes, firmRes, catRes, postRes] = await Promise.allSettled([
-      listProfessionals({ limit: 8 }),
-      listFirmsPublic({ limit: 6 }),
+      listProfessionals({ limit: 8, featured: true, sort: 'featured' }),
+      listFirmsPublic({ limit: 6, featured: true, sort: 'featured' }),
       listCategories(),
       listBlogPosts({ limit: 5 }),
     ]);
@@ -193,8 +197,8 @@ export default function GuestHomeScreen({ navigation }) {
 
       <View style={styles.sectionGap}>
         <Section
-          title="Experts a call away"
-          subtitle="Verified pros ready to consult"
+          title="Talk to Verified Consultants"
+          subtitle="Browse our directory of identity-verified professionals"
           action={
             <Pressable onPress={() => goToSearch(navigation)}>
               <Text style={styles.link}>View all</Text>
@@ -236,8 +240,8 @@ export default function GuestHomeScreen({ navigation }) {
 
       <View style={styles.sectionGap}>
         <Section
-          title="Firms on Profirmo"
-          subtitle="Established practices, vetted teams"
+          title="Find a Law or Tax Firm"
+          subtitle="Browse verified firms and connect with the right team"
           action={
             <Pressable onPress={() => goToSearch(navigation)}>
               <Text style={styles.link}>View all</Text>
