@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { ArrowRight, Search } from 'lucide-react';
 import ProfessionalCard from '@/components/professionals/ProfessionalCard';
 import EmptyState from '@/components/common/EmptyState';
+import NoResultsFallback from '@/components/professionals/NoResultsFallback';
 import { getAll as listProfessionals } from '@/services/professionalService';
 
 const CITY_PAGE_LIMIT = 24;
@@ -62,20 +63,7 @@ export default function CityProfessionalsList({ cityId, cityName }) {
           description={error}
         />
       ) : items.length === 0 ? (
-        <EmptyState
-          icon={<Search size={24} />}
-          title={`No professionals listed in ${cityName} yet`}
-          description="We're adding verified professionals across India. Try the full directory to find someone nearby."
-          action={
-            <Link
-              href="/professionals"
-              className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-2 text-sm font-semibold text-white shadow-glow-sm hover:-translate-y-0.5 hover:shadow-glow"
-            >
-              Browse all professionals
-              <ArrowRight size={14} />
-            </Link>
-          }
-        />
+        <NoResultsFallback />
       ) : (
         <>
           <div className="mb-5 flex flex-wrap items-baseline justify-between gap-3">

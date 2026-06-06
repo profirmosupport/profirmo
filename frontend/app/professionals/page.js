@@ -7,9 +7,9 @@ import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
 import Card from '@/components/common/Card';
 import Select from '@/components/common/Select';
-import EmptyState from '@/components/common/EmptyState';
 import ProfessionalCard from '@/components/professionals/ProfessionalCard';
 import ProfessionalFilters from '@/components/professionals/ProfessionalFilters';
+import NoResultsFallback from '@/components/professionals/NoResultsFallback';
 import { useProfessionals } from '@/hooks/useProfessionals';
 import { useLocations } from '@/hooks/useLocations';
 import { useLanguage } from '@/components/LanguageProvider';
@@ -139,11 +139,7 @@ function ProfessionalsContent() {
               ))}
             </div>
           ) : items.length === 0 ? (
-            <EmptyState
-              icon={<Search size={24} />}
-              title={t('profList.emptyTitle')}
-              description={t('profList.emptyDesc')}
-            />
+            <NoResultsFallback />
           ) : (
             <>
               <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">

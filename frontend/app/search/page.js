@@ -19,6 +19,7 @@ import Input from '@/components/common/Input';
 import Select from '@/components/common/Select';
 import Combobox from '@/components/common/Combobox';
 import EmptyState from '@/components/common/EmptyState';
+import NoResultsFallback from '@/components/professionals/NoResultsFallback';
 import ProfessionalCard from '@/components/professionals/ProfessionalCard';
 import FirmCard from '@/components/firms/FirmCard';
 import { useLanguage } from '@/components/LanguageProvider';
@@ -428,11 +429,15 @@ export default function SearchPage() {
               ))}
             </div>
           ) : results.length === 0 ? (
-            <EmptyState
-              icon={<Search size={24} />}
-              title={t('searchPage.emptyTitle')}
-              description={t('searchPage.emptyDesc')}
-            />
+            isIndividual ? (
+              <NoResultsFallback />
+            ) : (
+              <EmptyState
+                icon={<Search size={24} />}
+                title={t('searchPage.emptyTitle')}
+                description={t('searchPage.emptyDesc')}
+              />
+            )
           ) : isIndividual ? (
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {professionals.map((pro) => (
