@@ -2182,6 +2182,18 @@ async function runLegalPracticeAreasSeed() {
       );
       return;
     }
+    // Curation + drift safety: once any rows exist under Legal we never
+    // wipe them automatically. Featured flags and admin edits don't
+    // change the row count, so without this guard a partial-state DB
+    // would re-trigger the wipe on every boot and erase curation.
+    // Admin can drop sub_categories WHERE categoryId='<legal.id>' in
+    // MySQL to force a clean reseed.
+    if (existingCount > 0) {
+      console.log(
+        `[Migrate] Legal taxonomy seed: ${existingCount} row(s) already present (expected ${expectedTotal}). Leaving the data alone to preserve admin curation. Drop sub_categories WHERE categoryId='${legal.id}' to force a clean reseed.`
+      );
+      return;
+    }
 
     // Hard reset: wipe everything under Legal and rebuild from scratch.
     // Runs only when the row count drifts from the expected total
@@ -2319,6 +2331,19 @@ async function runTaxPracticeAreasSeed() {
     if (existingCount === expectedTotal && expectedTotal > 0) {
       console.log(
         `[Migrate] Tax taxonomy seed: already populated (${existingCount} rows) — skipping reseed.`
+      );
+      return;
+    }
+    // Curation + drift safety: once any rows exist under Tax we never
+    // wipe them automatically. Marking a sub-category featured doesn't
+    // change the row count, so without this guard a partial-state DB
+    // (e.g. a previous seed run that died midway) would re-trigger
+    // the wipe on every boot and erase admin curation. Admin can drop
+    // sub_categories WHERE categoryId='<tax.id>' in MySQL to force a
+    // clean reseed.
+    if (existingCount > 0) {
+      console.log(
+        `[Migrate] Tax taxonomy seed: ${existingCount} row(s) already present (expected ${expectedTotal}). Leaving the data alone to preserve admin curation. Drop sub_categories WHERE categoryId='${tax.id}' to force a clean reseed.`
       );
       return;
     }
