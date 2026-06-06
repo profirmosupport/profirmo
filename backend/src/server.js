@@ -18,6 +18,8 @@ const SYNC_ORDER = [
   db.User,
   // Phase-5 audit log — no FK dependency, placed right after User.
   db.AuditLog,
+  // Newsletter subscribers — no FK dependency.
+  db.NewsletterSubscriber,
   db.Upload,
   db.Session,
   db.Booking,

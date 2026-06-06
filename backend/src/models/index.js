@@ -25,6 +25,7 @@ const Upload = require('./Upload');
 
 // --- Phase-5 security models -----------------------------------------------
 const AuditLog = require('./AuditLog');
+const NewsletterSubscriber = require('./NewsletterSubscriber');
 
 // --- Phase-6 jobs / notifications models -----------------------------------
 const Job = require('./Job');
@@ -398,6 +399,7 @@ module.exports = {
   LawFirm,
   FirmMember,
   AuditLog,
+  NewsletterSubscriber,
   Job,
   Notification,
   TaxConsultantDetail,

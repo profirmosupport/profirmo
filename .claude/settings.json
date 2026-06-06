@@ -109,7 +109,12 @@
       "Bash(npm start *)",
       "Bash(awk '{print; fflush\\(\\)} /Waiting on|Logs for|exp:\\\\/\\\\/|EADDRINUSE|Failed/ {exit}')",
       "Bash(./node_modules/.bin/eslint app/admin/users/page.js app/admin/law-firms/page.js)",
-      "Bash(curl -s -o /dev/null -w \"health=%{http_code}\\\\n\" http://localhost:5001/api/health)"
+      "Bash(curl -s -o /dev/null -w \"health=%{http_code}\\\\n\" http://localhost:5001/api/health)",
+      "Bash(node -c src/models/NewsletterSubscriber.js)",
+      "Bash(node -c src/services/newsletterService.js)",
+      "Bash(node -c src/controllers/newsletterController.js)",
+      "Bash(node -c src/routes/newsletterRoutes.js)",
+      "Bash(node -c src/app.js)"
     ]
   }
 }

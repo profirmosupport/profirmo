@@ -180,6 +180,14 @@ router.post('/opportunities/:id/convert', leads.adminConvertOpportunity);
 router.get('/payments', adminPayments.list);
 router.post('/payments/:id/refund', adminPayments.refund);
 
+// --- Newsletter subscribers ----------------------------------------------
+// Footer-form sign-ups + the modal-collected additional info. Public
+// writes happen via /api/newsletter; these endpoints are admin-only.
+const newsletterController = require('../controllers/newsletterController');
+router.get('/newsletter', newsletterController.adminList);
+router.patch('/newsletter/:id', newsletterController.adminSetStatus);
+router.delete('/newsletter/:id', newsletterController.adminRemove);
+
 // --- Platform settings (markup %, etc.) ---------------------------------
 router.get('/settings', adminSettings.list);
 router.patch('/settings/:key', adminSettings.update);

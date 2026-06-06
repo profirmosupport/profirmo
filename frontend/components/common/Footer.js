@@ -1,10 +1,21 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Twitter, Linkedin, Github, Mail, ArrowRight, MapPin } from 'lucide-react';
+import {
+  Twitter,
+  Linkedin,
+  Github,
+  Mail,
+  ArrowRight,
+  MapPin,
+  Loader2,
+  CheckCircle2,
+} from 'lucide-react';
 import { useLanguage } from '@/components/LanguageProvider';
 import { useLocations } from '@/hooks/useLocations';
+import NewsletterModal from '@/components/common/NewsletterModal';
+import { subscribe as subscribeNewsletter, isValidEmail } from '@/services/newsletterService';
 
 // City-link landing pages we want surfaced in the footer for SEO. We
 // pick from the admin-managed cities table at runtime — names that
@@ -83,6 +94,37 @@ export default function Footer() {
   const year = new Date().getFullYear();
   const { t } = useLanguage();
   const { flatCities } = useLocations();
+
+  // Newsletter signup state — drives the inline status pill + the
+  // post-submit "tell us more" modal.
+  const [newsletterEmail, setNewsletterEmail] = useState('');
+  const [newsletterStatus, setNewsletterStatus] = useState('idle'); // idle | loading | success | error
+  const [newsletterError, setNewsletterError] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [savedEmail, setSavedEmail] = useState('');
+
+  async function handleNewsletterSubmit(e) {
+    if (e) e.preventDefault();
+    if (newsletterStatus === 'loading') return;
+    const email = newsletterEmail.trim();
+    setNewsletterError('');
+    if (!isValidEmail(email)) {
+      setNewsletterStatus('error');
+      setNewsletterError('Please enter a valid email address.');
+      return;
+    }
+    setNewsletterStatus('loading');
+    try {
+      await subscribeNewsletter(email);
+      setSavedEmail(email);
+      setNewsletterEmail('');
+      setNewsletterStatus('success');
+      setModalOpen(true);
+    } catch (err) {
+      setNewsletterStatus('error');
+      setNewsletterError(err.message || 'Subscription failed. Try again.');
+    }
+  }
 
   // Resolve each curated city NAME against the admin-managed cities
   // table, preferring exact case-insensitive matches. The result is an
@@ -165,25 +207,56 @@ export default function Footer() {
               </p>
               <form
                 className="mt-3 flex max-w-sm items-center gap-2"
-                onSubmit={(e) => e.preventDefault()}
+                onSubmit={handleNewsletterSubmit}
               >
                 <div className="relative flex-1">
                   <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                   <input
                     type="email"
+                    value={newsletterEmail}
+                    onChange={(e) => {
+                      setNewsletterEmail(e.target.value);
+                      if (newsletterStatus !== 'idle') {
+                        setNewsletterStatus('idle');
+                        setNewsletterError('');
+                      }
+                    }}
                     placeholder={t('footer.emailPlaceholder')}
                     aria-label={t('footer.emailPlaceholder')}
-                    className="w-full rounded-xl border border-white/10 bg-white/5 py-2.5 pl-9 pr-3 text-sm text-white placeholder-slate-500 outline-none transition focus:border-teal-400/60 focus:bg-white/10"
+                    autoComplete="email"
+                    inputMode="email"
+                    required
+                    disabled={newsletterStatus === 'loading'}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 py-2.5 pl-9 pr-3 text-sm text-white placeholder-slate-500 outline-none transition focus:border-teal-400/60 focus:bg-white/10 disabled:opacity-60"
                   />
                 </div>
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-2.5 text-sm font-semibold text-white shadow-glow-sm transition hover:shadow-glow"
+                  disabled={newsletterStatus === 'loading'}
+                  className="inline-flex items-center gap-1 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-2.5 text-sm font-semibold text-white shadow-glow-sm transition hover:shadow-glow disabled:opacity-60"
                 >
-                  {t('footer.subscribe')}
-                  <ArrowRight className="h-3.5 w-3.5" />
+                  {newsletterStatus === 'loading' ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      …
+                    </>
+                  ) : (
+                    <>
+                      {t('footer.subscribe')}
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </>
+                  )}
                 </button>
               </form>
+              {newsletterStatus === 'success' && (
+                <p className="mt-2 inline-flex items-center gap-1 text-xs text-emerald-400">
+                  <CheckCircle2 className="h-3 w-3" />
+                  Subscribed. Open the popup for personalisation options.
+                </p>
+              )}
+              {newsletterStatus === 'error' && newsletterError && (
+                <p className="mt-2 text-xs text-rose-400">{newsletterError}</p>
+              )}
             </div>
           </div>
 
@@ -273,6 +346,15 @@ export default function Footer() {
           </div>
         </div>
       </div>
+
+      {/* Newsletter "tell us more" popup — opens on a successful
+          /api/newsletter/subscribe response so the visitor can
+          optionally enrich their profile. */}
+      <NewsletterModal
+        open={modalOpen}
+        email={savedEmail}
+        onClose={() => setModalOpen(false)}
+      />
     </footer>
   );
 }

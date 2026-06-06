@@ -29,6 +29,7 @@ import {
   CreditCard,
   Newspaper,
   Hash,
+  Mail,
 } from 'lucide-react';
 import BrandLogo from '@/components/common/BrandLogo';
 import { useLanguage } from '@/components/LanguageProvider';
@@ -285,6 +286,11 @@ const NAV_BY_ROLE = {
           labelKey: 'dash.nav.blogTags',
           href: '/admin/blog/tags',
           icon: Hash,
+        },
+        {
+          labelKey: 'dash.nav.newsletter',
+          href: '/admin/newsletter',
+          icon: Mail,
         },
       ],
     },
