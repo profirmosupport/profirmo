@@ -720,14 +720,22 @@ export default function ProfessionalRegistrationForm({
     return categories.find((c) => String(c.slug || '').toLowerCase() === target);
   }, [categories, isLegal]);
 
-  function toggleSubCategory(id) {
-    setValues((v) => {
-      const set = new Set(v.subCategoryIds || []);
-      if (set.has(id)) set.delete(id);
-      else set.add(id);
-      return { ...v, subCategoryIds: Array.from(set) };
-    });
-  }
+  // Top-level sub-categories only — matches the home / search /
+  // /professionals filter dropdowns. Deeper tiers (sub-sub-categories,
+  // practice areas) are search-only refinements, not signup tags.
+  const subCategoryOptions = useMemo(() => {
+    const subs = (categoryForType && categoryForType.subCategories) || [];
+    if (subs.length === 0) return [];
+    return subs
+      .filter((s) => !s.parentSubCategoryId)
+      .map((s) => ({ value: s.id, label: s.name }))
+      .sort((a, b) =>
+        String(a.label).localeCompare(String(b.label), undefined, {
+          sensitivity: 'base',
+        })
+      );
+  }, [categoryForType]);
+
   const allErrors = useMemo(
     () => ({ ...(serverErrors || {}), ...errors }),
     [serverErrors, errors]
@@ -1052,6 +1060,29 @@ export default function ProfessionalRegistrationForm({
               />
             </div>
           )}
+
+          {/* Admin-managed sub-categories filtered by Legal/Tax.
+              Searchable multi-select; labels show the full parent
+              path so similar leaves stay distinguishable. Sits right
+              under the credentials so the professional declares the
+              practice areas up front. */}
+          {categoryForType && subCategoryOptions.length > 0 ? (
+            <MultiCombobox
+              label={`${categoryForType.name} sub-categories`}
+              name="subCategoryIds"
+              value={values.subCategoryIds || []}
+              onChange={(next) =>
+                setValues((v) => ({
+                  ...v,
+                  subCategoryIds: Array.from(new Set(next || [])),
+                }))
+              }
+              options={subCategoryOptions}
+              placeholder={`Search ${categoryForType.name.toLowerCase()} areas you practise in…`}
+              hint={`Pick every ${categoryForType.name.toLowerCase()} area you practise in.`}
+            />
+          ) : null}
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Combobox
               label="Country"
@@ -1123,45 +1154,6 @@ export default function ProfessionalRegistrationForm({
             placeholder="A brief introduction about your practice."
             error={allErrors.bio}
           />
-
-          {/* Admin-managed sub-categories filtered by Legal/Tax. Pick every
-              area you practise in — drives search filters + profile tags. */}
-          {categoryForType &&
-            Array.isArray(categoryForType.subCategories) &&
-            categoryForType.subCategories.length > 0 && (
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  {categoryForType.name} sub-categories
-                </label>
-                <p className="mb-2 text-xs text-slate-500">
-                  Select every {categoryForType.name.toLowerCase()} area you
-                  practise in.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {categoryForType.subCategories.map((s) => {
-                    const checked = (values.subCategoryIds || []).includes(s.id);
-                    return (
-                      <label
-                        key={s.id}
-                        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition ${
-                          checked
-                            ? 'border-amber-300 bg-amber-50 text-amber-800'
-                            : 'border-slate-200 bg-white text-slate-700 hover:border-amber-200'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          className="sr-only"
-                          checked={checked}
-                          onChange={() => toggleSubCategory(s.id)}
-                        />
-                        {s.name}
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
         </div>
       </SectionCard>
       )}
