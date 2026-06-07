@@ -25,9 +25,11 @@ export default function BrandLogo({
   size = 'md',
   className = '',
 }) {
-  // Mark image fits inside the 64px (h-16) header — keep ~4px breathing
+  // Mark image fits inside the 64px (h-16) header — keep breathing
   // room at the top and bottom so it doesn't kiss the divider line.
-  const mark = size === 'sm' ? 'h-10 w-10' : 'h-14 w-14';
+  // Sizes are 14.5% smaller than the original h-14 / h-10 (10% + 5%
+  // compounded) — 47.88 px and 34.2 px respectively.
+  const mark = size === 'sm' ? 'h-[2.13rem] w-[2.13rem]' : 'h-[2.99rem] w-[2.99rem]';
   // Wordmark at desktop is big enough to anchor the nav row visually.
   // `sm` keeps the wordmark a touch smaller for the auth pages where
   // it sits inside a compact card.
