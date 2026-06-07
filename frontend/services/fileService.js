@@ -97,12 +97,29 @@ export function validateFile(file, { imageOnly = false } = {}) {
   return null;
 }
 
+// Hardcoded production S3 origin — mirrors the PRODUCTION_API_URL
+// override in services/api.js. Used as a last-resort fallback for the
+// resolveFileUrl race: if `/api/app-settings/storage` hasn't responded
+// yet when the first <img> renders, this prevents a bare key like
+// `profile-images/<uuid>.jpg` from being prepended with the API host
+// (which has no such route) and 404'ing.
+const PRODUCTION_S3_BASE = 'https://profirmomain.s3.ap-south-1.amazonaws.com';
+const PRODUCTION_HOSTS = new Set(['profirmo.com', 'www.profirmo.com']);
+function isProductionHost() {
+  return (
+    typeof window !== 'undefined' &&
+    PRODUCTION_HOSTS.has(window.location.hostname)
+  );
+}
+
 /**
  * Resolve a stored file URL into an absolute URL.
  * - Absolute URLs (`http(s)://...`) are returned unchanged (already-signed S3 URLs land here).
  * - `/uploads/...` (legacy local) → prefixed with API base URL.
  * - Bare S3 keys (e.g. `profile-images/xyz.jpg`) → prefixed with the
  *   CDN/base URL fetched from /api/app-settings/storage when storage_driver=s3.
+ *   Falls back to the hardcoded production S3 base when the cache
+ *   hasn't loaded and we're running on profirmo.com.
  * - Empty / null values return ''.
  */
 export function resolveFileUrl(url) {
@@ -112,13 +129,14 @@ export function resolveFileUrl(url) {
   if (url.startsWith('/')) {
     return `${apiBase}${url}`;
   }
-  // Bare key — need storage config. If the cache hasn't populated yet
-  // (very first call before primer resolves), fall back to API base so
-  // the URL is at least pointable; the next render after the config
-  // arrives will produce the correct absolute URL.
+  // Bare key — prefer the live storage config, else fall back to the
+  // hardcoded production CDN, only then to apiBase (dev / unknown).
   const cfg = readStorageConfigSync();
   if (cfg.driver === 's3' && cfg.baseUrl) {
     return `${cfg.baseUrl.replace(/\/$/, '')}/${url}`;
+  }
+  if (isProductionHost()) {
+    return `${PRODUCTION_S3_BASE}/${url}`;
   }
   return `${apiBase}/${url}`;
 }

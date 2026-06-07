@@ -6,6 +6,7 @@
 
 const fileService = require('../services/fileService');
 const caseService = require('../services/caseService');
+const storageService = require('../services/storageService');
 const asyncHandler = require('../utils/asyncHandler');
 const {
   successResponse,
@@ -46,10 +47,15 @@ const IMAGE_ONLY_CATEGORIES = [
   'firm_logo',
 ];
 
-// Project an Upload record down to the public response shape.
-const toPublicUpload = (u) => ({
+// Project an Upload record down to the public response shape. The
+// `url` field is always an ABSOLUTE URL (CDN host for S3 uploads,
+// signed URL for private S3 prefixes, /uploads/<name> for legacy
+// local rows). Returning absolute URLs eliminates the frontend's
+// storage-config race where a bare S3 key would otherwise be
+// rendered as `${API_BASE}/<key>` and 404 on the backend.
+const toPublicUpload = async (u) => ({
   id: u.id,
-  url: u.url,
+  url: await storageService.getFileUrl(u.url),
   originalName: u.originalName,
   mimeType: u.mimeType,
   size: u.size,
@@ -153,7 +159,7 @@ const uploadFile = asyncHandler(async (req, res) => {
     res,
     201,
     'File uploaded',
-    toPublicUpload(upload)
+    await toPublicUpload(upload)
   );
 });
 
@@ -164,7 +170,7 @@ const listFiles = asyncHandler(async (req, res) => {
     res,
     200,
     'Uploads fetched',
-    uploads.map(toPublicUpload)
+    await Promise.all(uploads.map(toPublicUpload))
   );
 });
 
@@ -178,7 +184,7 @@ const getFile = asyncHandler(async (req, res) => {
     res,
     200,
     'Upload fetched',
-    toPublicUpload(upload)
+    await toPublicUpload(upload)
   );
 });
 
