@@ -57,12 +57,29 @@ async function callPartner(path, { query, method = 'GET' } = {}) {
   }
 
   let payload = null;
+  let rawBodyForLog = '';
   const text = await res.text();
+  const contentType = String(
+    (res.headers && res.headers.get && res.headers.get('content-type')) || ''
+  ).toLowerCase();
+  const looksJson =
+    contentType.includes('application/json') ||
+    (text && /^\s*[\[{]/.test(text));
   if (text) {
-    try {
-      payload = JSON.parse(text);
-    } catch {
-      payload = { message: text };
+    rawBodyForLog = text.slice(0, 1000);
+    if (looksJson) {
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        // Header claimed JSON but body isn't parseable. Treat as opaque.
+        payload = null;
+      }
+    } else {
+      // Non-JSON body (HTML error page, plaintext, an IIS 500 dump etc.)
+      // — DO NOT promote it to `message` because the frontend would
+      // display the entire blob. Leave payload null so the generic
+      // upstream-down branch fires below.
+      payload = null;
     }
   }
 
@@ -90,33 +107,67 @@ async function callPartner(path, { query, method = 'GET' } = {}) {
       pickStr(payload && payload.message) ||
       pickStr(payload && payload.error) ||
       pickStr(payload && payload.errors) ||
-      `E-Courts API error (HTTP ${res.status}).`;
+      '';
     const code =
       (payload && (payload.code || payload.errorCode)) ||
       (payload && payload.error && payload.error.code) ||
       null;
-    // Log the full upstream envelope so we can diagnose unexpected
-    // shapes — without this, errors collapsed to "[object Object]" in
-    // the central error handler.
+    // Always log the upstream status + a body excerpt server-side so we
+    // can diagnose without ever surfacing the raw HTML to the visitor.
     try {
       console.warn(
-        `[ecourts] upstream ${res.status} ${method} ${path} — ${upstreamMsg}`,
-        payload ? JSON.stringify(payload).slice(0, 600) : '(no body)'
+        `[ecourts] upstream ${res.status} ${method} ${path}` +
+          (upstreamMsg ? ` — ${upstreamMsg}` : ' — (no message)'),
+        rawBodyForLog || '(empty body)'
+      );
+    } catch {
+      /* logging must never throw */
+    }
+    // For 5xx + non-JSON responses (partner outage / IIS error page),
+    // surface a generic outage message. Only JSON bodies with a usable
+    // `message` are passed through verbatim to the client.
+    const isPartnerOutage =
+      res.status >= 500 || (!payload && !upstreamMsg);
+    let clientMessage;
+    if (code === 'INSUFFICIENT_CREDITS') {
+      clientMessage = 'E-Courts India account is out of credits. Top up to continue.';
+    } else if (code === 'RATE_LIMIT_EXCEEDED') {
+      clientMessage = 'E-Courts India rate limit hit. Please slow down and retry.';
+    } else if (code === 'INVALID_TOKEN' || code === 'TOKEN_EXPIRED') {
+      clientMessage =
+        'E-Courts India API key is invalid or expired. Update it in Admin > Platform settings.';
+    } else if (isPartnerOutage) {
+      clientMessage =
+        'The E-Courts India service is temporarily unavailable. Please try again in a few minutes.';
+    } else {
+      clientMessage = upstreamMsg || `E-Courts API error (HTTP ${res.status}).`;
+    }
+    throw {
+      statusCode: isPartnerOutage ? 502 : res.status,
+      message: clientMessage,
+      upstreamCode: code,
+      upstreamStatus: res.status,
+    };
+  }
+
+  // 2xx but non-JSON body — also a sign of partner misbehaviour
+  // (a CDN error caught with a 200, say). Don't return arbitrary HTML
+  // to callers expecting JSON data.
+  if (text && !payload) {
+    try {
+      console.warn(
+        `[ecourts] upstream returned 2xx non-JSON ${method} ${path} ` +
+          `(content-type=${contentType || 'unknown'})`,
+        rawBodyForLog
       );
     } catch {
       /* logging must never throw */
     }
     throw {
-      statusCode: res.status,
+      statusCode: 502,
       message:
-        code === 'INSUFFICIENT_CREDITS'
-          ? 'E-Courts India account is out of credits. Top up to continue.'
-          : code === 'RATE_LIMIT_EXCEEDED'
-            ? 'E-Courts India rate limit hit. Please slow down and retry.'
-            : code === 'INVALID_TOKEN' || code === 'TOKEN_EXPIRED'
-              ? 'E-Courts India API key is invalid or expired. Update it in Admin > Platform settings.'
-              : upstreamMsg,
-      upstreamCode: code,
+        'The E-Courts India service returned an unexpected response. Please try again in a few minutes.',
+      upstreamStatus: res.status,
     };
   }
 

@@ -19,7 +19,7 @@ export default function ContactPage() {
     {
       icon: Mail,
       label: t('contact.details.email.label'),
-      value: 'profirmo.support@gmail.com',
+      value: 'support@profirmo.com',
       hint: t('contact.details.email.hint'),
     },
     {

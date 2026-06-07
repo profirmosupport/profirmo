@@ -196,9 +196,9 @@ const SETTINGS = {
   supportEmail: {
     label: 'Support inbox',
     description:
-      'Email address that receives every /contact form submission. Defaults to profirmo.support@gmail.com. Change to route support notifications to your ticketing system / shared inbox.',
+      'Email address that receives every /contact form submission. Defaults to support@profirmo.com. Change to route support notifications to your ticketing system / shared inbox.',
     defaultGetter: () =>
-      process.env.SUPPORT_EMAIL || 'profirmo.support@gmail.com',
+      process.env.SUPPORT_EMAIL || 'support@profirmo.com',
     type: 'string',
     group: 'Support',
     coerce: stringCoerce,
