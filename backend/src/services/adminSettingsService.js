@@ -56,12 +56,42 @@ const SETTINGS = {
   },
 
   // --- Razorpay payments + subscriptions --------------------------------
-  // keyId is public (embedded in the Razorpay Checkout iframe URL anyway).
-  // keySecret + webhookSecret are server-only — masked on the listing.
-  razorpayKeyId: {
-    label: 'Razorpay Key ID',
+  // Two parallel credential sets — live + test — and a `razorpayMode`
+  // switch that picks which one the payments service uses. The keyId
+  // for the active mode is exposed via the public config endpoint
+  // (Checkout iframe needs it client-side); secrets are always masked.
+  razorpayMode: {
+    label: 'Razorpay Mode',
     description:
-      'Razorpay test/live key ID (rzp_test_… / rzp_live_…). From Razorpay Dashboard > Settings > API Keys. Used to mint Checkout sessions for booking payments and subscription mandates.',
+      '"live" charges real money against the production credentials. "test" routes through the Razorpay sandbox using the *Test* credentials below. Toggle to switch the entire payment + subscription flow with no redeploy.',
+    defaultGetter: () => process.env.RAZORPAY_MODE || 'test',
+    type: 'string',
+    group: 'Razorpay',
+    isPublic: true,
+    // The admin UI renders a <Select> instead of a text input when
+    // `options` is set. Each option is { value, label }.
+    options: [
+      { value: 'test', label: 'Test (sandbox)' },
+      { value: 'live', label: 'Live (real money)' },
+    ],
+    coerce: (raw) => {
+      const v = stringCoerce(raw).toLowerCase();
+      if (v && v !== 'live' && v !== 'test') {
+        throw {
+          statusCode: 422,
+          message: 'razorpayMode must be "live" or "test".',
+        };
+      }
+      return v || 'test';
+    },
+    format: stringCoerce,
+  },
+
+  // -- LIVE credentials --
+  razorpayKeyId: {
+    label: 'Razorpay Key ID (Live)',
+    description:
+      'Live mode Razorpay key ID (rzp_live_…). From Razorpay Dashboard > Settings > API Keys. Used when razorpayMode = "live".',
     defaultGetter: () => process.env.RAZORPAY_KEY_ID || '',
     type: 'string',
     group: 'Razorpay',
@@ -70,9 +100,9 @@ const SETTINGS = {
     format: stringCoerce,
   },
   razorpayKeySecret: {
-    label: 'Razorpay Key Secret',
+    label: 'Razorpay Key Secret (Live)',
     description:
-      'Razorpay key secret — server-only. Used to sign API calls + verify Checkout signatures. Generated alongside the Key ID in the Razorpay Dashboard. Never sent to the browser.',
+      'Live key secret — server-only. Generated alongside the Live Key ID in the Razorpay Dashboard. Never sent to the browser.',
     defaultGetter: () => process.env.RAZORPAY_KEY_SECRET || '',
     type: 'string',
     group: 'Razorpay',
@@ -81,10 +111,45 @@ const SETTINGS = {
     format: stringCoerce,
   },
   razorpayWebhookSecret: {
-    label: 'Razorpay Webhook Secret',
+    label: 'Razorpay Webhook Secret (Live)',
     description:
-      'Secret used to verify Razorpay webhook signatures. Set in Razorpay Dashboard > Settings > Webhooks. Required for subscription state updates (subscription.activated, subscription.charged, etc.) to be trusted.',
+      'Webhook signing secret for the LIVE webhook endpoint. Set in Razorpay Dashboard > Settings > Webhooks. Required for subscription state updates in live mode.',
     defaultGetter: () => process.env.RAZORPAY_WEBHOOK_SECRET || '',
+    type: 'string',
+    group: 'Razorpay',
+    secret: true,
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+
+  // -- TEST credentials --
+  razorpayKeyIdTest: {
+    label: 'Razorpay Key ID (Test)',
+    description:
+      'Test mode Razorpay key ID (rzp_test_…). From Razorpay Dashboard (test mode toggle) > Settings > API Keys. Used when razorpayMode = "test".',
+    defaultGetter: () => process.env.RAZORPAY_KEY_ID_TEST || '',
+    type: 'string',
+    group: 'Razorpay',
+    isPublic: true,
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  razorpayKeySecretTest: {
+    label: 'Razorpay Key Secret (Test)',
+    description:
+      'Test mode key secret — server-only. Generated alongside the Test Key ID in the Razorpay Dashboard (test mode).',
+    defaultGetter: () => process.env.RAZORPAY_KEY_SECRET_TEST || '',
+    type: 'string',
+    group: 'Razorpay',
+    secret: true,
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  razorpayWebhookSecretTest: {
+    label: 'Razorpay Webhook Secret (Test)',
+    description:
+      'Webhook signing secret for the TEST webhook endpoint. Set in Razorpay Dashboard > Settings > Webhooks (test mode).',
+    defaultGetter: () => process.env.RAZORPAY_WEBHOOK_SECRET_TEST || '',
     type: 'string',
     group: 'Razorpay',
     secret: true,
@@ -136,6 +201,10 @@ const SETTINGS = {
     defaultGetter: () => process.env.STORAGE_DRIVER || 'local',
     type: 'string',
     group: 'Storage / AWS S3',
+    options: [
+      { value: 'local', label: 'Local (backend/uploads)' },
+      { value: 's3', label: 'AWS S3' },
+    ],
     coerce: (raw) => {
       const v = stringCoerce(raw).toLowerCase();
       if (v && v !== 'local' && v !== 's3') {
@@ -206,6 +275,10 @@ const SETTINGS = {
     defaultGetter: () => 'false',
     type: 'string',
     group: 'Storage / AWS S3',
+    options: [
+      { value: 'false', label: 'false (AWS default)' },
+      { value: 'true', label: 'true (path-style, MinIO etc.)' },
+    ],
     coerce: (raw) => {
       const v = stringCoerce(raw).toLowerCase();
       if (v && v !== 'true' && v !== 'false') {
@@ -280,6 +353,9 @@ async function listAll() {
       secret: !!spec.secret,
       encrypted: !!spec.encrypted,
       isPublic: !!spec.isPublic,
+      // Enum-style options for fields the admin UI should render as a
+      // dropdown rather than a free-text input.
+      options: Array.isArray(spec.options) ? spec.options : null,
       hasValue: Boolean(rawValue),
       updatedAt: stored ? stored.updatedAt : null,
     };

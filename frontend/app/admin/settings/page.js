@@ -22,6 +22,7 @@ import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import Card from '@/components/common/Card';
 import Button from '@/components/common/Button';
 import Input from '@/components/common/Input';
+import Select from '@/components/common/Select';
 import {
   listSettings,
   updateSetting,
@@ -385,6 +386,18 @@ function SettingRow({
                     : ''
                 }
                 className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-xs text-slate-800 transition focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200"
+              />
+            </div>
+          ) : Array.isArray(s.options) && s.options.length > 0 ? (
+            // Enum-style settings (Razorpay mode, storage driver, etc.)
+            // render as a dropdown so a typo can't slip into the DB.
+            <div className="w-full flex-1 sm:max-w-md">
+              <Select
+                label="New value"
+                name={s.key}
+                value={draft}
+                onChange={(e) => onDraftChange(e.target.value)}
+                options={s.options}
               />
             </div>
           ) : (

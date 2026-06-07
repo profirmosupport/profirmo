@@ -31,30 +31,71 @@ let _client = null;
 let _clientFingerprint = null;
 
 /**
- * Resolve Razorpay credentials, admin-settings first, env fallback. Lets
- * the admin rotate keys from /admin/settings without a redeploy.
+ * Read the active Razorpay mode ('live' | 'test') from admin settings.
+ * Defaults to 'test' so a brand-new install never accidentally charges
+ * a real card. Env override: RAZORPAY_MODE.
+ */
+async function resolveRazorpayMode() {
+  try {
+    const m = (await adminSettingsService.getString('razorpayMode')) || '';
+    if (m === 'live' || m === 'test') return m;
+  } catch {
+    /* fall back */
+  }
+  return (process.env.RAZORPAY_MODE || 'test').toLowerCase() === 'live'
+    ? 'live'
+    : 'test';
+}
+
+/**
+ * Resolve Razorpay credentials for the active mode. Test mode reads
+ * the `razorpayKeyIdTest` / `razorpayKeySecretTest` keys, live mode
+ * reads the plain `razorpayKeyId` / `razorpayKeySecret`. Env fallback
+ * preserves backwards compatibility with deployments that still set
+ * RAZORPAY_KEY_ID directly.
  */
 async function resolveRazorpayCreds() {
+  const mode = await resolveRazorpayMode();
+  const idKey = mode === 'test' ? 'razorpayKeyIdTest' : 'razorpayKeyId';
+  const secretKey =
+    mode === 'test' ? 'razorpayKeySecretTest' : 'razorpayKeySecret';
   let keyId = '';
   let keySecret = '';
   try {
-    keyId = (await adminSettingsService.getString('razorpayKeyId')) || '';
-    keySecret =
-      (await adminSettingsService.getString('razorpayKeySecret')) || '';
+    keyId = (await adminSettingsService.getString(idKey)) || '';
+    keySecret = (await adminSettingsService.getString(secretKey)) || '';
   } catch {
     /* DB unreachable — fall back to env */
   }
-  if (!keyId) keyId = env.razorpay.keyId || '';
-  if (!keySecret) keySecret = env.razorpay.keySecret || '';
-  return { keyId, keySecret };
+  if (!keyId) {
+    keyId =
+      mode === 'test'
+        ? process.env.RAZORPAY_KEY_ID_TEST || env.razorpay.keyId || ''
+        : env.razorpay.keyId || '';
+  }
+  if (!keySecret) {
+    keySecret =
+      mode === 'test'
+        ? process.env.RAZORPAY_KEY_SECRET_TEST ||
+          env.razorpay.keySecret ||
+          ''
+        : env.razorpay.keySecret || '';
+  }
+  return { keyId, keySecret, mode };
 }
 
 async function resolveRazorpayWebhookSecret() {
+  const mode = await resolveRazorpayMode();
+  const dbKey =
+    mode === 'test' ? 'razorpayWebhookSecretTest' : 'razorpayWebhookSecret';
   try {
-    const v = await adminSettingsService.getString('razorpayWebhookSecret');
+    const v = await adminSettingsService.getString(dbKey);
     if (v) return v;
   } catch {
     /* fall back */
+  }
+  if (mode === 'test' && process.env.RAZORPAY_WEBHOOK_SECRET_TEST) {
+    return process.env.RAZORPAY_WEBHOOK_SECRET_TEST;
   }
   return env.razorpay.webhookSecret || '';
 }
@@ -87,6 +128,14 @@ async function razorpay() {
 async function getPublicKeyId() {
   const { keyId } = await resolveRazorpayCreds();
   return keyId || '';
+}
+
+// Public mode + keyId together — lets the browser show a "TEST MODE"
+// indicator alongside the Checkout button when admin has the test
+// keys active.
+async function getPublicConfig() {
+  const { keyId, mode } = await resolveRazorpayCreds();
+  return { keyId: keyId || '', mode, configured: Boolean(keyId) };
 }
 
 /**
@@ -671,4 +720,5 @@ module.exports = {
   resolveRazorpayCreds,
   resolveRazorpayWebhookSecret,
   getPublicKeyId,
+  getPublicConfig,
 };

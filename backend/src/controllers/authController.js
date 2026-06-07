@@ -93,11 +93,8 @@ const signup = asyncHandler(async (req, res) => {
 const razorpayConfig = asyncHandler(async (req, res) => {
   // Lazy require to avoid pulling Razorpay SDK on routes that don't need it.
   const paymentsService = require('../services/paymentsService');
-  const keyId = await paymentsService.getPublicKeyId();
-  return successResponse(res, 200, 'Razorpay config', {
-    keyId: keyId || '',
-    configured: Boolean(keyId),
-  });
+  const cfg = await paymentsService.getPublicConfig();
+  return successResponse(res, 200, 'Razorpay config', cfg);
 });
 
 // --- Phone-OTP send / verify ----------------------------------------------
