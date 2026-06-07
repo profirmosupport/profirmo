@@ -188,6 +188,15 @@ router.get('/newsletter', newsletterController.adminList);
 router.patch('/newsletter/:id', newsletterController.adminSetStatus);
 router.delete('/newsletter/:id', newsletterController.adminRemove);
 
+// --- Support / contact tickets -------------------------------------------
+// /contact page submissions. Admin triages here under Pipeline → Support.
+const supportController = require('../controllers/supportController');
+router.get('/support', supportController.adminList);
+router.get('/support/:id', supportController.adminGet);
+router.patch('/support/:id/status', supportController.adminSetStatus);
+router.patch('/support/:id/note', supportController.adminSetNote);
+router.delete('/support/:id', supportController.adminRemove);
+
 // --- Platform settings (markup %, etc.) ---------------------------------
 router.get('/settings', adminSettings.list);
 router.patch('/settings/:key', adminSettings.update);

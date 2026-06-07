@@ -115,7 +115,12 @@
       "Bash(node -c src/controllers/newsletterController.js)",
       "Bash(node -c src/routes/newsletterRoutes.js)",
       "Bash(node -c src/app.js)",
-      "Bash(./node_modules/.bin/eslint app/layout.js tailwind.config.js)"
+      "Bash(./node_modules/.bin/eslint app/layout.js tailwind.config.js)",
+      "Bash(node -c src/models/SupportTicket.js)",
+      "Bash(node -c src/services/supportService.js)",
+      "Bash(node -c src/controllers/supportController.js)",
+      "Bash(node -c src/routes/supportRoutes.js)",
+      "Bash(node -c src/server.js)"
     ]
   }
 }

@@ -20,6 +20,8 @@ const SYNC_ORDER = [
   db.AuditLog,
   // Newsletter subscribers — no FK dependency.
   db.NewsletterSubscriber,
+  // Support tickets — no FK dependency (userId is loose).
+  db.SupportTicket,
   db.Upload,
   db.Session,
   db.Booking,

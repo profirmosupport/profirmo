@@ -189,6 +189,22 @@ const SETTINGS = {
     format: stringCoerce,
   },
 
+  // --- Support / contact form ------------------------------------------
+  // Destination inbox for the /contact page submissions. Defaults to the
+  // public-facing support address; admin can route the notifications
+  // elsewhere without code changes.
+  supportEmail: {
+    label: 'Support inbox',
+    description:
+      'Email address that receives every /contact form submission. Defaults to profirmo.support@gmail.com. Change to route support notifications to your ticketing system / shared inbox.',
+    defaultGetter: () =>
+      process.env.SUPPORT_EMAIL || 'profirmo.support@gmail.com',
+    type: 'string',
+    group: 'Support',
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+
   // --- Storage / AWS S3 -------------------------------------------------
   // The `storage_driver` key flips the entire upload pipeline between
   // local disk and AWS S3 at runtime (no restart required). The S3

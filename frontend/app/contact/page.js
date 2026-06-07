@@ -1,13 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { Mail, Phone, MapPin, CheckCircle2, Clock } from 'lucide-react';
+import { Mail, Phone, MapPin, CheckCircle2, Clock, Loader2, AlertCircle } from 'lucide-react';
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
 import Card from '@/components/common/Card';
 import Input from '@/components/common/Input';
 import Button from '@/components/common/Button';
 import { useLanguage } from '@/components/LanguageProvider';
+import { post } from '@/services/api';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -18,7 +19,7 @@ export default function ContactPage() {
     {
       icon: Mail,
       label: t('contact.details.email.label'),
-      value: 'support@profirmo.in',
+      value: 'profirmo.support@gmail.com',
       hint: t('contact.details.email.hint'),
     },
     {
@@ -43,12 +44,15 @@ export default function ContactPage() {
   });
   const [errors, setErrors] = useState({});
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   function handleChange(e) {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
     setErrors((prev) => ({ ...prev, [name]: undefined }));
     setSubmitted(false);
+    setSubmitError('');
   }
 
   function validate() {
@@ -64,16 +68,33 @@ export default function ContactPage() {
     return next;
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
+    if (submitting) return;
     const next = validate();
     setErrors(next);
     if (Object.keys(next).length > 0) {
       setSubmitted(false);
       return;
     }
-    setSubmitted(true);
-    setForm({ name: '', email: '', subject: '', message: '' });
+    setSubmitting(true);
+    setSubmitError('');
+    try {
+      await post('/api/support/contact', {
+        name: form.name.trim(),
+        email: form.email.trim(),
+        subject: form.subject.trim(),
+        message: form.message.trim(),
+      });
+      setSubmitted(true);
+      setForm({ name: '', email: '', subject: '', message: '' });
+    } catch (err) {
+      setSubmitError(
+        err.message || 'Could not send your message. Please try again.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -181,9 +202,22 @@ export default function ContactPage() {
                         </p>
                       )}
                     </div>
-                    <Button type="submit" size="lg">
-                      {t('contact.form.submit')}
+                    <Button type="submit" size="lg" disabled={submitting}>
+                      {submitting ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" />
+                          Sending…
+                        </>
+                      ) : (
+                        t('contact.form.submit')
+                      )}
                     </Button>
+                    {submitError && (
+                      <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                        <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                        <span>{submitError}</span>
+                      </div>
+                    )}
                   </form>
                 </Card>
               </div>

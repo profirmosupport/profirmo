@@ -217,7 +217,10 @@ const NAV_BY_ROLE = {
         },
       ],
     },
-    // Sales pipeline: Lead -> Opportunity -> Client.
+    // Sales + audience pipeline: Lead -> Opportunity -> Client, plus
+    // Support tickets (contact-page submissions) and Newsletter
+    // subscribers (footer + popup signups). All grouped here because
+    // they're inbound funnels admin triages day to day.
     {
       labelKey: 'dash.nav.pipeline',
       icon: TrendingUp,
@@ -227,6 +230,16 @@ const NAV_BY_ROLE = {
           labelKey: 'dash.nav.opportunities',
           href: '/admin/opportunities',
           icon: TrendingUp,
+        },
+        {
+          labelKey: 'dash.nav.support',
+          href: '/admin/support',
+          icon: Mail,
+        },
+        {
+          labelKey: 'dash.nav.newsletter',
+          href: '/admin/newsletter',
+          icon: Mail,
         },
       ],
     },
@@ -286,11 +299,6 @@ const NAV_BY_ROLE = {
           labelKey: 'dash.nav.blogTags',
           href: '/admin/blog/tags',
           icon: Hash,
-        },
-        {
-          labelKey: 'dash.nav.newsletter',
-          href: '/admin/newsletter',
-          icon: Mail,
         },
       ],
     },

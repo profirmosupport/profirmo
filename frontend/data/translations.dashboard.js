@@ -21,6 +21,7 @@ export const translations = {
     'dash.nav.blogCategories': 'Categories',
     'dash.nav.blogTags': 'Tags',
     'dash.nav.newsletter': 'Newsletter',
+    'dash.nav.support': 'Support',
     'dash.nav.subscriptions': 'Subscriptions',
     'dash.nav.subscription': 'Subscription',
     // Top-level admin section groupings.
@@ -339,6 +340,7 @@ export const translations = {
     'dash.nav.blogCategories': 'श्रेणियाँ',
     'dash.nav.blogTags': 'टैग्स',
     'dash.nav.newsletter': 'न्यूज़लेटर',
+    'dash.nav.support': 'सहायता',
     'dash.nav.subscriptions': 'सब्सक्रिप्शन',
     'dash.nav.subscription': 'सब्सक्रिप्शन',
     'dash.nav.userManagement': 'यूज़र मैनेजमेंट',
