@@ -132,15 +132,20 @@ export default async function CityLandingPage({ params }) {
   const stateLabel = city.state ? `, ${city.state.name}` : '';
 
   return (
-    <div className="flex min-h-screen flex-col">
+    // `overflow-x-hidden` clips any stray horizontal overflow (a long
+    // unbreakable string, a 100vw decorative element) from punching
+    // out a right-side margin on small screens. `w-full` makes the
+    // root claim the full viewport width so the body's default
+    // collapsing margin can't leak through either.
+    <div className="flex min-h-screen w-full flex-col overflow-x-hidden">
       <Header />
       <main className="flex-1 bg-slate-50">
         <section className="border-b border-slate-200 bg-gradient-to-br from-amber-50 via-white to-teal-50">
-          <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
+          <div className="mx-auto w-full max-w-5xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
             <p className="text-xs font-semibold uppercase tracking-widest text-amber-700">
               City directory
             </p>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+            <h1 className="mt-2 break-words text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
               Legal &amp; Tax Experts in {city.name}
             </h1>
             <p className="mt-3 max-w-2xl text-sm text-slate-600 sm:text-base">

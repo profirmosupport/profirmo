@@ -167,7 +167,9 @@ export default function ProfessionalProfilePage() {
         <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
           <ProfessionalProfileHeader professional={professional} />
 
-          {aboutText && (
+          {(aboutText ||
+            (Array.isArray(professional.subCategoryTree) &&
+              professional.subCategoryTree.length > 0)) && (
             <Card>
               <div className="mb-3 flex items-center gap-2">
                 <FileText size={18} className="text-blue-600" />
@@ -175,9 +177,61 @@ export default function ProfessionalProfilePage() {
                   {t('profDetail.about')}
                 </h2>
               </div>
-              <p className="text-sm leading-relaxed text-slate-600">
-                {aboutText}
-              </p>
+              {aboutText && (
+                <p className="text-sm leading-relaxed text-slate-600">
+                  {aboutText}
+                </p>
+              )}
+              {Array.isArray(professional.subCategoryTree) &&
+                professional.subCategoryTree.length > 0 && (
+                  <div className="mt-5 space-y-5 border-t border-slate-100 pt-5">
+                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                      Skills &amp; specialisations
+                    </p>
+                    <ul className="space-y-5">
+                      {professional.subCategoryTree.map((root) => (
+                        <li key={root.id}>
+                          {/* Tier-1: sub-category */}
+                          <p className="text-sm font-bold text-slate-900">
+                            {root.name}
+                          </p>
+                          {Array.isArray(root.children) &&
+                          root.children.length > 0 ? (
+                            <ul className="mt-2 ml-3 space-y-3 border-l border-slate-200 pl-4">
+                              {root.children.map((sub) => (
+                                <li key={sub.id}>
+                                  {/* Tier-2: sub-sub-category */}
+                                  <p className="text-sm font-semibold text-slate-700">
+                                    {sub.name}
+                                  </p>
+                                  {/* Tier-3: tags */}
+                                  {Array.isArray(sub.tags) &&
+                                    sub.tags.length > 0 && (
+                                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                        {sub.tags.map((tag) => (
+                                          <span
+                                            key={tag.id}
+                                            className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-inset ring-amber-200"
+                                          >
+                                            {tag.name}
+                                          </span>
+                                        ))}
+                                        {sub.tagOverflow > 0 && (
+                                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-600">
+                                            +{sub.tagOverflow} more
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
             </Card>
           )}
 

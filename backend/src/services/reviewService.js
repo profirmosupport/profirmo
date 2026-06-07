@@ -309,12 +309,51 @@ const create = async ({
  * rows surface here — consultation + client reviews are anchored to specific
  * bookings and shouldn't leak into the public profile.
  */
-const getByProfessional = async (professionalId) =>
-  Review.findAll({
+/**
+ * Public reviews for a professional, enriched with each reviewer's
+ * profile photo so the profile-page review list can render an avatar
+ * instead of always falling back to the name-initials placeholder.
+ *
+ * `clientPhoto` (and the back-compat alias `authorPhoto`) is null when
+ * the reviewer hasn't set a profile photo or the linked User row is
+ * gone (deleted account).
+ */
+const getByProfessional = async (professionalId) => {
+  const rows = await Review.findAll({
     where: { professionalId, status: PUBLISHED, kind: 'professional' },
     order: [['createdAt', 'DESC']],
     raw: true,
   });
+  if (rows.length === 0) return rows;
+
+  // Reviews carry both `userId` and `clientId`; prefer the canonical
+  // userId since older rows sometimes left clientId null.
+  const reviewerIds = [
+    ...new Set(
+      rows.map((r) => r.userId || r.clientId).filter(Boolean)
+    ),
+  ];
+  if (reviewerIds.length === 0) return rows;
+
+  const users = await User.findAll({
+    where: { id: { [Op.in]: reviewerIds } },
+    attributes: ['id', 'profilePhoto'],
+    raw: true,
+  });
+  const photoByUser = new Map(
+    users.map((u) => [u.id, u.profilePhoto || null])
+  );
+
+  return rows.map((r) => {
+    const key = r.userId || r.clientId;
+    const photo = key ? photoByUser.get(key) : null;
+    return {
+      ...r,
+      clientPhoto: photo || null,
+      authorPhoto: photo || null,
+    };
+  });
+};
 
 /**
  * Published reviews for a firm — the collective reviews of every professional

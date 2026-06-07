@@ -40,6 +40,7 @@ const loadSubCategoryLookup = async () => {
       name: s.name,
       categoryId: s.categoryId,
       categoryName: catNameById.get(s.categoryId) || '',
+      parentSubCategoryId: s.parentSubCategoryId || null,
     });
   }
   subCategoryCache = byId;
@@ -52,9 +53,119 @@ const resolveSubCategories = (ids, lookup) => {
   const out = [];
   for (const id of ids) {
     const row = lookup.get(id);
-    if (row) out.push(row);
+    if (row) {
+      // Surface the parent's NAME directly so consumers don't have to
+      // do a second lookup. Useful for the public profile page that
+      // nests tier-3 tags under their tier-2 heading.
+      const parent = row.parentSubCategoryId
+        ? lookup.get(row.parentSubCategoryId)
+        : null;
+      out.push({
+        ...row,
+        parentSubCategoryName: parent ? parent.name : null,
+      });
+    }
   }
   return out;
+};
+
+// Hard cap on tier-3 tags we render under each tier-2 so a pro
+// tagged with a wide tier-1 doesn't expand into a 1000-chip wall.
+// Beyond this number, the rest stay accessible via the
+// /professionals filter UI.
+const TAG_CAP_PER_SUB_SUB = 60;
+
+/**
+ * Build a 3-tier render tree for the public profile page's "Skills &
+ * specialisations" block:
+ *   [{ id, name, children: [{ id, name, tags: [{id, name}, ...] }] }, ...]
+ *   tier-1 sub-category  ─┬─ tier-2 sub-sub-category  ── tier-3 tags
+ *                         └─ tier-2 sub-sub-category  ── tier-3 tags
+ *
+ * Selection-to-tree rules:
+ *   - tagged tier-1 → expands into ALL of its tier-2 children, each
+ *     with ALL of their tier-3 children (the pro "covers" the whole
+ *     area)
+ *   - tagged tier-2 → expands into that tier-2 + all its tier-3 tags
+ *   - tagged tier-3 → adds that single tag chip under its tier-2
+ *     parent; the tier-2 row itself is included even if not tagged
+ * Duplicate / overlapping selections collapse into a single tree.
+ */
+const buildSkillTree = (ids, lookup) => {
+  if (!Array.isArray(ids) || ids.length === 0) return [];
+
+  // Index children by parent id once.
+  const childrenByParent = new Map();
+  for (const row of lookup.values()) {
+    const p = row.parentSubCategoryId || null;
+    if (!childrenByParent.has(p)) childrenByParent.set(p, []);
+    childrenByParent.get(p).push(row);
+  }
+  const sortByName = (arr) =>
+    arr.sort((a, b) =>
+      String(a.name).localeCompare(String(b.name), undefined, {
+        sensitivity: 'base',
+      })
+    );
+
+  // Expand each tagged id into a set covering itself + descendants +
+  // its ancestor chain. Descendants surface the full subtree;
+  // ancestors give the tree its grouping headers.
+  const expanded = new Set();
+  const collectDescendants = (id) => {
+    if (expanded.has(id)) return;
+    expanded.add(id);
+    for (const k of childrenByParent.get(id) || []) collectDescendants(k.id);
+  };
+  for (const id of ids) {
+    if (!lookup.has(id)) continue;
+    collectDescendants(id);
+    // Walk up so the tree always roots at a tier-1.
+    let cur = lookup.get(id);
+    while (cur && cur.parentSubCategoryId) {
+      cur = lookup.get(cur.parentSubCategoryId);
+      if (cur) expanded.add(cur.id);
+    }
+  }
+
+  // tier-1 roots = sub-cats with no parent that are in the expanded set
+  const tierOneRoots = [];
+  for (const id of expanded) {
+    const row = lookup.get(id);
+    if (row && !row.parentSubCategoryId) tierOneRoots.push(row);
+  }
+
+  return sortByName(
+    tierOneRoots.map((root) => {
+      const tier2 = (childrenByParent.get(root.id) || []).filter((r) =>
+        expanded.has(r.id)
+      );
+      return {
+        id: root.id,
+        name: root.name,
+        categoryId: root.categoryId,
+        categoryName: root.categoryName,
+        children: sortByName(
+          tier2.map((sub) => {
+            const tier3 = (childrenByParent.get(sub.id) || []).filter((r) =>
+              expanded.has(r.id)
+            );
+            return {
+              id: sub.id,
+              name: sub.name,
+              tags: sortByName(
+                tier3.slice(0, TAG_CAP_PER_SUB_SUB).map((t) => ({
+                  id: t.id,
+                  name: t.name,
+                }))
+              ),
+              tagOverflow: Math.max(0, tier3.length - TAG_CAP_PER_SUB_SUB),
+            };
+          })
+        ),
+      };
+    })
+  );
 };
 
 /**
@@ -675,6 +786,12 @@ const getById = async (id) => {
       base.subCategoryIds,
       subCategoryLookup
     );
+    // Two-tier skill tree (sub-sub-category → tags) for the public
+    // profile page's "About" section.
+    base.subCategoryTree = buildSkillTree(
+      base.subCategoryIds,
+      subCategoryLookup
+    );
     return applyOneReviewStats({
       ...base,
       about: detail.about || '',
@@ -744,12 +861,15 @@ const updateRate = async (id, perMinuteRate) => {
  * Filter `kind: 'professional'` so consultation + client reviews — both
  * anchored to specific bookings — never leak into the public profile.
  */
-const getReviews = async (id) =>
-  Review.findAll({
-    where: { professionalId: id, status: 'PUBLISHED', kind: 'professional' },
-    order: [['createdAt', 'DESC']],
-    raw: true,
-  });
+const getReviews = async (id) => {
+  // Delegate to reviewService.getByProfessional so the rows arrive
+  // already enriched with the reviewer's profile photo
+  // (clientPhoto / authorPhoto). The /api/professionals/:id/reviews
+  // route is the one the public profile page actually hits.
+  // eslint-disable-next-line global-require
+  const reviewService = require('./reviewService');
+  return reviewService.getByProfessional(id);
+};
 
 /** Get a professional's availability slots. Returns null if not found. */
 const getAvailability = async (id) => {

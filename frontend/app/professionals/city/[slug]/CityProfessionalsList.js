@@ -46,7 +46,10 @@ export default function CityProfessionalsList({ cityId, cityName }) {
   }, [cityId]);
 
   return (
-    <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+    // `w-full` + `min-w-0` keep the grid from ever exceeding the
+    // viewport width on mobile when a card's child has a min-content
+    // wider than the column (long emails, unbreakable URLs, etc.).
+    <section className="mx-auto w-full min-w-0 max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
       {loading ? (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2, 3, 4, 5].map((i) => (
@@ -80,7 +83,7 @@ export default function CityProfessionalsList({ cityId, cityName }) {
               <ArrowRight size={14} />
             </Link>
           </div>
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid min-w-0 gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {items.map((pro) => (
               <ProfessionalCard key={pro.id} professional={pro} />
             ))}
