@@ -19,7 +19,7 @@ const SITE_URL =
     ? 'https://profirmo.com'
     : 'http://localhost:3000');
 
-const TITLE = 'Pro Firmo — AI-Powered Legal & Tax Consultation';
+const TITLE = 'Pro Firmo | AI-Powered Legal & Tax Consultation Platform';
 const DESCRIPTION =
   'Pro Firmo lets you explain your case to AI first, then instantly matches you with the most suitable verified lawyer, advocate, tax expert or professional firm.';
 

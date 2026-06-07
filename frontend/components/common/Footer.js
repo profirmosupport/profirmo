@@ -337,6 +337,12 @@ export default function Footer() {
                 {t('footer.linkTerms')}
               </Link>
               <Link
+                href="/sitemap"
+                className="text-slate-500 transition hover:text-teal-300"
+              >
+                {t('footer.linkSitemap')}
+              </Link>
+              <Link
                 href="/privacy"
                 className="text-slate-500 transition hover:text-teal-300"
               >

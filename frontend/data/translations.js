@@ -42,6 +42,7 @@ export const translations = {
     'footer.linkRegisterFirm': 'Register your firm',
     'footer.linkLogin': 'Sign in',
     'footer.linkTerms': 'Terms & Conditions',
+    'footer.linkSitemap': 'Sitemap',
     'footer.linkPrivacy': 'Privacy Policy',
     'footer.cityTitle': 'Find legal & tax experts across India',
     'footer.cityIntro':
@@ -79,8 +80,8 @@ export const translations = {
 
     // --- Hero section ---
     'hero.eyebrow': 'AI-powered consultation matching',
-    'hero.headingLead': 'Explain your case to AI. Get matched with',
-    'hero.headingHighlight': 'the right expert.',
+    'hero.headingLead': 'Get Matched with the Right Legal or Tax Expert',
+    'hero.headingHighlight': 'in Minutes',
     'hero.subtext':
       'AI-powered legal and tax consultation, matched with the right professional in minutes. Describe your issue in plain language — our AI guides you to a verified lawyer, advocate or tax expert.',
     'hero.inputPlaceholder': 'Describe your legal or tax issue…',
@@ -341,6 +342,7 @@ export const translations = {
     'footer.linkRegisterFirm': 'अपनी फर्म पंजीकृत करें',
     'footer.linkLogin': 'साइन इन करें',
     'footer.linkTerms': 'नियम एवं शर्तें',
+    'footer.linkSitemap': 'साइटमैप',
     'footer.linkPrivacy': 'गोपनीयता नीति',
     'footer.cityTitle': 'भारत भर में कानूनी और कर विशेषज्ञ खोजें',
     'footer.cityIntro':
@@ -378,8 +380,8 @@ export const translations = {
 
     // --- Hero section ---
     'hero.eyebrow': 'एआई-आधारित परामर्श मिलान',
-    'hero.headingLead': 'अपना मामला एआई को बताइए और मिलान पाइए',
-    'hero.headingHighlight': 'सही विशेषज्ञ से।',
+    'hero.headingLead': 'सही कानूनी या कर विशेषज्ञ से मिलान पाइए',
+    'hero.headingHighlight': 'मिनटों में',
     'hero.subtext':
       'एआई-आधारित कानूनी और कर परामर्श, जो मिनटों में आपको सही प्रोफेशनल से जोड़ता है। अपनी समस्या सरल भाषा में बताइए — हमारी एआई आपको सत्यापित वकील, अधिवक्ता या कर विशेषज्ञ तक पहुँचाती है।',
     'hero.inputPlaceholder': 'अपनी कानूनी या कर समस्या बताइए…',
