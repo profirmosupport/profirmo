@@ -1,0 +1,69 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="brand" x1="60" y1="40" x2="980" y2="1000" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ED8814"/>
+      <stop offset="0.50" stop-color="#E07C0C"/>
+      <stop offset="0.82" stop-color="#4F9457"/>
+      <stop offset="1" stop-color="#2C8A6A"/>
+    </linearGradient>
+    <linearGradient id="cream" x1="0" y1="290" x2="0" y2="840" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F8F3EA"/>
+      <stop offset="1" stop-color="#EBE3D2"/>
+    </linearGradient>
+    <radialGradient id="vign" cx="0.32" cy="0.26" r="0.95">
+      <stop offset="0.55" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.14"/>
+    </radialGradient>
+    <filter id="lift" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="6" dy="13" stdDeviation="15" flood-color="#3a1a00" flood-opacity="0.34"/>
+    </filter>
+    <clipPath id="rsq">
+      <rect x="0" y="0" width="1024" height="1024" rx="150" ry="150"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#rsq)">
+    <rect width="1024" height="1024" fill="url(#brand)"/>
+    <rect width="1024" height="1024" fill="url(#vign)"/>
+
+    <g transform="translate(-48,-6)">
+    <!-- F (sits behind the P) -->
+    <g filter="url(#lift)">
+      <path fill="url(#cream)" d="
+        M566 360
+        L884 360
+        L884 488
+        L694 488
+        L694 566
+        L838 566
+        L838 686
+        L694 686
+        L694 824
+        L566 824
+        Z"/>
+    </g>
+
+    <!-- P (in front, overlaps F stem) -->
+    <g filter="url(#lift)">
+      <path fill="url(#cream)" fill-rule="evenodd" d="
+        M262 300
+        H470
+        A168 168 0 0 1 470 636
+        H392
+        V824
+        H262
+        Z
+        M392 430
+        H470
+        A78 78 0 0 1 470 586
+        H392
+        Z"/>
+    </g>
+    </g>
+
+    <!-- WORDMARK -->
+    <text x="512" y="922" text-anchor="middle"
+      font-family="Poppins" font-weight="500" font-size="86"
+      letter-spacing="24" fill="#F3EDE0">PROFIRMO</text>
+  </g>
+</svg>

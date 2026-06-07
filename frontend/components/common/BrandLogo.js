@@ -1,7 +1,17 @@
 import Link from 'next/link';
 
-// Shared Pro Firmo brand logo — used in the header, dashboard sidebar and
-// auth pages so the logo is identical everywhere.
+// Shared Pro Firmo brand logo — used in the header, dashboard sidebar
+// and auth pages so the logo is identical everywhere.
+//
+// Two presentations swap at the `lg` breakpoint to match the header's
+// own mobile / desktop split:
+//   - Mobile / tablet  -> the round PF brand mark image at
+//                         /images/profirmo-logo.png, sized to fill the
+//                         header height (no wordmark — saves room).
+//   - Desktop (lg+)    -> the "Pro Firmo" wordmark only, enlarged to
+//                         the maximum height the header can carry. No
+//                         icon, no gradient square — the wordmark is
+//                         the logo at this width.
 //
 // Props:
 //   href     - link target (default '/'); pass null to render without a link
@@ -15,30 +25,49 @@ export default function BrandLogo({
   size = 'md',
   className = '',
 }) {
-  const mark = size === 'sm' ? 'h-8 w-8' : 'h-9 w-9';
-  const markText = size === 'sm' ? 'text-[12px]' : 'text-[13px]';
-  const word = size === 'sm' ? 'text-base' : 'text-lg';
+  // Mark image fits inside the 64px (h-16) header — keep ~4px breathing
+  // room at the top and bottom so it doesn't kiss the divider line.
+  const mark = size === 'sm' ? 'h-10 w-10' : 'h-14 w-14';
+  // Wordmark at desktop is big enough to anchor the nav row visually.
+  // `sm` keeps the wordmark a touch smaller for the auth pages where
+  // it sits inside a compact card.
+  const word = size === 'sm' ? 'text-2xl' : 'text-3xl';
   const wordColor = variant === 'dark' ? 'text-white' : 'text-slate-900';
   const accent = variant === 'dark' ? 'text-gradient-light' : 'text-gradient';
-  const ring = variant === 'dark' ? 'ring-slate-900' : 'ring-white';
+
+  // "Live" indicator — pulsing green dot anchored to the logo's
+  // top-right corner on both breakpoints. The outer span is an
+  // `animate-ping` halo that fades out, the inner dot is solid so it
+  // never disappears entirely (pure ping looks empty between frames).
+  const LiveDot = () => (
+    <span
+      aria-hidden="true"
+      className="pointer-events-none absolute -right-1 -top-1 flex h-2.5 w-2.5"
+    >
+      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
+    </span>
+  );
 
   const content = (
     <span className={`group flex items-center gap-2.5 ${className}`}>
-      <span
-        className={`relative grid ${mark} place-items-center rounded-xl bg-gradient-to-br from-amber-500 via-amber-600 to-teal-600 font-extrabold tracking-tight text-white shadow-glow-sm transition group-hover:shadow-glow`}
-      >
-        <span className={markText}>PF</span>
-        <span
-          className={`absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-teal-400 ring-2 ${ring}`}
+      {/* Mobile / tablet: brand mark image with a live-dot overlay. */}
+      <span className={`relative inline-block lg:hidden ${mark}`}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/images/profirmo-logo.png"
+          alt="Pro Firmo"
+          className="h-full w-full object-contain"
         />
+        <LiveDot />
       </span>
-      {/* Wordmark — hidden on small screens so the mobile header
-          shows just the brand mark, restored at the `sm` breakpoint
-          and up. */}
+      {/* Desktop (lg+): wordmark with the same live-dot overlay
+          anchored to its top-right corner. */}
       <span
-        className={`hidden sm:inline ${word} font-bold tracking-tight ${wordColor}`}
+        className={`relative hidden ${word} font-bold tracking-tight ${wordColor} lg:inline-block`}
       >
         Pro<span className={accent}> Firmo</span>
+        <LiveDot />
       </span>
     </span>
   );
