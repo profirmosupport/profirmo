@@ -8,6 +8,23 @@
 
 const { Upload } = require('../models');
 const storageService = require('./storageService');
+const { compressToTargetBytes } = require('../utils/imageCompressor');
+
+// Per-category compression ceiling for IMAGE uploads, in bytes. Non-
+// image files (PDFs, docs) skip compression entirely — see
+// imageCompressor.js. Categories not listed here keep their original
+// bytes, matching the "don't change the size for other attached
+// files" spec.
+const IMAGE_SIZE_CEILING = {
+  profile_photo: 200 * 1024,
+  cover_photo: 200 * 1024,
+  firm_logo: 200 * 1024,
+  // Case note + update attachments — pictures get re-encoded to fit
+  // 300 KB; PDFs and docs go through untouched.
+  case_note: 300 * 1024,
+  booking_note: 300 * 1024,
+  case_file: 300 * 1024,
+};
 
 // Map the existing upload categories (used by the /api/files API) onto
 // the storage types the storageService understands. Both share the same
@@ -70,8 +87,16 @@ const safeOriginalName = (raw) => {
  */
 const createUpload = async ({ userId, category, caseId, file }) => {
   const cleanOriginal = safeOriginalName(file.originalname);
+  // Best-effort image compression before persistence. Non-image MIME
+  // types pass through untouched (the helper short-circuits on
+  // non-compressible types). When the ceiling is undefined no work is
+  // attempted at all.
+  const ceiling = IMAGE_SIZE_CEILING[category] || 0;
+  const buffer = ceiling
+    ? await compressToTargetBytes(file.buffer, file.mimetype, ceiling)
+    : file.buffer;
   const persisted = await storageService.uploadFile({
-    buffer: file.buffer,
+    buffer,
     mimeType: file.mimetype,
     originalName: cleanOriginal,
     type: storageTypeFor(category),
