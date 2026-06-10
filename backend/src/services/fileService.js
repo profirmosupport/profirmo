@@ -85,7 +85,7 @@ const safeOriginalName = (raw) => {
  * @param {object} params.file          - multer memory file
  *   { buffer, mimetype, originalname, size }
  */
-const createUpload = async ({ userId, category, caseId, file }) => {
+const createUpload = async ({ userId, category, caseId, bookingId, file }) => {
   const cleanOriginal = safeOriginalName(file.originalname);
   // Best-effort image compression before persistence. Non-image MIME
   // types pass through untouched (the helper short-circuits on
@@ -101,6 +101,7 @@ const createUpload = async ({ userId, category, caseId, file }) => {
     originalName: cleanOriginal,
     type: storageTypeFor(category),
     caseId: caseId || null,
+    bookingId: bookingId || null,
   });
   const upload = await Upload.create({
     userId,

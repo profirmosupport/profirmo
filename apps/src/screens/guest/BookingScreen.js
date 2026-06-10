@@ -37,6 +37,7 @@ import {
 } from '../../services/paymentService';
 import { imageUrl } from '../../utils/imageUrl';
 import { formatRupees } from '../../utils/formatters';
+import { setItem, STORAGE_KEYS } from '../../utils/storage';
 import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
 
 const BOOKING_TYPES = { INSTANT: 'instant', SCHEDULED: 'scheduled' };
@@ -256,17 +257,21 @@ export default function BookingScreen({ navigation, route }) {
   function dismissConfirmed() {
     setConfirmed(null);
     // Drop the user into their bookings list under the Account tab.
-    // `parent` is the per-stack navigator (Home/Search/etc.); its
-    // `.getParent()` is the bottom-tab navigator that owns the
-    // Account stack. We can't push a sub-route across stacks via
-    // `navigate('GuestSignup', { screen: ... })` reliably, so we
-    // first switch tabs, then ask the Account stack to push.
+    // The chain is: Booking → HomeStack/SearchStack → bottom tabs.
+    // `initial: false` forces the AccountStack to actually push
+    // AccountBookings instead of swallowing the param and rendering
+    // its default AccountDashboard route.
     try {
       const tabs = navigation.getParent?.()?.getParent?.();
-      tabs?.navigate?.('GuestSignup', { screen: 'AccountBookings' });
-    } catch {
-      navigation.goBack?.();
-    }
+      if (tabs) {
+        tabs.navigate('GuestSignup', {
+          screen: 'AccountBookings',
+          initial: false,
+        });
+        return;
+      }
+    } catch {}
+    navigation.goBack?.();
   }
 
   return (
@@ -507,7 +512,21 @@ export default function BookingScreen({ navigation, route }) {
               <Text style={styles.ctaSub}>Bookings need a Profirmo account</Text>
             </View>
             <Pressable
-              onPress={() => exitGuest?.()}
+              onPress={async () => {
+                // Persist the booking target so the next mount of
+                // GuestTabs (after the user signs in) can navigate
+                // straight back into Booking with the same pro and
+                // the user can complete the flow without losing
+                // context.
+                try {
+                  await setItem(STORAGE_KEYS.postAuthIntent, {
+                    screen: 'Booking',
+                    params: { professionalId: id },
+                    ts: Date.now(),
+                  });
+                } catch {}
+                exitGuest?.();
+              }}
               style={({ pressed }) => [
                 styles.ctaBtn,
                 { opacity: pressed ? 0.92 : 1 },

@@ -25,6 +25,11 @@ const TAB_META = {
 
 export default function GuestTabBar({ state, descriptors, navigation }) {
   const { user } = useAuth();
+  // Talk to Firmo is a full-screen experience (voice agent widget) —
+  // hide the bottom bar entirely while that tab is focused so the
+  // microphone UI gets the whole viewport.
+  const currentRouteName = state.routes[state.index]?.name;
+  if (currentRouteName === 'TalkToFirmo') return null;
   return (
     <SafeAreaView edges={['bottom']} style={styles.safe}>
       <View style={styles.bar}>

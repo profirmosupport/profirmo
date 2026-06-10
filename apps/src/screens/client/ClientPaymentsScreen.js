@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import ScreenContainer from '../../components/common/ScreenContainer';
 import Card from '../../components/common/Card';
 import Badge from '../../components/common/Badge';
@@ -24,12 +25,14 @@ export default function ClientPaymentsScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   return (
-    <ScreenContainer scroll={false}>
+    <ScreenContainer scroll={false} hasNavHeader>
       {!loading && rows.length === 0 ? (
         <EmptyState
           icon="credit-card"

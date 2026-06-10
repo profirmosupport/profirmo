@@ -23,7 +23,22 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+
+// Helper: render the per-option icon attached to each option object.
+// `option.icon` is the icon name; `option.iconFamily` selects between
+// 'feather' (default) and 'mci' (MaterialCommunityIcons). Used by the
+// search screen to surface Scale (Legal) / Calculator (Tax) per
+// sub-category option.
+function OptionIcon({ option, color, size }) {
+  if (!option || !option.icon) return null;
+  if (option.iconFamily === 'mci') {
+    return (
+      <MaterialCommunityIcons name={option.icon} size={size} color={color} />
+    );
+  }
+  return <Feather name={option.icon} size={size} color={color} />;
+}
 import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
 
 export default function SearchableSelect({
@@ -153,6 +168,13 @@ function PickerModal({ open, title, options, value, onClose, onSelect }) {
                     pressed && { backgroundColor: colors.surfaceMuted },
                   ]}
                 >
+                  {item.icon ? (
+                    <OptionIcon
+                      option={item}
+                      size={16}
+                      color={active ? colors.primary : colors.textSecondary}
+                    />
+                  ) : null}
                   <Text
                     style={[
                       styles.rowText,
@@ -225,10 +247,14 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 10,
     paddingHorizontal: spacing.lg,
     paddingVertical: 14,
     backgroundColor: colors.surface,
   },
-  rowText: { fontSize: fontSize.base, color: colors.textPrimary },
+  rowText: {
+    flex: 1,
+    fontSize: fontSize.base,
+    color: colors.textPrimary,
+  },
 });

@@ -111,7 +111,9 @@ export default function BookingDetailView({ detail, viewer, onReload }) {
       // overwhelming the dev server with parallel multipart writes.
       const uploaded = [];
       for (const file of files) {
-        const meta = await uploadFile(file, 'booking_note');
+        const meta = await uploadFile(file, 'booking_note', {
+          bookingId: booking.id,
+        });
         uploaded.push({
           url: meta.url,
           name: meta.originalName || file.name,

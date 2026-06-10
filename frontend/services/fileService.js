@@ -160,10 +160,10 @@ export async function resolveFileUrlAsync(url) {
  * @param {File} file
  * @param {string} category    - backend file category (e.g. 'profile_photo')
  * @param {object} [opts]
- * @param {string} [opts.caseId] - when set, the upload is scoped to a
- *   specific case. Case-scoped categories (`case_note`, `booking_note`)
- *   require this; the resulting object lands under
- *   `case-files/<caseId>/<uuid>.<ext>`.
+ * @param {string} [opts.caseId] - required for `case_note`; the file
+ *   lands under `case-files/<caseId>/<uuid>.<ext>`.
+ * @param {string} [opts.bookingId] - required for `booking_note`; the
+ *   file lands under `booking-files/<bookingId>/<uuid>.<ext>`.
  * @returns {Promise<{id,url,originalName,mimeType,size,category,createdAt}>}
  */
 export async function uploadFile(file, category, opts = {}) {
@@ -173,6 +173,7 @@ export async function uploadFile(file, category, opts = {}) {
   const formData = new FormData();
   formData.append('category', category || '');
   if (opts.caseId) formData.append('caseId', opts.caseId);
+  if (opts.bookingId) formData.append('bookingId', opts.bookingId);
   formData.append('file', file);
 
   const headers = {};

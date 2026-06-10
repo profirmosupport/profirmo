@@ -15,7 +15,7 @@ export default function ProfileScreen() {
   // visitor can convert into a real account at any time.
   if (!user && isGuest) {
     return (
-      <ScreenContainer>
+      <ScreenContainer hasNavHeader>
         <Card>
           <View style={styles.guestWrap}>
             <View style={styles.guestIcon}>
@@ -46,7 +46,7 @@ export default function ProfileScreen() {
   if (!user) return null;
   const name = displayName(user);
   return (
-    <ScreenContainer>
+    <ScreenContainer hasNavHeader>
       <Card>
         <View style={styles.head}>
           <View style={styles.avatar}>

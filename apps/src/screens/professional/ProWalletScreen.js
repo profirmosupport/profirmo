@@ -36,7 +36,7 @@ export default function ProWalletScreen() {
   }, [load]);
 
   return (
-    <ScreenContainer refreshing={loading} onRefresh={load}>
+    <ScreenContainer refreshing={loading} onRefresh={load} hasNavHeader>
       <Card>
         <Text style={styles.eyebrow}>Available balance</Text>
         <Text style={styles.balance}>

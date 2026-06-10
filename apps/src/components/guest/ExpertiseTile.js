@@ -7,33 +7,39 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Feather } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
 
-const ICON_MAP = [
-  { match: ['advocate', 'criminal', 'civil', 'litig'], icon: 'shield' },
-  { match: ['divorce', 'family'], icon: 'heart' },
-  { match: ['corporate', 'company'], icon: 'briefcase' },
-  { match: ['tax consult', 'income tax', 'income'], icon: 'trending-up' },
-  { match: ['gst'], icon: 'percent' },
-  { match: ['registration'], icon: 'file-text' },
-  { match: ['audit'], icon: 'check-circle' },
-  { match: ['real estate', 'property'], icon: 'home' },
+// Per-Legal-slug Feather icon overrides. Tax always uses the
+// MaterialCommunityIcons calculator (matching the web). Anything not
+// matched falls back to the parent-category-level default (scale for
+// Legal, calculator for Tax).
+const LEGAL_ICON_MAP = [
+  { match: ['divorce', 'family', 'matrimonial'], icon: 'heart' },
+  { match: ['criminal'], icon: 'shield' },
+  { match: ['corporate', 'commercial'], icon: 'briefcase' },
+  { match: ['real estate', 'rera', 'property', 'construction'], icon: 'home' },
+  { match: ['consumer'], icon: 'file-text' },
+  { match: ['cyber', 'technology', 'data'], icon: 'cpu' },
   { match: ['intellectual', 'patent', 'trademark'], icon: 'award' },
   { match: ['immigr'], icon: 'globe' },
   { match: ['labour', 'employment'], icon: 'users' },
+  { match: ['motor', 'transport'], icon: 'truck' },
+  { match: ['agric'], icon: 'sun' },
+  { match: ['supreme', 'high court'], icon: 'flag' },
 ];
 
-function iconFor(name) {
+function legalIconFor(name) {
   const lower = String(name || '').toLowerCase();
-  for (const m of ICON_MAP) {
+  for (const m of LEGAL_ICON_MAP) {
     if (m.match.some((x) => lower.includes(x))) return m.icon;
   }
-  return 'tag';
+  return null;
 }
 
-export default function ExpertiseTile({ label, parent, onPress }) {
-  const icon = iconFor(label);
+export default function ExpertiseTile({ label, parent, parentSlug, onPress }) {
+  const isTax = String(parentSlug || '').toLowerCase() === 'tax';
+  const legalOverride = !isTax ? legalIconFor(label) : null;
   return (
     <Pressable
       onPress={onPress}
@@ -64,7 +70,27 @@ export default function ExpertiseTile({ label, parent, onPress }) {
         </Svg>
 
         <View style={styles.iconBubble}>
-          <Feather name={icon} size={20} color={colors.textInverse} />
+          {isTax ? (
+            // Tax → calculator, matching the web's Lucide Calculator icon.
+            <MaterialCommunityIcons
+              name="calculator-variant"
+              size={20}
+              color={colors.textInverse}
+            />
+          ) : legalOverride ? (
+            <Feather
+              name={legalOverride}
+              size={20}
+              color={colors.textInverse}
+            />
+          ) : (
+            // Default Legal → scale-balance (Lucide Scale equivalent).
+            <MaterialCommunityIcons
+              name="scale-balance"
+              size={20}
+              color={colors.textInverse}
+            />
+          )}
         </View>
         <View style={styles.captionWrap}>
           {parent ? <Text style={styles.parent}>{parent}</Text> : null}

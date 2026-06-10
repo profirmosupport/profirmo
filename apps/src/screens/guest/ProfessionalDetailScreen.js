@@ -46,6 +46,23 @@ export default function ProfessionalDetailScreen({ navigation, route }) {
   const [reviewsLoading, setReviewsLoading] = useState(true);
   const [composerOpen, setComposerOpen] = useState(false);
 
+  // Has the current user already posted a review for this pro? Used
+  // to hide the "Write review" CTA so they can't submit a second one.
+  // The reviewer is stored under different keys depending on the
+  // response shape — match against every plausible one.
+  const alreadyReviewed = (() => {
+    if (!user || !user.id) return false;
+    return reviews.some((r) => {
+      const reviewerId =
+        r.userId ||
+        r.clientUserId ||
+        r.authorId ||
+        (r.user && r.user.id) ||
+        null;
+      return reviewerId && reviewerId === user.id;
+    });
+  })();
+
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
@@ -240,31 +257,73 @@ export default function ProfessionalDetailScreen({ navigation, route }) {
           ) : null}
         </Card>
 
-        {/* Practice areas (sub-categories the pro registered for). */}
-        {Array.isArray(pro.subCategories) && pro.subCategories.length > 0 ? (
-          <Card>
-            <Text style={styles.sectionLabel}>Practice areas</Text>
-            <View style={styles.catBigRow}>
-              {pro.subCategories.map((c) => (
-                <View key={c.id} style={styles.catBigChip}>
-                  <Feather name="tag" size={11} color={colors.primary} />
-                  <Text style={styles.catBigChipText}>{c.name}</Text>
-                  {c.categoryName ? (
-                    <Text style={styles.catBigParent}>· {c.categoryName}</Text>
-                  ) : null}
-                </View>
-              ))}
-            </View>
-          </Card>
-        ) : null}
-
-        {/* About */}
-        {aboutText ? (
+        {/* About — bio text + the nested 3-tier "Skills &
+            specialisations" tree (tier-1 sub-category → tier-2
+            sub-sub-category → tier-3 tags). Mirrors the web profile
+            page's About card so mobile + web feel identical. */}
+        {(aboutText ||
+          (Array.isArray(pro.subCategoryTree) &&
+            pro.subCategoryTree.length > 0)) && (
           <Card>
             <Text style={styles.sectionLabel}>About</Text>
-            <Text style={styles.body1}>{aboutText}</Text>
+            {aboutText ? <Text style={styles.body1}>{aboutText}</Text> : null}
+            {Array.isArray(pro.subCategoryTree) &&
+            pro.subCategoryTree.length > 0 ? (
+              <View
+                style={{
+                  marginTop: aboutText ? spacing.md : 0,
+                  paddingTop: aboutText ? spacing.md : 0,
+                  borderTopWidth: aboutText ? 1 : 0,
+                  borderTopColor: colors.border,
+                  gap: spacing.md,
+                }}
+              >
+                <Text style={styles.skillSectionTitle}>
+                  Skills &amp; specialisations
+                </Text>
+                {pro.subCategoryTree.map((root) => (
+                  <View key={root.id} style={styles.skillRoot}>
+                    <Text style={styles.skillRootName}>{root.name}</Text>
+                    {Array.isArray(root.children) && root.children.length > 0 ? (
+                      <View style={styles.skillBranchList}>
+                        {root.children.map((sub) => (
+                          <View key={sub.id} style={styles.skillBranch}>
+                            <Text style={styles.skillBranchName}>
+                              {sub.name}
+                            </Text>
+                            {Array.isArray(sub.tags) && sub.tags.length > 0 ? (
+                              <View style={styles.skillTagRow}>
+                                {sub.tags.map((tag) => (
+                                  <View key={tag.id} style={styles.skillTag}>
+                                    <Text style={styles.skillTagText}>
+                                      {tag.name}
+                                    </Text>
+                                  </View>
+                                ))}
+                                {sub.tagOverflow > 0 ? (
+                                  <View
+                                    style={[
+                                      styles.skillTag,
+                                      styles.skillTagMore,
+                                    ]}
+                                  >
+                                    <Text style={styles.skillTagText}>
+                                      +{sub.tagOverflow} more
+                                    </Text>
+                                  </View>
+                                ) : null}
+                              </View>
+                            ) : null}
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
+                  </View>
+                ))}
+              </View>
+            ) : null}
           </Card>
-        ) : null}
+        )}
 
         {/* Service chips */}
         <ChipSection title="Skills" items={pro.skills} />
@@ -318,7 +377,7 @@ export default function ProfessionalDetailScreen({ navigation, route }) {
                     : `${reviews.length} review${reviews.length === 1 ? '' : 's'}`}
               </Text>
             </View>
-            {user ? (
+            {user && !alreadyReviewed ? (
               <Pressable
                 onPress={() => setComposerOpen(true)}
                 style={({ pressed }) => [
@@ -329,6 +388,13 @@ export default function ProfessionalDetailScreen({ navigation, route }) {
                 <Feather name="edit-3" size={12} color={colors.primary} />
                 <Text style={styles.addReviewText}>Write review</Text>
               </Pressable>
+            ) : alreadyReviewed ? (
+              <View style={styles.alreadyReviewedPill}>
+                <Feather name="check-circle" size={11} color="#047857" />
+                <Text style={styles.alreadyReviewedText}>
+                  You reviewed this pro
+                </Text>
+              </View>
             ) : null}
           </View>
 
@@ -509,13 +575,25 @@ function ReviewItem({ review }) {
     displayName(review.user || {}) ||
     review.userName ||
     'Anonymous';
-  const initials = computeInitials(author);
   const when = formatDate(review.date || review.createdAt);
+  // Backend's reviewService enriches each row with clientPhoto /
+  // authorPhoto from User.profilePhoto. Fall back through both keys
+  // plus the nested user object so older response shapes still work.
+  const photoRaw =
+    review.clientPhoto ||
+    review.authorPhoto ||
+    review.reviewerPhoto ||
+    (review.user && (review.user.profilePhoto || review.user.photo)) ||
+    null;
+  const photoUrl = imageUrl(photoRaw);
   return (
     <View style={styles.reviewItem}>
-      <View style={styles.reviewAvatar}>
-        <Text style={styles.reviewInitials}>{initials}</Text>
-      </View>
+      <AvatarWithInitials
+        uri={photoUrl}
+        name={author}
+        size={36}
+        style={styles.reviewAvatar}
+      />
       <View style={{ flex: 1 }}>
         <View style={styles.reviewTopRow}>
           <Text style={styles.reviewAuthor} numberOfLines={1}>
@@ -727,6 +805,56 @@ const styles = StyleSheet.create({
     color: colors.primarySoftText,
     opacity: 0.7,
   },
+  skillSectionTitle: {
+    fontSize: 11,
+    fontWeight: fontWeight.bold,
+    color: colors.textSecondary,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  skillRoot: {},
+  skillRootName: {
+    fontSize: fontSize.base,
+    fontWeight: fontWeight.bold,
+    color: colors.textPrimary,
+  },
+  skillBranchList: {
+    marginTop: 8,
+    marginLeft: 8,
+    paddingLeft: 12,
+    borderLeftWidth: 1,
+    borderLeftColor: colors.border,
+    gap: spacing.sm,
+  },
+  skillBranch: {},
+  skillBranchName: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.textSecondary,
+  },
+  skillTagRow: {
+    marginTop: 5,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  skillTag: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: 'rgba(217,119,6,0.28)',
+  },
+  skillTagMore: {
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+  },
+  skillTagText: {
+    fontSize: 10,
+    fontWeight: fontWeight.semibold,
+    color: colors.primarySoftText,
+  },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   chip: {
     paddingHorizontal: 10,
@@ -778,6 +906,22 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.bold,
     color: colors.primary,
   },
+  alreadyReviewedPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+    backgroundColor: '#d1fae5',
+    borderWidth: 1,
+    borderColor: '#6ee7b7',
+  },
+  alreadyReviewedText: {
+    fontSize: 11,
+    fontWeight: fontWeight.bold,
+    color: '#047857',
+  },
   emptyReviews: {
     marginTop: spacing.sm,
     paddingVertical: spacing.md,
@@ -794,12 +938,7 @@ const styles = StyleSheet.create({
   },
   reviewItem: { flexDirection: 'row', gap: spacing.sm },
   reviewAvatar: {
-    width: 36,
-    height: 36,
     borderRadius: 18,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   reviewInitials: {
     fontSize: 13,

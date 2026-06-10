@@ -29,7 +29,7 @@ export default function ProBookingsScreen({ navigation }) {
   }, [load]);
 
   return (
-    <ScreenContainer scroll={false}>
+    <ScreenContainer scroll={false} hasNavHeader>
       {!loading && rows.length === 0 ? (
         <EmptyState
           icon="calendar"

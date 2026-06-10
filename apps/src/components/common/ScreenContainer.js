@@ -58,9 +58,16 @@ export default function ScreenContainer({
 }) {
   const insets = useSafeAreaInsets();
   const Inner = keyboard ? KeyboardAvoidingView : View;
+  // The 64 below matches the navigator-header content height. With
+  // `hasNavHeader=true` we tell KeyboardAvoidingView to add the header
+  // + status-bar inset to its vertical offset so the keyboard
+  // animation pushes the input fully above the keyboard rather than
+  // stopping at the header line.
+  const keyboardOffset = hasNavHeader ? insets.top + 64 : insets.top;
   const innerProps = keyboard
     ? {
-        behavior: Platform.OS === 'ios' ? 'padding' : undefined,
+        behavior: Platform.OS === 'ios' ? 'padding' : 'height',
+        keyboardVerticalOffset: keyboardOffset,
         style: { flex: 1 },
       }
     : { style: { flex: 1 } };
@@ -130,7 +137,7 @@ const styles = StyleSheet.create({
   scroll: { padding: spacing.lg, paddingBottom: spacing['2xl'] },
   // Variants when a navigator header sits above — flush top so the
   // header → content boundary reads as one block.
-  scrollUnderHeader: { paddingTop: spacing.md },
+  scrollUnderHeader: { paddingTop: 0 },
   bodyUnderHeader: { paddingTop: 0 },
   // bleedTop: the first child (a hero gradient) paints under the
   // status bar. Zero top padding + no horizontal padding constraint

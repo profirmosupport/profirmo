@@ -71,7 +71,7 @@ export default function ProSubscriptionScreen() {
   }
 
   return (
-    <ScreenContainer refreshing={refreshing} onRefresh={load}>
+    <ScreenContainer refreshing={refreshing} onRefresh={load} hasNavHeader>
       <Card>
         <Text style={styles.eyebrow}>Current plan</Text>
         <View style={styles.headRow}>

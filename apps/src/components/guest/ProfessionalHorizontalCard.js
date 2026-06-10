@@ -35,6 +35,23 @@ export default function ProfessionalHorizontalCard({
   const canBook = Boolean(
     pro.acceptsOnlineBooking ?? pro.acceptOnlineBooking ?? pro.bookable
   );
+  const rating = Number(pro.rating) || 0;
+  const reviewsCount = Number(pro.reviewsCount) || 0;
+  const availableNow = Boolean(pro.availableNow);
+  const consultancy = (() => {
+    const c = String(pro.consultancyType || '').toLowerCase();
+    if (c === 'online') return { icon: 'video', label: 'Online' };
+    if (c === 'in_person' || c === 'in-person') {
+      return { icon: 'users', label: 'In-person' };
+    }
+    if (c === 'both') return { icon: 'video', label: 'Online / In-person' };
+    return null;
+  })();
+  const bioPreview = (() => {
+    const text = String(pro.bio || pro.about || '').trim();
+    if (!text) return '';
+    return text.length > 130 ? `${text.slice(0, 127)}…` : text;
+  })();
   return (
     <View style={[styles.card, { width }]}>
       <View style={styles.head}>
@@ -80,26 +97,78 @@ export default function ProfessionalHorizontalCard({
 
       <View style={styles.metaRow}>
         {pro.city ? <MetaPill icon="map-pin" label={pro.city} /> : null}
-        {pro.rating ? <MetaPill icon="star" label={String(pro.rating)} /> : null}
         {pro.yearsOfExperience ? (
-          <MetaPill
-            icon="clock"
-            label={`${pro.yearsOfExperience}y`}
-          />
+          <MetaPill icon="briefcase" label={`${pro.yearsOfExperience}y`} />
+        ) : null}
+        {consultancy ? (
+          <MetaPill icon={consultancy.icon} label={consultancy.label} />
         ) : null}
       </View>
 
-      {perMinuteRate ? (
-        <View style={styles.feeRow}>
-          <Text style={styles.feeLabel}>From</Text>
-          <Text style={styles.feeAmount}>{formatRupees(perMinuteRate)}</Text>
-          <Text style={styles.feeUnit}>/ min</Text>
+      {bioPreview ? (
+        <Text style={styles.bio} numberOfLines={2}>
+          {bioPreview}
+        </Text>
+      ) : null}
+
+      {rating > 0 || reviewsCount > 0 ? (
+        <View style={styles.ratingRow}>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <Feather
+              key={i}
+              name="star"
+              size={11}
+              color={i < Math.round(rating) ? '#f59e0b' : colors.borderStrong}
+              style={{
+                marginRight: 1,
+                ...(i < Math.round(rating) ? { /* filled via tint */ } : {}),
+              }}
+            />
+          ))}
+          <Text style={styles.ratingText}>
+            {rating > 0 ? rating.toFixed(1) : '—'}
+            {reviewsCount > 0 ? ` · ${reviewsCount}` : ''}
+          </Text>
         </View>
-      ) : (
-        <View style={styles.feeRow}>
-          <Text style={styles.feeLabel}>Discuss to confirm rate</Text>
+      ) : null}
+
+      <View style={styles.feeRow}>
+        <View style={{ flex: 1 }}>
+          {perMinuteRate ? (
+            <>
+              <Text style={styles.feeAmount}>
+                {formatRupees(perMinuteRate)}
+              </Text>
+              <Text style={styles.feeUnit}>per consultation</Text>
+            </>
+          ) : (
+            <Text style={styles.feeLabel}>Discuss to confirm rate</Text>
+          )}
         </View>
-      )}
+        <View
+          style={[
+            styles.availBadge,
+            availableNow
+              ? styles.availBadgeOn
+              : styles.availBadgeOff,
+          ]}
+        >
+          <View
+            style={[
+              styles.availDot,
+              { backgroundColor: availableNow ? '#10b981' : '#94a3b8' },
+            ]}
+          />
+          <Text
+            style={[
+              styles.availText,
+              availableNow ? { color: '#047857' } : { color: '#475569' },
+            ]}
+          >
+            {availableNow ? 'Available now' : 'Offline'}
+          </Text>
+        </View>
+      </View>
 
       <View style={styles.ctaRow}>
         <Pressable
@@ -271,15 +340,47 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: fontWeight.semibold,
   },
+  bio: {
+    marginTop: 6,
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.textSecondary,
+  },
+  ratingRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  ratingText: {
+    marginLeft: 4,
+    fontSize: 10,
+    fontWeight: fontWeight.semibold,
+    color: colors.textSecondary,
+  },
   feeRow: {
     marginTop: spacing.sm,
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 4,
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 8,
   },
   feeLabel: { fontSize: fontSize.xs, color: colors.textMuted },
-  feeAmount: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.primary },
-  feeUnit: { fontSize: 10, color: colors.textMuted, marginBottom: 2 },
+  feeAmount: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary },
+  feeUnit: { fontSize: 10, color: colors.textMuted, marginTop: 1 },
+  availBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  availBadgeOn: { backgroundColor: '#d1fae5' },
+  availBadgeOff: { backgroundColor: colors.surfaceMuted },
+  availDot: { width: 6, height: 6, borderRadius: 3 },
+  availText: { fontSize: 10, fontWeight: fontWeight.bold },
   ctaRow: { marginTop: spacing.sm, flexDirection: 'row', gap: 6 },
   secondaryBtn: {
     flex: 1,

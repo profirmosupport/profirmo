@@ -45,7 +45,7 @@ export default function ProFirmScreen() {
   }, [load]);
 
   return (
-    <ScreenContainer refreshing={loading} onRefresh={load}>
+    <ScreenContainer refreshing={loading} onRefresh={load} hasNavHeader>
       {invitations.length > 0 ? (
         <Section title="Pending invitations">
           {invitations.map((inv) => (

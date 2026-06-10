@@ -6,6 +6,7 @@
 
 const fileService = require('../services/fileService');
 const caseService = require('../services/caseService');
+const bookingService = require('../services/bookingService');
 const storageService = require('../services/storageService');
 const asyncHandler = require('../utils/asyncHandler');
 const {
@@ -17,10 +18,14 @@ const {
 // categories MUST carry a `caseId` and the caller must be authorised
 // to view that case. The resulting object lands under
 // `case-files/<caseId>/<uuid>.<ext>`.
-const CASE_SCOPED_CATEGORIES = new Set([
-  'case_note',
-  'booking_note',
-]);
+const CASE_SCOPED_CATEGORIES = new Set(['case_note']);
+
+// Categories scoped to a specific booking. Authorisation runs
+// against the booking (client or assigned professional) and the
+// object lands under `booking-files/<bookingId>/<uuid>.<ext>`. When
+// the booking later converts to a case, the resulting CaseNote rows
+// keep these URLs so the attachments follow the timeline.
+const BOOKING_SCOPED_CATEGORIES = new Set(['booking_note']);
 
 // Known upload categories. `category` defaults to 'other' when omitted.
 const CATEGORIES = [
@@ -101,15 +106,20 @@ const uploadFile = asyncHandler(async (req, res) => {
     );
   }
 
-  // Case-scoped categories (case_note, booking_note) carry the case
-  // they belong to so the object can land under
-  // `case-files/<caseId>/<uuid>.ext`. We authorise the upload against
-  // the case here so a stranger can't push junk into someone else's
-  // folder by guessing a caseId.
+  // Case-scoped categories (case_note) carry the case they belong to
+  // so the object can land under `case-files/<caseId>/<uuid>.ext`. We
+  // authorise the upload against the case so a stranger can't push
+  // junk into someone else's folder by guessing a caseId.
   const rawCaseId =
     (req.body && (req.body.caseId || req.body.case_id || req.body.caseID)) ||
     '';
   const caseId = String(rawCaseId || '').trim();
+  const rawBookingId =
+    (req.body &&
+      (req.body.bookingId || req.body.booking_id || req.body.bookingID)) ||
+    '';
+  const bookingId = String(rawBookingId || '').trim();
+
   if (CASE_SCOPED_CATEGORIES.has(category)) {
     if (!caseId) {
       return errorResponse(
@@ -127,6 +137,32 @@ const uploadFile = asyncHandler(async (req, res) => {
         res,
         403,
         'You do not have permission to attach files to this case.'
+      );
+    }
+  } else if (BOOKING_SCOPED_CATEGORIES.has(category)) {
+    if (!bookingId) {
+      return errorResponse(
+        res,
+        400,
+        `Category "${category}" requires a bookingId so the file can be filed under that booking.`
+      );
+    }
+    if (!req.user || !req.user.id) {
+      return errorResponse(
+        res,
+        401,
+        'Sign in required to attach booking files.'
+      );
+    }
+    const access = await bookingService.userCanAccessBooking(
+      req.user,
+      bookingId
+    );
+    if (!access.allowed) {
+      return errorResponse(
+        res,
+        403,
+        'You do not have permission to attach files to this booking.'
       );
     }
   } else if (caseId && req.user && req.user.id) {
@@ -152,6 +188,7 @@ const uploadFile = asyncHandler(async (req, res) => {
     userId: (req.user && req.user.id) || null,
     category,
     caseId: caseId || null,
+    bookingId: bookingId || null,
     file,
   });
 

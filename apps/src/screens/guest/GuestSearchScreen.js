@@ -21,7 +21,6 @@ import {
 } from '../../components/common/Skeleton';
 import AuthInput from '../../components/auth/AuthInput';
 import SearchableSelect from '../../components/auth/SearchableSelect';
-import SearchableMultiSelect from '../../components/auth/SearchableMultiSelect';
 import ProfessionalHorizontalCard from '../../components/guest/ProfessionalHorizontalCard';
 import FirmCard from '../../components/guest/FirmCard';
 import {
@@ -64,34 +63,103 @@ export default function GuestSearchScreen({ navigation, route }) {
   // has started — only the latest request gets to write to state.
   const requestIdRef = useRef(0);
 
+  // Cached pools of admin-curated featured professionals + firms —
+  // shown as the "PAN India consultations" fallback strip when a
+  // search returns no results. Loaded once on mount so the empty state
+  // is instant. The PRO/FIRM tabs each get their own strip. If the
+  // backend has no firms flagged Featured the fallback falls back to
+  // the most recent firms so the strip is always populated.
+  const [featuredFallback, setFeaturedFallback] = useState([]);
+  const [featuredFirms, setFeaturedFirms] = useState([]);
+
   useEffect(() => {
     listLocations().then(setCountries).catch(() => {});
     listCategories().then(setCategories).catch(() => {});
+    listProfessionals({ featured: true, sort: 'featured', limit: 8 })
+      .then(async (res) => {
+        let items = (res && res.items) || [];
+        if (items.length === 0) {
+          // No admin-flagged Featured pros yet — fall back to any 8 pros
+          // so the strip isn't empty.
+          try {
+            const all = await listProfessionals({ limit: 8 });
+            items = (all && all.items) || [];
+          } catch {}
+        }
+        setFeaturedFallback(items);
+      })
+      .catch(() => {});
+    listFirmsPublic({ featured: true, sort: 'featured', limit: 8 })
+      .then(async (res) => {
+        let items = (res && res.items) || [];
+        if (items.length === 0) {
+          // No firms flagged Featured — fall back to the most recent
+          // firms so the empty-state strip is still useful.
+          try {
+            const all = await listFirmsPublic({ limit: 8 });
+            items = (all && all.items) || [];
+          } catch {}
+        }
+        setFeaturedFirms(items);
+      })
+      .catch(() => {});
   }, []);
 
+  // Cities sorted ALPHABETICALLY by state name, then by city name within
+  // a state. Mirrors the web search filter so a single mental model
+  // works for both surfaces. State code prefix in the label
+  // (e.g. "UP — Lucknow") makes scanning quick.
   const cityOptions = useMemo(() => {
-    const out = [];
+    const collator = new Intl.Collator(undefined, { sensitivity: 'base' });
+    const cities = [];
     for (const c of countries) {
       for (const s of c.states || []) {
         for (const city of s.cities || []) {
-          out.push({ value: city.id, label: `${city.name} — ${s.name}` });
+          cities.push({
+            value: city.id,
+            cityName: String(city.name || ''),
+            stateName: String(s.name || ''),
+            stateCode: String(s.code || '').trim(),
+          });
         }
       }
     }
-    return out;
+    cities.sort(
+      (a, b) =>
+        collator.compare(a.stateName, b.stateName) ||
+        collator.compare(a.cityName, b.cityName)
+    );
+    return cities.map((c) => ({
+      value: c.value,
+      label: c.stateCode
+        ? `${c.stateCode} — ${c.cityName}`
+        : `${c.stateName} — ${c.cityName}`,
+    }));
   }, [countries]);
 
+  // Tier-1 sub-categories only (deeper tiers are search-only
+  // refinements, not landing entry points). Each option carries an
+  // icon so the dropdown renders Scale (Legal) / Calculator (Tax)
+  // beside the name — same vocabulary as the web search dropdown.
+  // Sorted alphabetically by sub-category name.
   const professionOptions = useMemo(() => {
+    const collator = new Intl.Collator(undefined, { sensitivity: 'base' });
     const out = [];
     for (const c of categories) {
+      const slug = String(c.slug || '').toLowerCase();
+      const isTax = slug === 'tax';
       for (const s of c.subCategories || []) {
+        if (s.parentSubCategoryId) continue;
         out.push({
           value: s.id,
-          label: `${s.name} — ${c.name}`,
+          label: s.name,
           parent: c.name,
+          icon: isTax ? 'calculator-variant' : 'scale-balance',
+          iconFamily: 'mci',
         });
       }
     }
+    out.sort((a, b) => collator.compare(a.label, b.label));
     return out;
   }, [categories]);
 
@@ -221,12 +289,15 @@ export default function GuestSearchScreen({ navigation, route }) {
       />
 
       {kind === KIND.PRO ? (
-        <SearchableMultiSelect
+        // Single-select dropdown — pick one sub-category at a time.
+        // The state stays an array internally (the backend filter
+        // accepts an array) so we just wrap the picked id in a list.
+        <SearchableSelect
           icon="briefcase"
           placeholder="Any profession"
           options={professionOptions}
-          value={subCategoryIds}
-          onChange={setSubCategoryIds}
+          value={subCategoryIds[0] || ''}
+          onChange={(next) => setSubCategoryIds(next ? [next] : [])}
         />
       ) : null}
 
@@ -267,11 +338,72 @@ export default function GuestSearchScreen({ navigation, route }) {
       )}
     </View>
   ) : (
-    <EmptyState
-      icon="search"
-      title="Nothing matches"
-      description="Try a different search or clear some filters."
-    />
+    <View>
+      <EmptyState
+        icon="search"
+        title="No results found"
+        description="Try a different search or clear some filters."
+      />
+      {kind === KIND.PRO && featuredFallback.length > 0 ? (
+        <View style={styles.fallbackBlock}>
+          <View style={styles.fallbackHeader}>
+            <Text style={styles.fallbackTitle}>PAN India consultations</Text>
+            <Text style={styles.fallbackSubtitle}>
+              Verified professionals you can talk to right now
+            </Text>
+          </View>
+          <FlatList
+            horizontal
+            data={featuredFallback}
+            keyExtractor={(item) => String(item.id)}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.fallbackList}
+            ItemSeparatorComponent={() => <View style={{ width: 12 }} />}
+            renderItem={({ item }) => (
+              <ProfessionalHorizontalCard
+                pro={item}
+                onPressProfile={() =>
+                  navigation.navigate('ProfessionalDetail', {
+                    professionalId: item.id,
+                  })
+                }
+                onPressBook={() =>
+                  navigation.navigate('Booking', {
+                    professionalId: item.id,
+                  })
+                }
+              />
+            )}
+          />
+        </View>
+      ) : null}
+      {kind === KIND.FIRM && featuredFirms.length > 0 ? (
+        <View style={styles.fallbackBlock}>
+          <View style={styles.fallbackHeader}>
+            <Text style={styles.fallbackTitle}>PAN India consultations</Text>
+            <Text style={styles.fallbackSubtitle}>
+              Verified firms you can talk to right now
+            </Text>
+          </View>
+          <FlatList
+            horizontal
+            data={featuredFirms}
+            keyExtractor={(item) => String(item.id)}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.fallbackList}
+            ItemSeparatorComponent={() => <View style={{ width: 12 }} />}
+            renderItem={({ item }) => (
+              <FirmCard
+                firm={item}
+                onPress={() =>
+                  navigation.navigate('FirmDetail', { firmId: item.id })
+                }
+              />
+            )}
+          />
+        </View>
+      ) : null}
+    </View>
   );
 
   return (
@@ -418,5 +550,30 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
+  },
+  fallbackBlock: {
+    marginTop: spacing.md,
+    paddingTop: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  fallbackHeader: {
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  fallbackTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
+    color: colors.textPrimary,
+    letterSpacing: -0.1,
+  },
+  fallbackSubtitle: {
+    marginTop: 2,
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+  },
+  fallbackList: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
   },
 });

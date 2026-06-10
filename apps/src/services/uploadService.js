@@ -10,8 +10,20 @@ import { getItem, STORAGE_KEYS } from '../utils/storage';
 /**
  * Upload a single local file (URI from image-picker) to the backend.
  * Returns the resulting upload metadata; callers should keep `.url`.
+ *
+ * `caseId` is required for `case_note` (file lands under
+ * `case-files/<caseId>/`). `bookingId` is required for `booking_note`
+ * (file lands under `booking-files/<bookingId>/`). Without the right
+ * scope id the server returns 400.
  */
-export async function uploadFile({ uri, category = 'other', name, type }) {
+export async function uploadFile({
+  uri,
+  category = 'other',
+  name,
+  type,
+  caseId,
+  bookingId,
+}) {
   if (!uri) throw new Error('No file selected.');
 
   const form = new FormData();
@@ -25,6 +37,8 @@ export async function uploadFile({ uri, category = 'other', name, type }) {
     type: inferredType,
   });
   form.append('category', category);
+  if (caseId) form.append('caseId', String(caseId));
+  if (bookingId) form.append('bookingId', String(bookingId));
 
   const token = await getItem(STORAGE_KEYS.accessToken);
   const headers = {

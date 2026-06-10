@@ -17,8 +17,8 @@ import GuestHeader from '../components/guest/GuestHeader';
 import GuestHomeScreen from '../screens/guest/GuestHomeScreen';
 import GuestSearchScreen from '../screens/guest/GuestSearchScreen';
 import TalkToFirmoScreen from '../screens/guest/TalkToFirmoScreen';
-import GuestSupportScreen from '../screens/guest/GuestSupportScreen';
 import GuestSignupRedirectScreen from '../screens/guest/GuestSignupRedirectScreen';
+import GuestSupportScreen from '../screens/guest/GuestSupportScreen';
 import BlogListScreen from '../screens/guest/BlogListScreen';
 import BlogDetailScreen from '../screens/guest/BlogDetailScreen';
 import ProfessionalDetailScreen from '../screens/guest/ProfessionalDetailScreen';
@@ -103,8 +103,34 @@ function HomeStack() {
         component={ECourtsHearingsScreen}
         options={{ title: 'Daily cause list' }}
       />
+      {/* In-stack mirror of the dashboard's My Cases screen. Reached
+          from the eCourts case detail screen's "Saved in My cases"
+          pill so the redirect always works without crossing tab
+          boundaries (which can be brittle on first-time nav). */}
+      <Stack.Screen
+        name="EcourtsMyCases"
+        component={MyCasesByRole}
+        options={{ title: 'My cases' }}
+      />
+      {/* In-stack case detail — same component the dashboard uses.
+          Lets the EcourtsMyCases list open a row without crossing
+          stacks. */}
+      <Stack.Screen
+        name="CaseDetail"
+        component={CaseDetailScreen}
+        options={{ title: 'Case Detail' }}
+      />
     </Stack.Navigator>
   );
+}
+
+// Routes that need to render "My cases" for the current user pick
+// between the client and professional screens at render time. Wrap
+// them once here so the route registration stays declarative.
+function MyCasesByRole(props) {
+  const { user } = useAuth();
+  const isPro = user && user.role === ROLES.PROFESSIONAL;
+  return isPro ? <ProCasesScreen {...props} /> : <ClientCasesScreen {...props} />;
 }
 
 function SearchStack() {
@@ -140,7 +166,7 @@ function TalkStack() {
       <Stack.Screen
         name="TalkMain"
         component={TalkToFirmoScreen}
-        options={{ title: 'Talk to Firmo' }}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );
@@ -210,12 +236,28 @@ function AccountStack() {
       <Stack.Screen
         name="AccountBookingDetail"
         component={BookingDetailScreen}
-        options={{ title: 'Booking' }}
+        options={{ title: 'Booking Detail' }}
+      />
+      {/* Alias so ClientBookingsScreen / ProBookingsScreen's
+          historic `navigate('BookingDetail', ...)` resolves inside
+          the Account stack. */}
+      <Stack.Screen
+        name="BookingDetail"
+        component={BookingDetailScreen}
+        options={{ title: 'Booking Detail' }}
       />
       <Stack.Screen
         name="AccountCaseDetail"
         component={CaseDetailScreen}
-        options={{ title: 'Case' }}
+        options={{ title: 'Case Detail' }}
+      />
+      {/* Alias so screens that historically navigate('CaseDetail')
+          (ClientCasesScreen, ProCasesScreen) resolve inside the
+          Account stack too — was AccountCaseDetail before. */}
+      <Stack.Screen
+        name="CaseDetail"
+        component={CaseDetailScreen}
+        options={{ title: 'Case Detail' }}
       />
       {isPro ? (
         <>

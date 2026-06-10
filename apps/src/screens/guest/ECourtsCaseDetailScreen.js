@@ -29,6 +29,7 @@ import {
   importCaseFromEcourts,
   orderDownloadUrl,
 } from '../../services/ecourtsService';
+import { setItem, STORAGE_KEYS } from '../../utils/storage';
 import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
 
 function fmtDate(iso) {
@@ -299,7 +300,19 @@ export default function ECourtsCaseDetailScreen({ navigation, route }) {
             <Text style={styles.gateCnr}>CNR {cnr}</Text>
 
             <Pressable
-              onPress={exitGuest}
+              onPress={async () => {
+                // Persist intent so the user lands back on this CNR
+                // after they finish auth (replayed by GuestHomeScreen
+                // on its first mount post-login).
+                try {
+                  await setItem(STORAGE_KEYS.postAuthIntent, {
+                    screen: 'ECourtsCaseDetail',
+                    params: { cnr },
+                    ts: Date.now(),
+                  });
+                } catch {}
+                exitGuest?.();
+              }}
               style={({ pressed }) => [
                 styles.gateCta,
                 { opacity: pressed ? 0.9 : 1 },
@@ -399,9 +412,29 @@ export default function ECourtsCaseDetailScreen({ navigation, route }) {
           {imported.imported && imported.caseId ? (
             <Pressable
               onPress={() => {
+                // 1) Try cross-tab navigation into the Account
+                //    dashboard's My Cases screen.
+                // 2) If the tab chain isn't available (it can be on
+                //    first-time nested-nav), fall back to the
+                //    in-stack "EcourtsMyCases" route which renders
+                //    the same screen inside the current HomeStack.
+                try {
+                  const tabs = navigation.getParent?.()?.getParent?.();
+                  if (tabs) {
+                    tabs.navigate('GuestSignup', {
+                      screen: 'AccountCases',
+                      initial: false,
+                    });
+                    return;
+                  }
+                } catch {}
+                try {
+                  navigation.navigate('EcourtsMyCases');
+                  return;
+                } catch {}
                 Alert.alert(
                   'Saved to your dashboard',
-                  'Open your dashboard on the web at profirmo.com to manage this case.',
+                  'Your account dashboard could not be reached from here. Try again from the Account tab.',
                   [{ text: 'OK' }]
                 );
               }}
@@ -412,6 +445,11 @@ export default function ECourtsCaseDetailScreen({ navigation, route }) {
             >
               <Feather name="check-circle" size={13} color={colors.success} />
               <Text style={styles.savedText}>Saved in My cases</Text>
+              <Feather
+                name="arrow-right"
+                size={12}
+                color={colors.success}
+              />
             </Pressable>
           ) : (
             <Pressable

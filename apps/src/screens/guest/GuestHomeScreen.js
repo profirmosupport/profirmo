@@ -37,7 +37,13 @@ import {
   listFirmsPublic,
   listProfessionals,
 } from '../../services/professionalService';
+import { getItem, removeItem, STORAGE_KEYS } from '../../utils/storage';
 import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
+
+// 10 minutes — beyond this we treat the saved intent as stale and
+// drop it instead of yanking the user into an unexpected booking
+// flow long after they signed in.
+const POST_AUTH_INTENT_MAX_AGE_MS = 10 * 60 * 1000;
 
 // Horizontal carousels get a generous bleed past the screen edge so
 // the next card peeks in, signalling there's more to scroll.
@@ -110,18 +116,81 @@ export default function GuestHomeScreen({ navigation }) {
     load();
   }, [load]);
 
-  // Flatten {Legal: [...], Tax: [...]} into up to 8 tiles, tagging
-  // each with its parent so the tile can render a small eyebrow.
+  // Replay a stored post-auth intent — e.g. the user tapped
+  // "Sign in to pay" on the Booking screen as a guest, signed in,
+  // and is now landing on the Home tab. We deep-link them back into
+  // Booking with the same professional and clear the intent so the
+  // jump only happens once.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await getItem(STORAGE_KEYS.postAuthIntent, true);
+        if (cancelled) return;
+        if (!raw || typeof raw !== 'object') return;
+        await removeItem(STORAGE_KEYS.postAuthIntent);
+        if (
+          raw.ts &&
+          Date.now() - Number(raw.ts) > POST_AUTH_INTENT_MAX_AGE_MS
+        ) {
+          return;
+        }
+        if (raw.screen === 'Booking' && raw.params?.professionalId) {
+          navigation.navigate('Booking', {
+            professionalId: raw.params.professionalId,
+          });
+        } else if (raw.screen === 'TalkToFirmo') {
+          // Switch to the Talk tab on the parent bottom-tab navigator.
+          const tabs = navigation.getParent?.();
+          tabs?.navigate?.('TalkToFirmo');
+        } else if (
+          raw.screen === 'ECourtsCaseDetail' &&
+          raw.params?.cnr
+        ) {
+          // The Home stack registers ECourtsSearch + ECourtsCaseDetail.
+          // Push the case detail straight in so the user resumes
+          // exactly where they were before sign-in.
+          navigation.navigate('ECourtsCaseDetail', {
+            cnr: raw.params.cnr,
+          });
+        }
+      } catch {}
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, navigation]);
+
+  // 10 admin-curated featured TIER-1 sub-categories across Tax + Legal.
+  // Mirrors the web's CategorySection — `featured` flag drives what
+  // surfaces here (Bar Council India compliance: no "top-rated" logic).
+  // Sorted by sortOrder then name so admins can hand-arrange the order.
   const expertiseTiles = (() => {
-    const out = [];
+    const collected = [];
     for (const c of categories) {
       for (const s of c.subCategories || []) {
-        out.push({ id: s.id, label: s.name, parent: c.name });
-        if (out.length >= 8) break;
+        if (!s.featured) continue;
+        if (s.parentSubCategoryId) continue;
+        collected.push({
+          id: s.id,
+          label: s.name,
+          parent: c.name,
+          parentSlug: String(c.slug || '').toLowerCase(),
+          sortOrder: Number.isFinite(Number(s.sortOrder))
+            ? Number(s.sortOrder)
+            : 0,
+        });
       }
-      if (out.length >= 8) break;
     }
-    return out;
+    collected.sort(
+      (a, b) =>
+        a.sortOrder - b.sortOrder ||
+        String(a.label).localeCompare(String(b.label), undefined, {
+          sensitivity: 'base',
+        })
+    );
+    return collected.slice(0, 10);
   })();
 
   // Initial cold-start state — every section is fetching for the
@@ -385,6 +454,7 @@ function ExpertisePanel({ loading, tiles, onPickTile }) {
                 key={c.id}
                 label={c.label}
                 parent={c.parent}
+                parentSlug={c.parentSlug}
                 onPress={() => onPickTile(c.id)}
               />
             ))}

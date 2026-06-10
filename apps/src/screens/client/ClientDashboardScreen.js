@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import ScreenContainer from '../../components/common/ScreenContainer';
@@ -7,12 +8,32 @@ import Badge from '../../components/common/Badge';
 import Section from '../../components/common/Section';
 import Button from '../../components/common/Button';
 import EmptyState from '../../components/common/EmptyState';
+import AvatarWithInitials from '../../components/common/AvatarWithInitials';
 import DashboardHero from '../../components/common/DashboardHero';
 import { CardSkeleton } from '../../components/common/Skeleton';
 import { useAuth } from '../../contexts/AuthContext';
 import { listMyBookings } from '../../services/bookingService';
 import { displayName, formatDate, formatRupees } from '../../utils/formatters';
+import { imageUrl } from '../../utils/imageUrl';
 import { colors, fontSize, fontWeight, spacing } from '../../theme';
+
+function formatTime12h(value) {
+  if (!value) return '';
+  const [hStr, mStr] = String(value).split(':');
+  const h = Number(hStr);
+  const m = Number(mStr || 0);
+  if (!Number.isFinite(h)) return value;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hour12 = ((h + 11) % 12) + 1;
+  return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+const BOOKING_STATUS_VARIANT = {
+  pending: 'amber',
+  confirmed: 'amber',
+  completed: 'gray',
+  cancelled: 'gray',
+};
 
 function greeting() {
   const h = new Date().getHours();
@@ -64,16 +85,22 @@ export default function ClientDashboardScreen({ navigation }) {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Refetch on focus so a freshly-paid booking lands here instantly
+  // when the user navigates back from the booking flow.
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   const firstName = displayName(user).split(' ')[0] || 'there';
+  // Show the 5 most recent upcoming bookings on the dashboard; the
+  // full list lives on the My Bookings screen reached via "See all".
   const upcoming = bookings
     .filter((b) =>
       ['pending', 'confirmed'].includes(String(b.status || '').toLowerCase())
     )
-    .slice(0, 3);
+    .slice(0, 5);
 
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={load} bleedTop>
@@ -102,8 +129,15 @@ export default function ClientDashboardScreen({ navigation }) {
           icon={<Feather name="search" size={14} color={colors.textInverse} />}
           style={{ marginTop: spacing.md }}
           onPress={() => {
-            const parent = navigation.getParent?.()?.getParent?.();
-            parent?.navigate?.('GuestSearch', { screen: 'GuestSearchMain' });
+            // Tabs nav lives two levels up: AccountDashboard → AccountStack
+            // → bottom Tab.Navigator. `initial: false` forces the inner
+            // SearchStack to render the search screen instead of swallowing
+            // the param and showing its default initial route.
+            const tabs = navigation.getParent?.()?.getParent?.();
+            tabs?.navigate?.('GuestSearch', {
+              screen: 'GuestSearchMain',
+              initial: false,
+            });
           }}
         />
       </Card>
@@ -133,6 +167,7 @@ export default function ClientDashboardScreen({ navigation }) {
 
       <Section
         title="Upcoming bookings"
+        style={styles.upcomingSection}
         action={
           <Pressable
             onPress={() =>
@@ -152,40 +187,84 @@ export default function ClientDashboardScreen({ navigation }) {
             description="Book a consultation to get started."
           />
         ) : (
-          upcoming.map((b) => (
-            <Pressable
-              key={b.id}
-              onPress={() =>
-                navigation.navigate('AccountBookingDetail', {
-                  bookingId: b.id,
-                })
-              }
-              style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
-            >
-              <Card style={{ marginBottom: spacing.sm }}>
-                <View style={styles.row}>
-                  <View style={styles.calBubble}>
-                    <Feather name="calendar" size={16} color={colors.primary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.bookingTitle}>
-                      {formatDate(b.date)}{b.time ? ` · ${b.time}` : ''}
-                    </Text>
-                    <Text style={styles.muted}>
-                      {b.professionalName || 'Professional'}
-                      {b.estimatedCost
-                        ? ` · ${formatRupees(b.estimatedCost)}`
-                        : ''}
-                    </Text>
-                  </View>
-                  <Badge variant="amber">{b.status}</Badge>
-                </View>
-              </Card>
-            </Pressable>
-          ))
+          upcoming.map((b) => <DashboardBookingRow key={b.id} booking={b} navigation={navigation} />)
         )}
       </Section>
     </ScreenContainer>
+  );
+}
+
+// Inline booking row — same shape as the My Bookings list so the
+// dashboard and full listing read as one experience. Photo of the
+// professional + name + designation, status pill, then meta chips.
+function DashboardBookingRow({ booking, navigation }) {
+  const pro = booking.professional || {};
+  const photoUrl = imageUrl(pro.profilePhoto);
+  const proName = pro.name || booking.professionalName || 'Professional';
+  const proSubtitle =
+    pro.designation || pro.professionalType || booking.professionalType || '';
+  const status = String(booking.status || 'pending').toLowerCase();
+  const isInstant = String(booking.type || '').toLowerCase() === 'instant';
+  const whenLabel = isInstant
+    ? 'Instant · Now'
+    : booking.date
+      ? `${formatDate(booking.date)}${booking.time ? ` · ${formatTime12h(booking.time)}` : ''}`
+      : '—';
+  return (
+    <Pressable
+      onPress={() =>
+        navigation.navigate('AccountBookingDetail', { bookingId: booking.id })
+      }
+      style={({ pressed }) => ({ opacity: pressed ? 0.92 : 1 })}
+    >
+      <Card style={{ marginBottom: spacing.sm }}>
+        <View style={styles.bookingHead}>
+          <AvatarWithInitials
+            uri={photoUrl}
+            name={proName}
+            size={44}
+            style={{ borderRadius: 22 }}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.proName} numberOfLines={1}>
+              {proName}
+            </Text>
+            {proSubtitle ? (
+              <Text style={styles.proSub} numberOfLines={1}>
+                {proSubtitle}
+              </Text>
+            ) : null}
+          </View>
+          <Badge variant={BOOKING_STATUS_VARIANT[status] || 'gray'}>
+            {status}
+          </Badge>
+        </View>
+
+        <View style={styles.metaPills}>
+          <MetaPill icon="clock" label={whenLabel} />
+          {booking.duration ? (
+            <MetaPill icon="watch" label={`${booking.duration} min`} />
+          ) : null}
+          {booking.estimatedCost ? (
+            <MetaPill
+              icon="credit-card"
+              label={formatRupees(booking.estimatedCost)}
+            />
+          ) : null}
+        </View>
+      </Card>
+    </Pressable>
+  );
+}
+
+function MetaPill({ icon, label }) {
+  return (
+    <View style={styles.metaPill}>
+      <Feather name={icon} size={11} color={colors.textMuted} />
+      <Text style={styles.metaText} numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
   );
 }
 
@@ -221,6 +300,49 @@ const styles = StyleSheet.create({
   },
   quickLabel: { fontSize: 11, fontWeight: fontWeight.semibold, color: colors.textPrimary },
   link: { color: colors.primary, fontWeight: fontWeight.semibold, fontSize: fontSize.sm },
+  // Breathing room between the QuickAction row and the Upcoming
+  // bookings heading — the default Section margin sat too close.
+  upcomingSection: { marginTop: spacing.lg },
+
+  // Inline booking row — same look as the My Bookings list.
+  bookingHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  proName: {
+    fontSize: fontSize.base,
+    fontWeight: fontWeight.bold,
+    color: colors.textPrimary,
+  },
+  proSub: {
+    marginTop: 2,
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  metaPills: {
+    marginTop: spacing.sm,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  metaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  metaText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    fontWeight: fontWeight.semibold,
+    maxWidth: 180,
+  },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   bookingTitle: { fontSize: fontSize.base, fontWeight: fontWeight.semibold, color: colors.textPrimary },
   calBubble: {

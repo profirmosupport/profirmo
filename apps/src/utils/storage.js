@@ -31,4 +31,9 @@ export const STORAGE_KEYS = {
   // Guest flag — persists "Skip" choice across cold starts so the user
   // doesn't see the welcome screen every launch.
   guest: 'guest',
+  // Intent to resume after authentication completes — e.g. the user
+  // tapped "Sign in to pay" on the Booking screen; we store the
+  // booking target here and replay the navigation once they're logged
+  // in. JSON shape: `{ screen, params, ts }`.
+  postAuthIntent: 'post_auth_intent',
 };

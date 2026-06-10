@@ -51,7 +51,10 @@ const TYPE_TO_PREFIX = {
   tax_document: 'documents/',
   firm_registration: 'documents/',
   document: 'documents/',
-  booking_note: 'case-files/',
+  // Booking-note attachments land under their own bucket so the upload
+  // doesn't require a case. When the booking later converts to a case,
+  // attachments are referenced by URL from the migrated CaseNote rows.
+  booking_note: 'booking-files/',
   case_note: 'case-files/',
   case_file: 'case-files/',
   invoice: 'invoices/',
@@ -64,6 +67,7 @@ const TYPE_TO_PREFIX = {
 // Prefixes whose objects should be served via presigned URLs (private).
 const PRIVATE_PREFIXES = new Set([
   'case-files/',
+  'booking-files/',
   'documents/',
   'invoices/',
   'temp/',
@@ -93,22 +97,26 @@ function safeCaseSegment(caseId) {
     .slice(0, 80);
 }
 
-const CASE_PREFIXED_TYPES = new Set([
-  'case_note',
-  'case_file',
-  'booking_note',
-]);
+const CASE_PREFIXED_TYPES = new Set(['case_note', 'case_file']);
+
+// Booking-note uploads get their own per-booking folder so leaked
+// keys can't reveal another booking's attachments. Authorisation
+// against the booking happens in the file controller before the
+// upload is persisted.
+const BOOKING_PREFIXED_TYPES = new Set(['booking_note']);
+
+const SCOPED_TYPES = new Set([...CASE_PREFIXED_TYPES, ...BOOKING_PREFIXED_TYPES]);
 
 /**
  * Build the storage key prefix for a given upload, optionally nested
- * inside a case-specific sub-folder. For non-case types, `caseId` is
- * ignored. For case types with a caseId, returns `case-files/<caseId>/`
- * so each case lives in an isolated folder.
+ * inside a per-scope sub-folder (case or booking). For non-scoped
+ * types, `scopeId` is ignored. For scoped types with a scopeId,
+ * returns `<base>/<scopeId>/`.
  */
-function prefixForUpload(type, caseId) {
+function prefixForUpload(type, scopeId) {
   const base = prefixFor(type);
-  if (caseId && CASE_PREFIXED_TYPES.has(type)) {
-    const seg = safeCaseSegment(caseId);
+  if (scopeId && SCOPED_TYPES.has(type)) {
+    const seg = safeCaseSegment(scopeId);
     if (seg) return `${base}${seg}/`;
   }
   return base;
@@ -216,14 +224,24 @@ async function getS3Client(cfgArg) {
  * @param {string} args.type        - logical type from TYPE_TO_PREFIX (eg `profile_photo`)
  * @returns {Promise<{storedPath: string, key: string, prefix: string, size: number, mimeType: string, storedName: string, driver: string}>}
  */
-async function uploadFile({ buffer, mimeType, originalName, type, caseId }) {
+async function uploadFile({
+  buffer,
+  mimeType,
+  originalName,
+  type,
+  // Either a caseId (case_note, case_file) or a bookingId (booking_note).
+  // Both ids are sanitised through the same alphanumeric regex.
+  caseId,
+  bookingId,
+}) {
   if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
     throw { statusCode: 400, message: 'No file content to upload.' };
   }
   if (!mimeType) {
     throw { statusCode: 400, message: 'mimeType is required.' };
   }
-  const prefix = prefixForUpload(type, caseId);
+  const scopeId = BOOKING_PREFIXED_TYPES.has(type) ? bookingId : caseId;
+  const prefix = prefixForUpload(type, scopeId);
   const ext = inferExtension(mimeType, originalName);
   const storedName = `${crypto.randomUUID()}${ext}`;
   const key = `${prefix}${storedName}`;

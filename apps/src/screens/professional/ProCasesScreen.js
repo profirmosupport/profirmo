@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import ScreenContainer from '../../components/common/ScreenContainer';
 import Card from '../../components/common/Card';
 import Badge from '../../components/common/Badge';
@@ -24,12 +25,17 @@ export default function ProCasesScreen({ navigation }) {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // useFocusEffect — refresh whenever the screen re-enters focus
+  // (e.g. user backs out of a case detail after deleting it). Otherwise
+  // the deleted row lingers until a manual pull-to-refresh.
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   return (
-    <ScreenContainer scroll={false}>
+    <ScreenContainer scroll={false} hasNavHeader>
       {!loading && rows.length === 0 ? (
         <EmptyState
           icon="folder"

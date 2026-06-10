@@ -30,7 +30,7 @@ export default function NotificationsScreen() {
   }, [load]);
 
   return (
-    <ScreenContainer scroll={false}>
+    <ScreenContainer scroll={false} hasNavHeader>
       {loading ? (
         <View style={{ padding: 16, gap: 8 }}>
           <CardSkeleton />

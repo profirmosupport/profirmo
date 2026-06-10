@@ -77,7 +77,7 @@ export default function ProPaymentsScreen() {
   }, [load]);
 
   return (
-    <ScreenContainer scroll={false}>
+    <ScreenContainer scroll={false} hasNavHeader>
       {!loading && rows.length === 0 ? (
         <EmptyState
           icon="credit-card"

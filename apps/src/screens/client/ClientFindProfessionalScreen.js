@@ -32,7 +32,7 @@ export default function ClientFindProfessionalScreen({ navigation }) {
   }, [load]);
 
   return (
-    <ScreenContainer scroll={false}>
+    <ScreenContainer scroll={false} hasNavHeader keyboard>
       <View style={{ padding: spacing.lg, paddingBottom: 0 }}>
         <Input
           value={search}

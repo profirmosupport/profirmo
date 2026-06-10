@@ -371,6 +371,41 @@ const getByClient = async (clientId) =>
 const getByProfessional = async (professionalId) =>
   Booking.findAll({ where: { professionalId }, raw: true });
 
+/**
+ * Authorisation helper used by the file controller. Returns
+ * `{ allowed, booking }` — allowed when the user is the booking's
+ * client, the assigned professional (matched via the
+ * professionalDetail.userId / linkedId chain), or a platform admin.
+ */
+const userCanAccessBooking = async (user, bookingId) => {
+  if (!user || !user.id || !bookingId) return { allowed: false, booking: null };
+  const booking = await Booking.findByPk(bookingId, { raw: true });
+  if (!booking) return { allowed: false, booking: null };
+  if (user.role === 'platform_admin') return { allowed: true, booking };
+  if (booking.clientId === user.id) return { allowed: true, booking };
+
+  // Match the booking's professionalId against any of the caller's
+  // own professional public ids. This mirrors the chain that
+  // `attachProfessionalSnapshot` uses to resolve the snapshot.
+  const proIdsForUser = new Set();
+  try {
+    const detail = await ProfessionalDetail.findOne({
+      where: { userId: user.id },
+      raw: true,
+    });
+    if (detail) {
+      if (detail.id) proIdsForUser.add(detail.id);
+      if (detail.linkedId) proIdsForUser.add(detail.linkedId);
+    }
+  } catch {
+    /* ignore — service still falls through to deny */
+  }
+  if (booking.professionalId && proIdsForUser.has(booking.professionalId)) {
+    return { allowed: true, booking };
+  }
+  return { allowed: false, booking };
+};
+
 module.exports = {
   list,
   getById,
@@ -380,4 +415,5 @@ module.exports = {
   getByProfessional,
   listMineAsClient,
   listMineAsProfessional,
+  userCanAccessBooking,
 };
