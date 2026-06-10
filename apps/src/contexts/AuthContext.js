@@ -51,6 +51,7 @@ export function AuthProvider({ children }) {
     } catch (err) {
       if (err && err.statusCode === 401) {
         await removeItem(STORAGE_KEYS.accessToken);
+        await removeItem(STORAGE_KEYS.refreshToken);
         await removeItem(STORAGE_KEYS.user);
         setUser(null);
       }
@@ -82,9 +83,11 @@ export function AuthProvider({ children }) {
   }, [refresh]);
 
   // Wire the API client's 401 callback to clear local session state.
+  // Only fires for /api/auth/me + /api/auth/refresh — see api.js.
   useEffect(() => {
     registerUnauthorizedHandler(async () => {
       await removeItem(STORAGE_KEYS.accessToken);
+      await removeItem(STORAGE_KEYS.refreshToken);
       await removeItem(STORAGE_KEYS.user);
       setUser(null);
     });
@@ -94,6 +97,12 @@ export function AuthProvider({ children }) {
     const data = await loginApi(email, password);
     if (data && data.accessToken) {
       await setItem(STORAGE_KEYS.accessToken, data.accessToken);
+    }
+    // Persist the refresh token (returned in the body for mobile —
+    // see backend sendAuth) so the api client can silently re-mint
+    // the access token when the 15-min one expires.
+    if (data && data.refreshToken) {
+      await setItem(STORAGE_KEYS.refreshToken, data.refreshToken);
     }
     const u = (data && data.user) || (await refresh());
     if (u) {
@@ -113,6 +122,12 @@ export function AuthProvider({ children }) {
     const data = await signupApi(payload);
     if (data && data.accessToken) {
       await setItem(STORAGE_KEYS.accessToken, data.accessToken);
+    }
+    // Persist the refresh token (returned in the body for mobile —
+    // see backend sendAuth) so the api client can silently re-mint
+    // the access token when the 15-min one expires.
+    if (data && data.refreshToken) {
+      await setItem(STORAGE_KEYS.refreshToken, data.refreshToken);
     }
     const u = (data && data.user) || (await refresh());
     if (u) {

@@ -15,6 +15,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Linking,
   Pressable,
   StyleSheet,
@@ -57,6 +58,18 @@ const ESCROW_LABEL = {
   withdrawn: 'Withdrawn',
   refunded: 'Refunded',
 };
+
+// Detect an image attachment from its URL / mime / name. Used to
+// decide whether to render an inline thumbnail or a paperclip pill.
+const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|heic|heif|bmp)(\?|$)/i;
+function isImageAttachment(att) {
+  if (!att) return false;
+  if (att.mimeType && String(att.mimeType).startsWith('image/')) return true;
+  if (att.mimetype && String(att.mimetype).startsWith('image/')) return true;
+  if (att.type && String(att.type).startsWith('image/')) return true;
+  const url = String(att.url || att.name || '');
+  return IMAGE_EXT_RE.test(url);
+}
 
 function formatTime12h(value) {
   if (!value) return '';
@@ -606,22 +619,77 @@ function NoteRow({ note, currentUser }) {
         </View>
         {when ? <Text style={styles.noteWhen}>{when}</Text> : null}
         {note.body ? <Text style={styles.noteBody}>{note.body}</Text> : null}
-        {Array.isArray(note.attachments) && note.attachments.length > 0 ? (
-          <View style={styles.attachList}>
-            {note.attachments.map((a, i) => (
-              <View key={`note-att-${i}`} style={styles.attachChip}>
-                <Feather name="paperclip" size={10} color={colors.textSecondary} />
-                <Text style={styles.attachChipText} numberOfLines={1}>
-                  {a.name ||
-                    (a.url
-                      ? String(a.url).split('/').pop()
-                      : 'attachment')}
-                </Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
+        <NoteAttachments attachments={note.attachments} />
       </View>
+    </View>
+  );
+}
+
+// Render note attachments. Images get inline thumbnails; everything
+// else gets a paperclip pill that opens in the device browser.
+function NoteAttachments({ attachments }) {
+  if (!Array.isArray(attachments) || attachments.length === 0) return null;
+  const images = [];
+  const others = [];
+  for (const a of attachments) {
+    if (isImageAttachment(a)) images.push(a);
+    else others.push(a);
+  }
+  return (
+    <View>
+      {images.length > 0 ? (
+        <View style={styles.imageRow}>
+          {images.map((a, i) => {
+            const uri = imageUrl(a.url);
+            if (!uri) return null;
+            return (
+              <Pressable
+                key={`note-img-${i}`}
+                onPress={() => Linking.openURL(uri).catch(() => {})}
+                style={({ pressed }) => [
+                  styles.imageThumbWrap,
+                  { opacity: pressed ? 0.85 : 1 },
+                ]}
+              >
+                <Image
+                  source={{ uri }}
+                  style={styles.imageThumb}
+                  resizeMode="cover"
+                />
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+      {others.length > 0 ? (
+        <View style={styles.attachList}>
+          {others.map((a, i) => {
+            const uri = imageUrl(a.url);
+            const fallbackName =
+              a.name ||
+              (a.url ? String(a.url).split('/').pop() : 'attachment');
+            return (
+              <Pressable
+                key={`note-att-${i}`}
+                onPress={() => uri && Linking.openURL(uri).catch(() => {})}
+                style={({ pressed }) => [
+                  styles.attachChip,
+                  { opacity: pressed ? 0.85 : 1 },
+                ]}
+              >
+                <Feather
+                  name="paperclip"
+                  size={10}
+                  color={colors.textSecondary}
+                />
+                <Text style={styles.attachChipText} numberOfLines={1}>
+                  {fallbackName}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -780,6 +848,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
+  },
+  // Inline image thumbnails — three across a typical row, with a
+  // small border so the thumbnail reads as clickable.
+  imageRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  imageThumbWrap: {
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
+  },
+  imageThumb: {
+    width: 120,
+    height: 120,
   },
   attachChip: {
     flexDirection: 'row',

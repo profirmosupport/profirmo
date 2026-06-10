@@ -129,15 +129,26 @@ export default function ClientDashboardScreen({ navigation }) {
           icon={<Feather name="search" size={14} color={colors.textInverse} />}
           style={{ marginTop: spacing.md }}
           onPress={() => {
-            // Tabs nav lives two levels up: AccountDashboard → AccountStack
-            // → bottom Tab.Navigator. `initial: false` forces the inner
-            // SearchStack to render the search screen instead of swallowing
-            // the param and showing its default initial route.
-            const tabs = navigation.getParent?.()?.getParent?.();
-            tabs?.navigate?.('GuestSearch', {
-              screen: 'GuestSearchMain',
-              initial: false,
-            });
+            // React-navigation walks up the navigator tree until it
+            // finds one that owns the `GuestSearch` tab — so calling
+            // navigate() directly from inside AccountStack still hits
+            // the bottom-tab navigator. Falling back to the explicit
+            // getParent chain guards against any future restructure
+            // where the tree depth changes.
+            try {
+              navigation.navigate('GuestSearch', {
+                screen: 'GuestSearchMain',
+                initial: false,
+              });
+              return;
+            } catch {}
+            try {
+              const tabs = navigation.getParent?.()?.getParent?.();
+              tabs?.navigate?.('GuestSearch', {
+                screen: 'GuestSearchMain',
+                initial: false,
+              });
+            } catch {}
           }}
         />
       </Card>

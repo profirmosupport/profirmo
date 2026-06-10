@@ -27,6 +27,11 @@ export async function removeItem(key) {
 
 export const STORAGE_KEYS = {
   accessToken: 'access_token',
+  // Long-lived opaque refresh token. The mobile API client posts this
+  // back to /api/auth/refresh when the access token 401s, retries the
+  // original call with the freshly-minted accessToken, and the user
+  // never sees a logout.
+  refreshToken: 'refresh_token',
   user: 'user',
   // Guest flag — persists "Skip" choice across cold starts so the user
   // doesn't see the welcome screen every launch.

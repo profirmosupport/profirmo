@@ -16,6 +16,8 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -645,37 +647,102 @@ function UpdatesCard({ updates, loadError }) {
                     </Text>
                   </View>
                 ) : null}
-                {Array.isArray(u.attachments) && u.attachments.length > 0 ? (
-                  <View style={styles.attachmentRow}>
-                    {u.attachments.map((a, i) => (
-                      <View
-                        key={`${u.id}-att-${i}`}
-                        style={styles.attachmentChip}
-                      >
-                        <Feather
-                          name="paperclip"
-                          size={10}
-                          color={colors.textSecondary}
-                        />
-                        <Text
-                          style={styles.attachmentText}
-                          numberOfLines={1}
-                        >
-                          {a.name ||
-                            (a.url
-                              ? String(a.url).split('/').pop()
-                              : 'Attachment')}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
+                <AttachmentList
+                  attachments={u.attachments}
+                  keyPrefix={u.id}
+                />
               </View>
             </View>
           ))}
         </View>
       )}
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Shared attachments renderer — images render inline as thumbnails,
+// non-images render as paperclip pills. Both open in the device
+// browser when tapped (the URL is presigned by the backend).
+// ---------------------------------------------------------------------
+
+const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|heic|heif|bmp)(\?|$)/i;
+function isImageAttachment(att) {
+  if (!att) return false;
+  if (att.mimeType && String(att.mimeType).startsWith('image/')) return true;
+  if (att.mimetype && String(att.mimetype).startsWith('image/')) return true;
+  if (att.type && String(att.type).startsWith('image/')) return true;
+  const url = String(att.url || att.name || '');
+  return IMAGE_EXT_RE.test(url);
+}
+
+function AttachmentList({ attachments, keyPrefix }) {
+  if (!Array.isArray(attachments) || attachments.length === 0) return null;
+  const images = [];
+  const others = [];
+  for (const a of attachments) {
+    if (isImageAttachment(a)) images.push(a);
+    else others.push(a);
+  }
+  return (
+    <View>
+      {images.length > 0 ? (
+        <View style={styles.imageRow}>
+          {images.map((a, i) => {
+            const uri = imageUrl(a.url);
+            if (!uri) return null;
+            return (
+              <Pressable
+                key={`${keyPrefix}-img-${i}`}
+                onPress={() => Linking.openURL(uri).catch(() => {})}
+                style={({ pressed }) => [
+                  styles.imageThumbWrap,
+                  { opacity: pressed ? 0.85 : 1 },
+                ]}
+              >
+                <Image
+                  source={{ uri }}
+                  style={styles.imageThumb}
+                  resizeMode="cover"
+                />
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+      {others.length > 0 ? (
+        <View style={styles.attachmentRow}>
+          {others.map((a, i) => {
+            const uri = imageUrl(a.url);
+            const fallbackName =
+              a.name ||
+              (a.url ? String(a.url).split('/').pop() : 'Attachment');
+            return (
+              <Pressable
+                key={`${keyPrefix}-att-${i}`}
+                onPress={() => uri && Linking.openURL(uri).catch(() => {})}
+                style={({ pressed }) => [
+                  styles.attachmentChip,
+                  { opacity: pressed ? 0.85 : 1 },
+                ]}
+              >
+                <Feather
+                  name="paperclip"
+                  size={10}
+                  color={colors.textSecondary}
+                />
+                <Text
+                  style={styles.attachmentText}
+                  numberOfLines={1}
+                >
+                  {fallbackName}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -842,28 +909,10 @@ function NoteRow({ note, currentUser }) {
         {note.body ? (
           <Text style={styles.noteBody}>{note.body}</Text>
         ) : null}
-        {Array.isArray(note.attachments) && note.attachments.length > 0 ? (
-          <View style={styles.attachmentRow}>
-            {note.attachments.map((a, i) => (
-              <View
-                key={`note-att-${i}`}
-                style={styles.attachmentChip}
-              >
-                <Feather
-                  name="paperclip"
-                  size={10}
-                  color={colors.textSecondary}
-                />
-                <Text style={styles.attachmentText} numberOfLines={1}>
-                  {a.name ||
-                    (a.url
-                      ? String(a.url).split('/').pop()
-                      : 'Attachment')}
-                </Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
+        <AttachmentList
+          attachments={note.attachments}
+          keyPrefix={`note-${note.id || ''}`}
+        />
       </View>
     </View>
   );
@@ -1339,6 +1388,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
+  },
+  // Inline image thumbnails for image-type attachments.
+  imageRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  imageThumbWrap: {
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
+  },
+  imageThumb: {
+    width: 120,
+    height: 120,
   },
   attachmentChip: {
     flexDirection: 'row',

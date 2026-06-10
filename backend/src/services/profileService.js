@@ -16,11 +16,14 @@ const {
 const { sanitizeUser } = require('./authService');
 const { computeProfileCompletion } = require('../utils/profileCompletion');
 
-// Personal-info columns on the users row that PUT /api/profile may update.
+// Personal-info columns on the users row that PUT /api/profile may
+// update. `email` is special — we accept it but require a uniqueness
+// check before saving (see updateProfile). `mobileNumber` is
+// intentionally NOT in this list — phone changes must go through
+// /api/auth/change-phone which gates on an OTP-verified new number.
 const USER_UPDATABLE_FIELDS = [
   'firstName',
   'lastName',
-  'mobileNumber',
   'profilePhoto',
   'coverPhoto',
 ];
@@ -251,10 +254,37 @@ const updateProfile = async (userId, body = {}) => {
     throw { statusCode: 404, message: 'User not found' };
   }
 
+  // --- Email change with uniqueness check ----------------------------------
+  // Email is updateable but must be unique across users. We don't drop
+  // the verified flag automatically — admins can re-verify if needed.
+  // The caller (profile UI) prompts the user to re-verify after change.
+  if (typeof body.email === 'string') {
+    const nextEmail = body.email.trim().toLowerCase();
+    if (nextEmail && nextEmail !== String(user.email || '').toLowerCase()) {
+      // Basic shape check — same regex the signup form uses.
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail)) {
+        throw { statusCode: 422, message: 'Enter a valid email address.' };
+      }
+      const clash = await User.findOne({ where: { email: nextEmail } });
+      if (clash && clash.id !== user.id) {
+        throw {
+          statusCode: 409,
+          message: 'That email is already in use by another account.',
+          code: 'EMAIL_ALREADY_REGISTERED',
+        };
+      }
+      user.email = nextEmail;
+      user.emailVerified = false;
+    }
+  }
+
   // --- Update the users row ------------------------------------------------
   const userUpdates = pick(body, USER_UPDATABLE_FIELDS);
-  if (Object.keys(userUpdates).length > 0) {
+  const dirtyFromUpdates = Object.keys(userUpdates).length > 0;
+  if (dirtyFromUpdates) {
     Object.assign(user, userUpdates);
+  }
+  if (dirtyFromUpdates || user.changed('email')) {
     // Recompute the denormalized fullName / name from first + last name.
     const newFullName = deriveFullName(
       user.firstName,

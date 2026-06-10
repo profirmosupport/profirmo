@@ -99,6 +99,26 @@ export async function checkPhone(phone) {
   return unwrap(res);
 }
 
+// Generic availability check — `{ email?, mobileNumber? }`. Used by
+// the profile editor to flag a clash before the user wastes a save.
+// Returns `{ email: { available }, mobileNumber: { available } }`.
+export async function checkAvailability({ email, mobileNumber } = {}) {
+  const res = await apiPost('/api/auth/check-availability', {
+    email,
+    mobileNumber,
+  });
+  return unwrap(res);
+}
+
+// Commit a new phone number for the signed-in user. Requires that a
+// fresh verifyPhoneOtp({ purpose: 'change-phone', code }) succeeded
+// against the new number within the last 10 minutes. The backend
+// re-checks the verified flag and rejects numbers already in use.
+export async function changePhone(phone) {
+  const res = await apiPost('/api/auth/change-phone', { phone });
+  return unwrap(res);
+}
+
 // Professional registration — the richer signup path that creates a
 // user + ProfessionalDetail + a pending ProfessionalApproval row. The
 // backend validates per-type required fields and surfaces field

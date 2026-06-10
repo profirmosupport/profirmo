@@ -1,11 +1,18 @@
 import { apiGet, apiPost, unwrap } from './api';
 
-// Bookings for both sides. The backend automatically scopes the list to
-// the caller (client sees their bookings, professional sees ones
-// assigned to them).
+// Bookings the caller is involved in. `/api/bookings/mine` is the
+// CLIENT view (bookings the caller made as a client). `/api/bookings/
+// mine-as-professional` returns the bookings clients made WITH the
+// caller — that's what the pro dashboard + pro bookings list need.
 
 export async function listMyBookings() {
   const res = await apiGet('/api/bookings/mine');
+  const data = unwrap(res);
+  return (data && data.items) || data || [];
+}
+
+export async function listMyBookingsAsProfessional() {
+  const res = await apiGet('/api/bookings/mine-as-professional');
   const data = unwrap(res);
   return (data && data.items) || data || [];
 }

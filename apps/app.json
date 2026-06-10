@@ -6,7 +6,7 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./src/assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "backgroundColor": "#0f172a",
     "ios": {

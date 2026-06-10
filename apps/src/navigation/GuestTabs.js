@@ -40,6 +40,7 @@ import ProBookingsScreen from '../screens/professional/ProBookingsScreen';
 import ProCasesScreen from '../screens/professional/ProCasesScreen';
 import ProPaymentsScreen from '../screens/professional/ProPaymentsScreen';
 import ProWalletScreen from '../screens/professional/ProWalletScreen';
+import ProPayoutRequestScreen from '../screens/professional/ProPayoutRequestScreen';
 import ProSubscriptionScreen from '../screens/professional/ProSubscriptionScreen';
 import ProFirmScreen from '../screens/professional/ProFirmScreen';
 
@@ -265,6 +266,11 @@ function AccountStack() {
             name="AccountWallet"
             component={ProWalletScreen}
             options={{ title: 'Wallet' }}
+          />
+          <Stack.Screen
+            name="AccountPayoutRequest"
+            component={ProPayoutRequestScreen}
+            options={{ title: 'Request payout' }}
           />
           <Stack.Screen
             name="AccountSubscription"

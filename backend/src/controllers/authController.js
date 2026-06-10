@@ -47,6 +47,11 @@ const sendAuth = (res, statusCode, message, result) => {
   return successResponse(res, statusCode, message, {
     accessToken: result.accessToken,
     token: result.accessToken,
+    // Mobile clients can't reliably rely on the httpOnly refresh cookie
+    // (React Native's fetch doesn't persist cookies across calls), so
+    // we also surface the token in the body. They store it locally and
+    // post it back on /api/auth/refresh.
+    refreshToken: result.refreshToken,
     user: result.user,
   });
 };
@@ -356,7 +361,13 @@ const logout = asyncHandler(async (req, res) => {
 
 // POST /api/auth/refresh
 const refresh = asyncHandler(async (req, res) => {
-  const refreshToken = req.cookies ? req.cookies[env.cookie.name] : null;
+  // Mobile clients can't carry the httpOnly cookie reliably, so accept
+  // the refresh token from the body as a fallback. Web continues to
+  // use the cookie.
+  const refreshToken =
+    (req.cookies && req.cookies[env.cookie.name]) ||
+    (req.body && req.body.refreshToken) ||
+    null;
   const result = await authService.refresh(refreshToken, reqMeta(req));
   return sendAuth(res, 200, 'Token refreshed', result);
 });
