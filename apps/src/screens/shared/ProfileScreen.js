@@ -32,8 +32,7 @@ import Card from '../../components/common/Card';
 import Badge from '../../components/common/Badge';
 import AuthInput from '../../components/auth/AuthInput';
 import GradientButton from '../../components/auth/GradientButton';
-import PhotoUpload from '../../components/auth/PhotoUpload';
-import LocationFields from '../../components/auth/LocationFields';
+import ClientForm from '../../components/auth/forms/ClientForm';
 import { useAuth } from '../../contexts/AuthContext';
 import { ROLES } from '../../config/constants';
 import ProProfileScreen from './ProProfileScreen';
@@ -62,36 +61,29 @@ export default function ProfileScreen(props) {
   if (user.role === ROLES.PROFESSIONAL) {
     return <ProProfileScreen {...props} />;
   }
-  return <SignedInProfile user={user} refresh={refresh} logout={logout} />;
+  return (
+    <SignedInProfile
+      user={user}
+      refresh={refresh}
+      logout={logout}
+      navigation={props.navigation}
+    />
+  );
 }
 
 // ---------------------------------------------------------------------
 // Signed-in editor
 // ---------------------------------------------------------------------
 
-function SignedInProfile({ user, refresh, logout }) {
+function SignedInProfile({ user, refresh, logout, navigation }) {
   const [countries, setCountries] = useState([]);
-  const [profile, setProfile] = useState(null);
+  const [initial, setInitial] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  const [form, setForm] = useState({
-    profilePhoto: '',
-    firstName: '',
-    lastName: '',
-    email: '',
-    countryId: '',
-    stateId: '',
-    cityId: '',
-    addressLine: '',
-  });
-  const [errors, setErrors] = useState({});
-  const [banner, setBanner] = useState({ text: '', tone: 'error' });
-  const [saving, setSaving] = useState(false);
-
-  // Phone-change modal state.
+  const [successBanner, setSuccessBanner] = useState('');
   const [phoneModalOpen, setPhoneModalOpen] = useState(false);
 
-  // ---- Load profile + locations on mount ----
+  // Load /api/profile + locations, resolve address names → ids, and
+  // hand the pre-filled snapshot to ClientForm as `initial`.
   useEffect(() => {
     listLocations().then(setCountries).catch(() => {});
   }, []);
@@ -102,25 +94,32 @@ function SignedInProfile({ user, refresh, logout }) {
       const data = await getMyProfile();
       const u = (data && (data.user || data)) || {};
       const addr = (data && data.address) || {};
-      setProfile(data);
-      setForm((prev) => ({
-        ...prev,
+      setInitial({
         profilePhoto: u.profilePhoto || '',
         firstName: u.firstName || '',
         lastName: u.lastName || '',
         email: u.email || '',
+        mobileNumber: u.mobileNumber || user.mobileNumber || '',
         addressLine: addr.addressLine || '',
-      }));
+        _addressNames: {
+          country: addr.country,
+          state: addr.state,
+          city: addr.city,
+          countryId: addr.countryId,
+          stateId: addr.stateId,
+          cityId: addr.cityId,
+        },
+      });
     } catch {
-      // Fall back to the auth user payload — at least name + email
-      // render so the form isn't empty if /api/profile is unreachable.
-      setForm((prev) => ({
-        ...prev,
+      setInitial({
         profilePhoto: user.profilePhoto || '',
         firstName: user.firstName || '',
         lastName: user.lastName || '',
         email: user.email || '',
-      }));
+        mobileNumber: user.mobileNumber || '',
+        addressLine: '',
+        _addressNames: {},
+      });
     } finally {
       setLoading(false);
     }
@@ -130,297 +129,88 @@ function SignedInProfile({ user, refresh, logout }) {
     load();
   }, [load]);
 
-  // ---- Resolve countryId/stateId/cityId from saved address names ----
-  // Profile addresses come back as name strings (country/state/city), but
-  // the editor uses ids. Once `countries` + `profile` are both loaded,
-  // walk the tree to seed the cascading dropdowns.
+  // Once both countries + initial are loaded, resolve the saved
+  // address names back to the cascading-select ids and re-seed the
+  // ClientForm prefill.
+  const [resolvedInitial, setResolvedInitial] = useState(null);
   useEffect(() => {
-    if (!profile || !countries.length) return;
-    const addr = profile.address || {};
-    if (!addr.country && !addr.state && !addr.city) return;
+    if (!initial) return;
+    if (!countries.length || !initial._addressNames) {
+      setResolvedInitial({ ...initial, countryId: '', stateId: '', cityId: '' });
+      return;
+    }
+    const addr = initial._addressNames;
     const country = countries.find(
       (c) =>
         c.id === addr.countryId ||
-        String(c.name || '').toLowerCase() === String(addr.country || '').toLowerCase()
+        String(c.name || '').toLowerCase() ===
+          String(addr.country || '').toLowerCase()
     );
     const state =
-      country && (country.states || []).find(
+      country &&
+      (country.states || []).find(
         (s) =>
           s.id === addr.stateId ||
-          String(s.name || '').toLowerCase() === String(addr.state || '').toLowerCase()
+          String(s.name || '').toLowerCase() ===
+            String(addr.state || '').toLowerCase()
       );
     const city =
-      state && (state.cities || []).find(
+      state &&
+      (state.cities || []).find(
         (ci) =>
           ci.id === addr.cityId ||
-          String(ci.name || '').toLowerCase() === String(addr.city || '').toLowerCase()
+          String(ci.name || '').toLowerCase() ===
+            String(addr.city || '').toLowerCase()
       );
-    setForm((prev) => ({
-      ...prev,
+    setResolvedInitial({
+      ...initial,
       countryId: country ? country.id : '',
       stateId: state ? state.id : '',
       cityId: city ? city.id : '',
-    }));
-  }, [profile, countries]);
+    });
+  }, [initial, countries]);
 
-  const set = (k, v) => {
-    setForm((prev) => ({ ...prev, [k]: v }));
-    if (errors[k]) setErrors((p) => ({ ...p, [k]: undefined }));
-    if (banner.text) setBanner({ text: '', tone: 'error' });
-  };
-
-  function setLocation(next) {
-    setForm((prev) => ({ ...prev, ...next }));
-    setErrors((p) => ({
-      ...p,
-      country: undefined,
-      state: undefined,
-      city: undefined,
-    }));
-  }
-
-  function validate() {
-    const next = {};
-    if (!form.firstName.trim()) next.firstName = 'First name is required.';
-    if (!form.lastName.trim()) next.lastName = 'Last name is required.';
-    if (!form.email.trim()) next.email = 'Email is required.';
-    else if (!EMAIL_RE.test(form.email.trim()))
-      next.email = 'Enter a valid email.';
-    if (!form.countryId) next.country = 'Country is required.';
-    if (!form.stateId) next.state = 'State is required.';
-    if (!form.cityId) next.city = 'City is required.';
-    if (!form.addressLine.trim())
-      next.addressLine = 'Address line is required.';
-    setErrors(next);
-    return Object.keys(next).length === 0;
-  }
-
-  async function handleSave() {
-    if (saving) return;
-    if (!validate()) return;
-    setSaving(true);
-    setBanner({ text: '', tone: 'error' });
+  // ClientForm calls this with the validated form + resolved country
+  // /state/city objects. We translate to the profile-update payload.
+  async function handleSave({ form, country, state, city }) {
+    await updateMyProfile({
+      firstName: form.firstName.trim(),
+      lastName: form.lastName.trim(),
+      email: form.email.trim(),
+      profilePhoto: form.profilePhoto || undefined,
+      address: {
+        country: country ? country.name : undefined,
+        state: state ? state.name : undefined,
+        city: city ? city.name : undefined,
+        addressLine: form.addressLine.trim(),
+      },
+    });
     try {
-      const country = countries.find((c) => c.id === form.countryId);
-      const state = country?.states?.find((s) => s.id === form.stateId);
-      const city = state?.cities?.find((c) => c.id === form.cityId);
-      await updateMyProfile({
-        firstName: form.firstName.trim(),
-        lastName: form.lastName.trim(),
-        email: form.email.trim(),
-        profilePhoto: form.profilePhoto || undefined,
-        address: {
-          country: country ? country.name : undefined,
-          state: state ? state.name : undefined,
-          city: city ? city.name : undefined,
-          addressLine: form.addressLine.trim(),
-        },
-      });
-      // Pull the fresh user into AuthContext so the rest of the app
-      // reflects the new name / email / photo immediately.
-      try {
-        await refresh();
-      } catch {}
-      setBanner({ text: 'Profile updated.', tone: 'success' });
-    } catch (err) {
-      if (err && err.code === 'EMAIL_ALREADY_REGISTERED') {
-        setErrors((p) => ({ ...p, email: err.message }));
-        setBanner({ text: err.message, tone: 'error' });
-      } else {
-        setBanner({
-          text: err?.message || 'Could not save your profile.',
-          tone: 'error',
-        });
-      }
-    } finally {
-      setSaving(false);
-    }
+      await refresh();
+    } catch {}
+    setSuccessBanner('Profile updated.');
   }
 
   return (
-    <ScreenContainer hasNavHeader keyboard contentStyle={styles.pageContent}>
-      {loading ? (
+    <ScreenContainer
+      hasNavHeader
+      keyboard
+      contentStyle={styles.pageContent}
+    >
+      {loading || !resolvedInitial ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} />
         </View>
       ) : (
-        <View style={{ gap: spacing.md }}>
-          {/* Identity strip */}
-          <Card>
-            <View style={styles.identityRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.identityName}>{displayName(user)}</Text>
-                <Text style={styles.identityEmail}>{user.email}</Text>
-                <View style={styles.badges}>
-                  {user.role ? (
-                    <Badge variant="amber">{user.role}</Badge>
-                  ) : null}
-                  {user.emailVerified ? (
-                    <Badge variant="green">Email verified</Badge>
-                  ) : (
-                    <Badge variant="gray">Email unverified</Badge>
-                  )}
-                  {user.mobileVerified ? (
-                    <Badge variant="green">Phone verified</Badge>
-                  ) : null}
-                </View>
-              </View>
-            </View>
-          </Card>
-
-          {banner.text ? (
-            <View
-              style={[
-                styles.banner,
-                banner.tone === 'success'
-                  ? styles.bannerSuccess
-                  : styles.bannerError,
-              ]}
-            >
-              <Feather
-                name={banner.tone === 'success' ? 'check-circle' : 'alert-circle'}
-                size={14}
-                color={banner.tone === 'success' ? '#047857' : colors.danger}
-              />
-              <Text
-                style={[
-                  styles.bannerText,
-                  banner.tone === 'success'
-                    ? { color: '#047857' }
-                    : { color: colors.danger },
-                ]}
-              >
-                {banner.text}
-              </Text>
-            </View>
-          ) : null}
-
-          {/* Profile photo — its own card so the centred avatar reads
-              as a distinct unit instead of bleeding into the form. */}
-          <Card>
-            <SectionLabel>Profile photo</SectionLabel>
-            <PhotoUpload
-              value={form.profilePhoto}
-              onChange={(url) => set('profilePhoto', url)}
-              category="profile_photo"
-            />
-          </Card>
-
-          {/* Personal */}
-          <Card>
-            <SectionLabel>Personal</SectionLabel>
-            <View style={styles.row}>
-              <View style={{ flex: 1 }}>
-                <AuthInput
-                  label="First name"
-                  icon="user"
-                  autoCapitalize="words"
-                  placeholder="Aarav"
-                  value={form.firstName}
-                  onChangeText={(v) => set('firstName', v)}
-                  error={errors.firstName}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <AuthInput
-                  label="Last name"
-                  icon="user"
-                  autoCapitalize="words"
-                  placeholder="Mehta"
-                  value={form.lastName}
-                  onChangeText={(v) => set('lastName', v)}
-                  error={errors.lastName}
-                />
-              </View>
-            </View>
-            <AuthInput
-              label="Email address"
-              icon="mail"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              placeholder="you@example.com"
-              value={form.email}
-              onChangeText={(v) => set('email', v)}
-              error={errors.email}
-              hint="Changing your email will mark it as unverified until you re-confirm."
-            />
-
-            {/* Phone — read-only + change CTA */}
-            <SectionLabel top>Mobile number</SectionLabel>
-            <View style={styles.phoneRow}>
-              <View style={styles.phoneField}>
-                <Feather
-                  name="smartphone"
-                  size={14}
-                  color={colors.textMuted}
-                />
-                <Text style={styles.phoneValue}>
-                  {user.mobileNumber || 'Not added yet'}
-                </Text>
-                {user.mobileVerified ? (
-                  <View style={styles.phoneVerified}>
-                    <Feather name="check" size={10} color="#047857" />
-                    <Text style={styles.phoneVerifiedText}>Verified</Text>
-                  </View>
-                ) : null}
-              </View>
-              <Pressable
-                onPress={() => setPhoneModalOpen(true)}
-                style={({ pressed }) => [
-                  styles.changePhoneBtn,
-                  { opacity: pressed ? 0.85 : 1 },
-                ]}
-              >
-                <Feather name="edit-3" size={12} color={colors.primary} />
-                <Text style={styles.changePhoneText}>
-                  {user.mobileNumber ? 'Change' : 'Add number'}
-                </Text>
-              </Pressable>
-            </View>
-            <Text style={styles.phoneHint}>
-              Phone changes require OTP verification on the new number.
-            </Text>
-          </Card>
-
-          {/* Location */}
-          <Card>
-            <SectionLabel>Location</SectionLabel>
-            <LocationFields
-              countries={countries}
-              countryId={form.countryId}
-              stateId={form.stateId}
-              cityId={form.cityId}
-              onChange={setLocation}
-              errors={errors}
-            />
-            <AuthInput
-              label="Address line"
-              icon="home"
-              autoCapitalize="sentences"
-              placeholder="Street, building, area"
-              value={form.addressLine}
-              onChangeText={(v) => set('addressLine', v)}
-              error={errors.addressLine}
-            />
-          </Card>
-
-          <GradientButton
-            title={saving ? 'Saving…' : 'Save changes'}
-            loading={saving}
-            onPress={handleSave}
-          />
-
-          <Pressable
-            onPress={logout}
-            style={({ pressed }) => [
-              styles.logoutBtn,
-              { opacity: pressed ? 0.85 : 1 },
-            ]}
-          >
-            <Feather name="log-out" size={14} color={colors.danger} />
-            <Text style={styles.logoutText}>Sign out</Text>
-          </Pressable>
-        </View>
+        <ClientForm
+          mode="edit"
+          initial={resolvedInitial}
+          phoneVerified={user.mobileVerified}
+          onChangePhone={() => setPhoneModalOpen(true)}
+          onSave={handleSave}
+          saveLabel="Save changes"
+          banner={successBanner}
+        />
       )}
 
       <PhoneChangeModal
@@ -432,7 +222,7 @@ function SignedInProfile({ user, refresh, logout }) {
             await refresh();
           } catch {}
           setPhoneModalOpen(false);
-          setBanner({ text: 'Phone number updated.', tone: 'success' });
+          setSuccessBanner('Phone number updated.');
         }}
       />
     </ScreenContainer>
@@ -613,6 +403,20 @@ function SectionLabel({ children, top }) {
   );
 }
 
+// Two-up row helper — same shape as the signup wizard's Row so the
+// firstName/lastName pair lays out identically.
+function Row({ children }) {
+  return (
+    <View style={styles.row2}>
+      {(Array.isArray(children) ? children : [children]).map((c, i) => (
+        <View key={i} style={styles.row2Col}>
+          {c}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function GuestStateCard({ onSignIn }) {
   return (
     <ScreenContainer hasNavHeader>
@@ -642,9 +446,22 @@ function GuestStateCard({ onSignIn }) {
 }
 
 const styles = StyleSheet.create({
-  // Breathing room below the dark nav header so the first card
-  // doesn't crowd the title bar.
-  pageContent: { paddingTop: spacing.lg },
+  // AuthShell's topRight slot — small X button to dismiss the page
+  // since AuthShell has no built-in back button.
+  // Breathing room below the dark nav header so the first form
+  // field doesn't crowd the title bar.
+  pageContent: { paddingTop: spacing.md },
+
+  shellBack: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.xl },
 
@@ -665,8 +482,11 @@ const styles = StyleSheet.create({
   },
   badges: { marginTop: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
 
+  // Section header — same spacing/typography as the signup wizard so
+  // a "Profile photo" / "Personal" / "Location" header reads identically.
   sectionLabel: {
-    marginBottom: 10,
+    marginTop: spacing.md,
+    marginBottom: 8,
     fontSize: 11,
     fontWeight: fontWeight.bold,
     color: colors.textMuted,
@@ -674,7 +494,9 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
 
-  row: { flexDirection: 'row', gap: spacing.sm },
+  // Two-up row helper — same as the signup wizard's row2.
+  row2: { flexDirection: 'row', gap: spacing.sm },
+  row2Col: { flex: 1 },
 
   // Phone read-only display + change CTA
   phoneRow: {

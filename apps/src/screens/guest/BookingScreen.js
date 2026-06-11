@@ -118,6 +118,19 @@ export default function BookingScreen({ navigation, route }) {
     load();
   }, [load]);
 
+  // Weekdays the pro marked off — fed to the calendar so those cells
+  // are disabled, and to the slot lookup so the time grid clears out.
+  const disabledWeekdays = useMemo(() => {
+    const out = new Set();
+    if (!pro || !Array.isArray(pro.availability)) return out;
+    pro.availability.forEach((entry) => {
+      if (entry && entry.day && entry.enabled === false) {
+        out.add(entry.day);
+      }
+    });
+    return out;
+  }, [pro]);
+
   // Surface slots for the picked day from the pro's `availability` map
   // (same shape the web uses). Falls back to a default grid inside
   // TimeSlotSelector when nothing is configured.
@@ -127,6 +140,7 @@ export default function BookingScreen({ navigation, route }) {
     const entry = (pro.availability || []).find(
       (s) => s && s.day === weekday
     );
+    if (entry && entry.enabled === false) return [];
     return entry && Array.isArray(entry.slots) && entry.slots.length > 0
       ? entry.slots
       : undefined;
@@ -361,6 +375,7 @@ export default function BookingScreen({ navigation, route }) {
                   <BookingCalendar
                     selectedDate={selectedDate}
                     onSelectDate={handleSelectDate}
+                    disabledWeekdays={disabledWeekdays}
                   />
                 </Card>
 

@@ -10,6 +10,7 @@ import Button from '../../components/common/Button';
 import EmptyState from '../../components/common/EmptyState';
 import AvatarWithInitials from '../../components/common/AvatarWithInitials';
 import DashboardHero from '../../components/common/DashboardHero';
+import DashboardLoader from '../../components/common/DashboardLoader';
 import { CardSkeleton } from '../../components/common/Skeleton';
 import { useAuth } from '../../contexts/AuthContext';
 import { listMyBookings } from '../../services/bookingService';
@@ -86,9 +87,13 @@ export default function ClientDashboardScreen({ navigation }) {
   }, []);
 
   // Refetch on focus so a freshly-paid booking lands here instantly
-  // when the user navigates back from the booking flow.
+  // when the user navigates back from the booking flow. We also flip
+  // `loadedOnce` to false BEFORE the fetch so the branded loader
+  // shows on every entry — the user sees the same animated splash
+  // every time, not just on cold start.
   useFocusEffect(
     useCallback(() => {
+      setLoadedOnce(false);
       load();
     }, [load])
   );
@@ -101,6 +106,19 @@ export default function ClientDashboardScreen({ navigation }) {
       ['pending', 'confirmed'].includes(String(b.status || '').toLowerCase())
     )
     .slice(0, 5);
+
+  // First-paint brand loader — same vibe as the guest landing's
+  // GuestHomeLoader. Once the first fetch lands we swap to the
+  // real dashboard.
+  if (!loadedOnce) {
+    return (
+      <DashboardLoader
+        greeting={`Hi, ${firstName} · ${greeting()}`}
+        tagline="Loading your dashboard…"
+        tileCount={3}
+      />
+    );
+  }
 
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={load} bleedTop>

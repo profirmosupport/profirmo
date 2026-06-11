@@ -11,7 +11,13 @@ function toIso(d) {
   return `${y}-${m}-${day}`;
 }
 
-export default function BookingCalendar({ selectedDate, onSelectDate }) {
+export default function BookingCalendar({
+  selectedDate,
+  onSelectDate,
+  // Set / array of weekday names ('Monday', etc.) the pro marked off.
+  // Disabled cells can't be tapped and render in a rose tone.
+  disabledWeekdays,
+}) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const days = Array.from({ length: 14 }, (_, i) => {
@@ -19,6 +25,15 @@ export default function BookingCalendar({ selectedDate, onSelectDate }) {
     d.setDate(today.getDate() + i);
     return d;
   });
+
+  const disabledSet =
+    disabledWeekdays instanceof Set
+      ? new Set([...disabledWeekdays].map((d) => String(d).toLowerCase()))
+      : new Set(
+          (Array.isArray(disabledWeekdays) ? disabledWeekdays : []).map(
+            (d) => String(d).toLowerCase()
+          )
+        );
 
   return (
     <ScrollView
@@ -30,32 +45,54 @@ export default function BookingCalendar({ selectedDate, onSelectDate }) {
         const iso = toIso(d);
         const active = selectedDate === iso;
         const isToday = d.getTime() === today.getTime();
+        const weekdayLong = d
+          .toLocaleDateString('en-IN', { weekday: 'long' })
+          .toLowerCase();
+        const isOff = disabledSet.has(weekdayLong);
         return (
           <Pressable
             key={iso}
-            onPress={() => onSelectDate(iso)}
+            disabled={isOff}
+            onPress={() => (isOff ? null : onSelectDate(iso))}
             style={({ pressed }) => [
               styles.cell,
-              active && styles.cellActive,
-              pressed && { opacity: 0.88 },
+              isOff && styles.cellOff,
+              !isOff && active && styles.cellActive,
+              pressed && !isOff && { opacity: 0.88 },
             ]}
           >
             <Text
-              style={[styles.weekday, active && styles.weekdayActive]}
+              style={[
+                styles.weekday,
+                active && !isOff && styles.weekdayActive,
+                isOff && styles.weekdayOff,
+              ]}
               numberOfLines={1}
             >
               {d.toLocaleDateString('en-IN', { weekday: 'short' })}
             </Text>
-            <Text style={[styles.day, active && styles.dayActive]}>
+            <Text
+              style={[
+                styles.day,
+                active && !isOff && styles.dayActive,
+                isOff && styles.dayOff,
+              ]}
+            >
               {d.getDate()}
             </Text>
             <Text
-              style={[styles.month, active && styles.monthActive]}
+              style={[
+                styles.month,
+                active && !isOff && styles.monthActive,
+                isOff && styles.monthOff,
+              ]}
               numberOfLines={1}
             >
-              {isToday
-                ? 'Today'
-                : d.toLocaleDateString('en-IN', { month: 'short' })}
+              {isOff
+                ? 'Off'
+                : isToday
+                  ? 'Today'
+                  : d.toLocaleDateString('en-IN', { month: 'short' })}
             </Text>
           </Pressable>
         );
@@ -80,6 +117,14 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     backgroundColor: colors.primary,
   },
+  // Day-off cell — rose tint + non-interactive look.
+  cellOff: {
+    borderColor: '#fecaca',
+    backgroundColor: '#fff1f2',
+  },
+  weekdayOff: { color: '#be123c' },
+  dayOff: { color: '#be123c' },
+  monthOff: { color: '#be123c' },
   weekday: {
     fontSize: 10,
     fontWeight: fontWeight.bold,

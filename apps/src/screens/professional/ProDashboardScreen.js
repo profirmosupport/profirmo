@@ -13,6 +13,7 @@ import Section from '../../components/common/Section';
 import EmptyState from '../../components/common/EmptyState';
 import AvatarWithInitials from '../../components/common/AvatarWithInitials';
 import DashboardHero from '../../components/common/DashboardHero';
+import DashboardLoader from '../../components/common/DashboardLoader';
 import { CardSkeleton } from '../../components/common/Skeleton';
 import { useAuth } from '../../contexts/AuthContext';
 import { getMySubscription } from '../../services/subscriptionService';
@@ -64,7 +65,7 @@ function PlanQuotaGrid({ plan }) {
   const items = [
     {
       key: 'commission',
-      label: 'Commission',
+      label: 'Cut',
       icon: 'percent',
       iconBg: '#fee2e2',
       iconFg: '#be123c',
@@ -155,9 +156,11 @@ export default function ProDashboardScreen({ navigation }) {
 
   // useFocusEffect — refetch whenever the dashboard re-enters focus,
   // so a freshly-confirmed booking lands here on return from the
-  // booking detail or the conversion flow.
+  // booking detail / conversion flow. Reset `loadedOnce` first so
+  // the branded loader fires on every entry to the screen.
   useFocusEffect(
     useCallback(() => {
+      setLoadedOnce(false);
       load();
     }, [load])
   );
@@ -170,6 +173,19 @@ export default function ProDashboardScreen({ navigation }) {
       ['pending', 'confirmed'].includes(String(b.status || '').toLowerCase())
     )
     .slice(0, 5);
+
+  // First-paint brand loader — same vibe as the guest landing's
+  // GuestHomeLoader. Pro dashboard gets 4 quick-action tiles so the
+  // skeleton row matches the live layout exactly.
+  if (!loadedOnce) {
+    return (
+      <DashboardLoader
+        greeting={`Welcome back, ${firstName} · ${greeting()}`}
+        tagline="Loading your day at a glance…"
+        tileCount={4}
+      />
+    );
+  }
 
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={load} bleedTop>
@@ -184,7 +200,30 @@ export default function ProDashboardScreen({ navigation }) {
         trailingPillTone="amber"
       />
 
-      <Card style={{ marginTop: spacing.lg }}>
+      {/* Availability management — pause new bookings, flip "available
+          now" badge. Mirrors the web's /dashboard/professional/
+          availability page. Sits directly under the hero so it's the
+          first thing a pro reaches on cold open. */}
+      <Pressable
+        onPress={() => navigation.navigate('AccountAvailability')}
+        style={({ pressed }) => [
+          styles.availabilityBtn,
+          { opacity: pressed ? 0.92 : 1 },
+        ]}
+      >
+        <View style={styles.availabilityIcon}>
+          <Feather name="calendar" size={16} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.availabilityTitle}>Manage availability</Text>
+          <Text style={styles.availabilitySub}>
+            Pause online bookings or flip the &ldquo;Available now&rdquo; badge.
+          </Text>
+        </View>
+        <Feather name="arrow-right" size={16} color={colors.textMuted} />
+      </Pressable>
+
+      <Card style={{ marginTop: spacing.md }}>
         <View style={styles.subHeader}>
           <View style={{ flex: 1 }}>
             <Text style={styles.eyebrow}>Current plan</Text>
@@ -363,6 +402,38 @@ const styles = StyleSheet.create({
   muted: { marginTop: 4, fontSize: fontSize.sm, color: colors.textSecondary },
   ctaRow: { marginTop: spacing.md, flexDirection: 'row', alignItems: 'center', gap: 6 },
   ctaText: { color: colors.primary, fontWeight: fontWeight.semibold, fontSize: fontSize.sm },
+
+  // Manage-availability strip — pill-shaped row under the hero.
+  availabilityBtn: {
+    marginTop: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  availabilityIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  availabilityTitle: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.bold,
+    color: colors.textPrimary,
+  },
+  availabilitySub: {
+    marginTop: 2,
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
 
   // Plan allowance grid — four icon-led tiles laid out as a single
   // row. No wrap, so the row always reads as one strip of four

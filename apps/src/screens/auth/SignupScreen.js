@@ -10,6 +10,7 @@ import DocSlot from '../../components/auth/DocSlot';
 import StepProgress from '../../components/auth/StepProgress';
 import SearchableSelect from '../../components/auth/SearchableSelect';
 import SearchableMultiSelect from '../../components/auth/SearchableMultiSelect';
+import ClientForm from '../../components/auth/forms/ClientForm';
 import CheckboxRow from '../../components/auth/CheckboxRow';
 import SkipButton from '../../components/auth/SkipButton';
 import {
@@ -56,7 +57,7 @@ const PRO_STEP_LABELS = ['Personal', 'Details', 'Documents'];
 // hand back the helpers Step 1 needs to feed cascading dropdowns.
 // ===========================================================================
 
-function useLocations() {
+export function useLocations() {
   const [countries, setCountries] = useState([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
@@ -78,7 +79,7 @@ function useLocations() {
   return { countries, loading };
 }
 
-function useCategories() {
+export function useCategories() {
   const [cats, setCats] = useState([]);
   useEffect(() => {
     let active = true;
@@ -94,7 +95,7 @@ function useCategories() {
 
 // Find the {Legal} / {Tax} category — the names happen to match
 // PRO_TYPES values minus the trailing " Consultant".
-function categoryForType(cats, professionalType) {
+export function categoryForType(cats, professionalType) {
   if (!professionalType) return null;
   const wanted = professionalType.split(' ')[0].toLowerCase(); // 'legal' | 'tax'
   return cats.find((c) => String(c.name || '').toLowerCase() === wanted) || null;
@@ -577,7 +578,7 @@ function LocationFields({
 
 // Flatten the locations tree into a "Bengaluru — Karnataka" pickable
 // list for the Practice cities multi-select (Pro Step 1).
-function flatCityOptions(countries) {
+export function flatCityOptions(countries) {
   const out = [];
   for (const c of countries) {
     for (const s of c.states || []) {
@@ -594,216 +595,10 @@ function flatCityOptions(countries) {
 // ===========================================================================
 
 function ClientStep({ verifiedPhone }) {
-  const { signup, signupWithPhone } = useAuth();
-  const { countries } = useLocations();
-
-  // When the wizard reached us via the phone-OTP first step, sign up
-  // with /api/auth/phone-signup (no password required) and lock the
-  // mobile field to the verified number. Otherwise fall back to the
-  // legacy /api/auth/signup flow with password + optional mobile.
-  const phoneFirst = Boolean(verifiedPhone);
-
-  const [form, setForm] = useState({
-    profilePhoto: '',
-    firstName: '',
-    lastName: '',
-    email: '',
-    mobileNumber: verifiedPhone || '',
-    password: '',
-    countryId: '',
-    stateId: '',
-    cityId: '',
-    addressLine: '',
-  });
-  const [errors, setErrors] = useState({});
-  const [banner, setBanner] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
-  const set = (k, v) => {
-    setForm((prev) => ({ ...prev, [k]: v }));
-    if (errors[k]) setErrors((p) => ({ ...p, [k]: undefined }));
-  };
-
-  function setLocation(next) {
-    setForm((prev) => ({ ...prev, ...next }));
-    setErrors((p) => ({
-      ...p,
-      country: undefined,
-      state: undefined,
-      city: undefined,
-    }));
-  }
-
-  function validate() {
-    const next = {};
-    if (!form.firstName.trim()) next.firstName = 'First name is required.';
-    if (!form.lastName.trim()) next.lastName = 'Last name is required.';
-    if (!form.email.trim()) next.email = 'Email is required.';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()))
-      next.email = 'Enter a valid email.';
-    // Password is only required on the legacy (non-phone-OTP) signup
-    // path — phone-OTP signups have no password (phone is the channel
-    // of verification).
-    if (!phoneFirst) {
-      if (!form.password) next.password = 'Password is required.';
-      else if (form.password.length < 6)
-        next.password = 'At least 6 characters.';
-    }
-    if (!form.countryId) next.country = 'Country is required.';
-    if (!form.stateId) next.state = 'State is required.';
-    if (!form.cityId) next.city = 'City is required.';
-    if (!form.addressLine.trim()) next.addressLine = 'Address line is required.';
-    setErrors(next);
-    return Object.keys(next).length === 0;
-  }
-
-  async function handleSubmit() {
-    if (!validate()) return;
-    setBanner('');
-    setSubmitting(true);
-    try {
-      if (phoneFirst) {
-        // Phone-first signup — the backend redeems the verified OTP
-        // we just minted and returns the standard session payload.
-        await signupWithPhone({
-          phone: verifiedPhone,
-          firstName: form.firstName.trim(),
-          lastName: form.lastName.trim(),
-          email: form.email.trim(),
-          role: ROLES.CLIENT,
-        });
-        // (Address / photo / etc. get captured in the dashboard
-        // profile screen — v1 of the phone-first flow keeps the
-        // create-account payload narrow.)
-        return; // loader stays on until the auth flip swaps the navigator
-      }
-      const country = countries.find((c) => c.id === form.countryId);
-      const state = country?.states?.find((s) => s.id === form.stateId);
-      const city = state?.cities?.find((c) => c.id === form.cityId);
-      await signup({
-        firstName: form.firstName.trim(),
-        lastName: form.lastName.trim(),
-        email: form.email.trim(),
-        password: form.password,
-        mobileNumber: form.mobileNumber.trim(),
-        role: ROLES.CLIENT,
-        profilePhoto: form.profilePhoto || undefined,
-        country: country ? country.name : undefined,
-        countryId: form.countryId || undefined,
-        state: state ? state.name : undefined,
-        stateId: form.stateId || undefined,
-        city: city ? city.name : undefined,
-        cityId: form.cityId || undefined,
-        addressLine: form.addressLine.trim() || undefined,
-      });
-    } catch (err) {
-      setBanner(err.message || 'Signup failed. Please try again.');
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <View>
-      {banner ? <Banner text={banner} /> : null}
-
-      <SectionLabel>Profile photo</SectionLabel>
-      <PhotoUpload
-        value={form.profilePhoto}
-        onChange={(url) => set('profilePhoto', url)}
-        category="profile_photo"
-      />
-
-      <SectionLabel>Personal</SectionLabel>
-      <Row>
-        <AuthInput
-          label="First name"
-          icon="user"
-          autoCapitalize="words"
-          placeholder="Aarav"
-          value={form.firstName}
-          onChangeText={(v) => set('firstName', v)}
-          error={errors.firstName}
-        />
-        <AuthInput
-          label="Last name"
-          icon="user"
-          autoCapitalize="words"
-          placeholder="Mehta"
-          value={form.lastName}
-          onChangeText={(v) => set('lastName', v)}
-          error={errors.lastName}
-        />
-      </Row>
-      <AuthInput
-        label="Email address"
-        icon="mail"
-        keyboardType="email-address"
-        placeholder="you@example.com"
-        value={form.email}
-        onChangeText={(v) => set('email', v)}
-        error={errors.email}
-      />
-      {phoneFirst ? (
-        <VerifiedPhoneDisplay phone={form.mobileNumber} />
-      ) : (
-        <AuthInput
-          label="Mobile number"
-          icon="smartphone"
-          keyboardType="phone-pad"
-          placeholder="+91 98xxxxxxxx"
-          value={form.mobileNumber}
-          onChangeText={(v) => set('mobileNumber', v)}
-          hint="You can verify your number after signup."
-        />
-      )}
-      {/* Phone-first signup is password-less — phone is the channel of
-          verification. The password field is only shown on the legacy
-          path (which is no longer reachable from the new flow but
-          kept for back-compat with deep links). */}
-      {!phoneFirst ? (
-        <AuthInput
-          label="Password"
-          icon="lock"
-          secureTextEntry
-          placeholder="At least 6 characters"
-          value={form.password}
-          onChangeText={(v) => set('password', v)}
-          error={errors.password}
-        />
-      ) : null}
-
-      <SectionLabel>Location</SectionLabel>
-      <LocationFields
-        countries={countries}
-        countryId={form.countryId}
-        stateId={form.stateId}
-        cityId={form.cityId}
-        onChange={setLocation}
-        errors={errors}
-      />
-      <AuthInput
-        label="Address line"
-        icon="home"
-        autoCapitalize="sentences"
-        placeholder="Street, building, area"
-        value={form.addressLine}
-        onChangeText={(v) => set('addressLine', v)}
-        error={errors.addressLine}
-      />
-
-      <GradientButton
-        title={submitting ? 'Creating account…' : 'Create account'}
-        loading={submitting}
-        onPress={handleSubmit}
-        style={{ marginTop: spacing.md }}
-      />
-
-      <Text style={styles.tos}>
-        By continuing you agree to Profirmo's Terms of Service and Privacy
-        Policy.
-      </Text>
-    </View>
-  );
+  // Delegate to the shared ClientForm — same widget the profile page
+  // uses. Signup mode hooks the auth/signup APIs; the profile page
+  // passes mode="edit" + initial + onSave to override.
+  return <ClientForm mode="signup" verifiedPhone={verifiedPhone} />;
 }
 
 // ===========================================================================
@@ -1133,11 +928,17 @@ function ProRegistrationWizard({ professionalType, verifiedPhone }) {
 
 // --- Step 1 ---------------------------------------------------------------
 
-function Step1({ form, set, setLocation, errors, countries, flatCities, typeCat, verifiedPhone }) {
+export function Step1({ form, set, setLocation, errors, countries, flatCities, typeCat, verifiedPhone, onChangePhone }) {
   const phoneLocked = Boolean(verifiedPhone);
+  // Tier-1 sub-categories only — same filter the search screen uses
+  // so the signup picker, the dashboard quota tiles and the search
+  // dropdown all speak the same taxonomy level. Deeper tiers
+  // (sub-sub-categories + tags) are picked up automatically server-side.
   const subOptions =
     typeCat && Array.isArray(typeCat.subCategories)
-      ? typeCat.subCategories.map((s) => ({ value: s.id, label: s.name }))
+      ? typeCat.subCategories
+          .filter((s) => !s.parentSubCategoryId)
+          .map((s) => ({ value: s.id, label: s.name }))
       : [];
 
   return (
@@ -1177,7 +978,23 @@ function Step1({ form, set, setLocation, errors, countries, flatCities, typeCat,
         error={errors.email}
       />
       {phoneLocked ? (
-        <VerifiedPhoneDisplay phone={form.mobileNumber} />
+        <View>
+          <VerifiedPhoneDisplay phone={form.mobileNumber} />
+          {onChangePhone ? (
+            <Pressable
+              onPress={onChangePhone}
+              style={({ pressed }) => [
+                styles.changePhoneInline,
+                { opacity: pressed ? 0.85 : 1 },
+              ]}
+            >
+              <Feather name="edit-3" size={12} color={colors.primary} />
+              <Text style={styles.changePhoneInlineText}>
+                {form.mobileNumber ? 'Change number' : 'Add number'}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
       ) : (
         <AuthInput
           label="Mobile number"
@@ -1243,6 +1060,8 @@ function Step1({ form, set, setLocation, errors, countries, flatCities, typeCat,
         placeholder="A brief introduction about your practice."
         value={form.bio}
         onChangeText={(v) => set('bio', v)}
+        multiline
+        numberOfLines={4}
       />
 
       {subOptions.length > 0 ? (
@@ -1262,7 +1081,7 @@ function Step1({ form, set, setLocation, errors, countries, flatCities, typeCat,
 
 // --- Step 2 ---------------------------------------------------------------
 
-function Step2({ form, set, errors, isLegal }) {
+export function Step2({ form, set, errors, isLegal }) {
   return (
     <View>
       <SectionLabel>Experience</SectionLabel>
@@ -1473,7 +1292,7 @@ function Step2({ form, set, errors, isLegal }) {
 
 // --- Step 3 ---------------------------------------------------------------
 
-function Step3({ form, set, isLegal }) {
+export function Step3({ form, set, isLegal }) {
   return (
     <View>
       <Text style={styles.stepHint}>
@@ -1724,6 +1543,29 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: fontSize.xs,
     color: colors.textMuted,
+  },
+  // Inline "Change number" pill — rendered directly below the locked
+  // phone field in edit-mode contexts (Step1 used by the profile
+  // editor). Hidden in pure signup flow since `onChangePhone` is
+  // only wired by the profile pages.
+  changePhoneInline: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: -8,
+    marginBottom: spacing.md,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  changePhoneInlineText: {
+    fontSize: 11,
+    fontWeight: fontWeight.bold,
+    color: colors.primary,
   },
   backText: {
     fontSize: fontSize.sm,

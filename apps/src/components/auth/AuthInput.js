@@ -21,6 +21,8 @@ export default function AuthInput({
   error,
   hint,
   editable = true,
+  multiline = false,
+  numberOfLines,
 }) {
   const [focused, setFocused] = useState(false);
   // Password reveal toggle — only relevant when the input is masked.
@@ -45,6 +47,7 @@ export default function AuthInput({
       <View
         style={[
           styles.field,
+          multiline && styles.fieldMultiline,
           {
             borderColor,
             backgroundColor: editable ? '#ffffff' : colors.surfaceMuted,
@@ -56,11 +59,14 @@ export default function AuthInput({
             name={icon}
             size={16}
             color={colors.textMuted}
-            style={styles.iconPrefix}
+            style={[
+              styles.iconPrefix,
+              multiline && styles.iconPrefixMultiline,
+            ]}
           />
         ) : null}
         <TextInput
-          style={styles.input}
+          style={[styles.input, multiline && styles.inputMultiline]}
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
@@ -76,6 +82,9 @@ export default function AuthInput({
           // password as a suggestion while it's revealed.
           textContentType={isPassword ? 'password' : undefined}
           editable={editable}
+          multiline={multiline}
+          numberOfLines={multiline ? numberOfLines || 4 : undefined}
+          textAlignVertical={multiline ? 'top' : undefined}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
         />
@@ -129,7 +138,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
   },
+  // Multiline variant — top-align the icon + input so the field
+  // reads as a text area instead of a one-line box that grew.
+  fieldMultiline: { alignItems: 'flex-start' },
   iconPrefix: { marginRight: 8 },
+  iconPrefixMultiline: { marginTop: 14 },
   eyeBtn: {
     marginLeft: 8,
     padding: 4,
@@ -141,6 +154,15 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: fontSize.base,
     color: colors.textPrimary,
+  },
+  // Multiline text-area sizing — taller field that grows with the
+  // number of lines while staying capped so it doesn't push the rest
+  // of the form off-screen.
+  inputMultiline: {
+    minHeight: 96,
+    maxHeight: 220,
+    paddingTop: 12,
+    paddingBottom: 12,
   },
   error: { marginTop: 4, fontSize: fontSize.xs, color: colors.danger },
   hint: { marginTop: 4, fontSize: fontSize.xs, color: colors.textMuted },

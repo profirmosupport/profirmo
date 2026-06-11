@@ -1,16 +1,11 @@
-// ProProfileScreen — 3-tab professional profile editor, modelled on the
-// signup wizard's three steps (Personal / Details / Documents) so a pro
-// can edit any registration field after onboarding.
-//
-//   Tab 1 — Personal     reuses the same widgets as the client profile
-//                        (name, email, OTP-gated phone, address, photo).
-//   Tab 2 — Details      designation, organization, years of experience,
-//                        consultation fee, bio, languages, website.
-//                        Saves via PUT /api/profile/professional.
-//   Tab 3 — Documents    identity / license / certification uploads
-//                        (same DocSlot widget the signup wizard uses).
+// ProProfileScreen — 3-tab professional profile editor that renders
+// the EXACT same Step1/Step2/Step3 components the signup wizard uses,
+// just prefilled from the user's existing profile + saving via
+// /api/profile (personal) and /api/profile/professional (details +
+// documents). One source of truth for both flows — see Step1, Step2,
+// Step3 in SignupScreen.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -21,13 +16,17 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import ScreenContainer from '../../components/common/ScreenContainer';
-import Card from '../../components/common/Card';
-import Badge from '../../components/common/Badge';
 import AuthInput from '../../components/auth/AuthInput';
 import GradientButton from '../../components/auth/GradientButton';
-import PhotoUpload from '../../components/auth/PhotoUpload';
-import DocSlot from '../../components/auth/DocSlot';
-import LocationFields from '../../components/auth/LocationFields';
+import {
+  Step1,
+  Step2,
+  Step3,
+  useLocations,
+  useCategories,
+  flatCityOptions,
+  categoryForType,
+} from '../auth/SignupScreen';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   getMyProfile,
@@ -39,111 +38,229 @@ import {
   sendPhoneOtp,
   verifyPhoneOtp,
 } from '../../services/authService';
-import { listLocations } from '../../services/appSettingsService';
 import { displayName } from '../../utils/formatters';
 import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TABS = ['Personal', 'Details', 'Documents'];
 
-export default function ProProfileScreen() {
-  const { user, refresh, logout } = useAuth();
-  const [tab, setTab] = useState(0);
-  const [countries, setCountries] = useState([]);
-  const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  // Personal-tab form state.
-  const [personal, setPersonal] = useState({
+// Same default form shape the signup wizard owns. Profile prefills
+// supply the populated fields; everything else stays at empty string
+// / array so the Step components don't need any defensive `?? ''`
+// scattered through their JSX.
+function blankForm() {
+  return {
     profilePhoto: '',
     firstName: '',
     lastName: '',
     email: '',
+    mobileNumber: '',
+    password: '',
+    confirmPassword: '',
     countryId: '',
     stateId: '',
     cityId: '',
+    practiceCityIds: [],
     addressLine: '',
-  });
-  const [personalErrors, setPersonalErrors] = useState({});
-  const [personalSaving, setPersonalSaving] = useState(false);
-
-  // Details-tab form state.
-  const [details, setDetails] = useState({
-    designation: '',
-    organization: '',
+    bio: '',
+    subCategoryIds: [],
     yearsOfExperience: '',
     consultationFee: '',
-    bio: '',
+    skills: '',
     languages: '',
-    website: '',
-  });
-  const [detailsSaving, setDetailsSaving] = useState(false);
-
-  // Documents-tab state — each slot stores the persisted URL or ''.
-  const [docs, setDocs] = useState({
-    identityDocument: '',
-    licenseDocument: '',
+    education: '',
     certifications: '',
-  });
-  const [docsSaving, setDocsSaving] = useState(false);
+    website: '',
+    linkedin: '',
+    availability: '',
+    barRegistrationNumber: '',
+    enrollmentNumber: '',
+    advocateLicenseNumber: '',
+    practiceAreas: '',
+    courtPractice: '',
+    jurisdiction: '',
+    chamberAddress: '',
+    lawDegree: '',
+    legalConsultationType: 'Online',
+    yearsOfPractice: '',
+    taxRegistrationNumber: '',
+    specializationAreas: '',
+    gstExpertise: false,
+    incomeTaxExpertise: false,
+    corporateTaxExpertise: false,
+    businessAdvisory: false,
+    accountingServices: false,
+    financialPlanning: false,
+    taxConsultationType: 'Online',
+    governmentId: '',
+    advocateLicense: '',
+    barCouncilRegistration: '',
+    lawDegreeDocument: '',
+    taxConsultantCertificate: '',
+    registrationCertificate: '',
+    professionalLicense: '',
+  };
+}
 
+export default function ProProfileScreen({ navigation }) {
+  const { user, refresh } = useAuth();
+  const { countries } = useLocations();
+  const cats = useCategories();
+  const flatCities = useMemo(() => flatCityOptions(countries), [countries]);
+
+  const [tab, setTab] = useState(0);
+  const [form, setForm] = useState(blankForm());
+  const [errors, setErrors] = useState({});
+  const [loading, setLoading] = useState(true);
   const [banner, setBanner] = useState({ text: '', tone: 'error' });
+  const [savingPersonal, setSavingPersonal] = useState(false);
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [savingDocs, setSavingDocs] = useState(false);
   const [phoneModalOpen, setPhoneModalOpen] = useState(false);
 
-  useEffect(() => {
-    listLocations().then(setCountries).catch(() => {});
+  // The wizard's Step1 expects `typeCat` (the Legal or Tax category
+  // record) so the sub-category multi-select can render. Resolve it
+  // from the user's stored professionalType on the profile payload.
+  const [professionalType, setProfessionalType] = useState('');
+  const typeCat = useMemo(
+    () => categoryForType(cats, professionalType),
+    [cats, professionalType]
+  );
+  const isLegal = professionalType === 'Legal Consultant';
+
+  const set = useCallback((k, v) => {
+    setForm((prev) => ({ ...prev, [k]: v }));
+    setErrors((p) => (p[k] ? { ...p, [k]: undefined } : p));
+    setBanner((b) => (b.text ? { text: '', tone: 'error' } : b));
+  }, []);
+
+  const setLocation = useCallback((next) => {
+    setForm((prev) => ({ ...prev, ...next }));
+    setErrors((p) => ({
+      ...p,
+      country: undefined,
+      state: undefined,
+      city: undefined,
+    }));
   }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getMyProfile();
-      const u = (data && (data.user || data)) || {};
+      let data = null;
+      try {
+        data = await getMyProfile();
+      } catch {
+        // Fall back to the AuthContext user so name + email still
+        // surface even if /api/profile is unreachable (auth blip,
+        // network down, etc.) — same defensive path the client
+        // profile takes.
+        data = null;
+      }
+      const u =
+        (data && (data.user || data)) ||
+        (user
+          ? {
+              profilePhoto: user.profilePhoto,
+              firstName: user.firstName,
+              lastName: user.lastName,
+              email: user.email,
+              mobileNumber: user.mobileNumber,
+            }
+          : {});
       const addr = (data && data.address) || {};
       const pd = (data && data.professionalDetail) || {};
-      setProfile(data);
-      setPersonal((prev) => ({
+      setProfessionalType(pd.professionalType || '');
+      setForm((prev) => ({
         ...prev,
         profilePhoto: u.profilePhoto || '',
         firstName: u.firstName || '',
         lastName: u.lastName || '',
         email: u.email || '',
+        mobileNumber: u.mobileNumber || '',
         addressLine: addr.addressLine || '',
-      }));
-      setDetails({
-        designation: pd.designation || '',
-        organization: pd.organization || '',
+        bio: pd.bio || pd.about || '',
+        // Carry the address names through; the next effect resolves
+        // them to country/state/city ids once `countries` lands.
+        _addressNames: {
+          country: addr.country,
+          state: addr.state,
+          city: addr.city,
+          countryId: addr.countryId,
+          stateId: addr.stateId,
+          cityId: addr.cityId,
+        },
+        // Professional details
+        subCategoryIds: Array.isArray(pd.subCategoryIds)
+          ? pd.subCategoryIds
+          : [],
+        practiceCityIds: Array.isArray(pd.practiceCities)
+          ? pd.practiceCities
+          : [],
         yearsOfExperience: pd.yearsOfExperience
           ? String(pd.yearsOfExperience)
           : '',
         consultationFee: pd.consultationFee
           ? String(pd.consultationFee)
           : '',
-        bio: pd.bio || pd.about || '',
+        skills: Array.isArray(pd.skills)
+          ? pd.skills.join(', ')
+          : pd.skills || '',
         languages: Array.isArray(pd.languages)
           ? pd.languages.join(', ')
           : pd.languages || '',
+        education: Array.isArray(pd.education)
+          ? pd.education.join(', ')
+          : pd.education || '',
+        certifications: Array.isArray(pd.certifications)
+          ? pd.certifications.join(', ')
+          : pd.certifications || '',
         website: pd.website || '',
-      });
-      setDocs({
-        identityDocument: pd.identityDocument || '',
-        licenseDocument: pd.licenseDocument || '',
-        certifications: pd.certificationsDocuments || pd.certifications || '',
-      });
+        linkedin: pd.linkedin || '',
+        availability: pd.availability || '',
+        // Legal-specific
+        barRegistrationNumber: pd.barRegistrationNumber || '',
+        enrollmentNumber: pd.enrollmentNumber || '',
+        advocateLicenseNumber: pd.advocateLicenseNumber || '',
+        courtPractice: pd.courtsPracticing || '',
+        jurisdiction: pd.jurisdiction || '',
+        chamberAddress: pd.chamberAddress || '',
+        lawDegree: pd.lawDegree || '',
+        legalConsultationType:
+          pd.consultancyType || prev.legalConsultationType,
+        // Tax-specific
+        taxRegistrationNumber: pd.taxRegistrationNumber || '',
+        specializationAreas: Array.isArray(pd.specializationAreas)
+          ? pd.specializationAreas.join(', ')
+          : pd.specializationAreas || '',
+        gstExpertise: !!pd.gstExpertise,
+        incomeTaxExpertise: !!pd.incomeTaxExpertise,
+        corporateTaxExpertise: !!pd.corporateTaxExpertise,
+        businessAdvisory: !!pd.businessAdvisory,
+        accountingServices: !!pd.accountingServices,
+        financialPlanning: !!pd.financialPlanning,
+        taxConsultationType: pd.consultancyType || prev.taxConsultationType,
+        // Documents
+        governmentId: pd.identityDocument || '',
+        advocateLicense: pd.licenseDocument || '',
+        barCouncilRegistration: pd.barCouncilRegistration || '',
+        lawDegreeDocument: pd.lawDegreeDocument || '',
+        taxConsultantCertificate: pd.taxConsultantCertificate || '',
+        registrationCertificate: pd.registrationCertificate || '',
+        professionalLicense: pd.professionalLicense || '',
+      }));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  // Resolve saved address names → ids once locations are loaded.
+  // Resolve address names → ids once both pieces are loaded.
   useEffect(() => {
-    if (!profile || !countries.length) return;
-    const addr = profile.address || {};
-    if (!addr.country && !addr.state && !addr.city) return;
+    if (!form._addressNames || !countries.length) return;
+    const addr = form._addressNames;
     const country = countries.find(
       (c) =>
         c.id === addr.countryId ||
@@ -151,64 +268,58 @@ export default function ProProfileScreen() {
           String(addr.country || '').toLowerCase()
     );
     const state =
-      country && (country.states || []).find(
+      country &&
+      (country.states || []).find(
         (s) =>
           s.id === addr.stateId ||
           String(s.name || '').toLowerCase() ===
             String(addr.state || '').toLowerCase()
       );
     const city =
-      state && (state.cities || []).find(
+      state &&
+      (state.cities || []).find(
         (ci) =>
           ci.id === addr.cityId ||
           String(ci.name || '').toLowerCase() ===
             String(addr.city || '').toLowerCase()
       );
-    setPersonal((prev) => ({
+    setForm((prev) => ({
       ...prev,
       countryId: country ? country.id : '',
       stateId: state ? state.id : '',
       cityId: city ? city.id : '',
+      _addressNames: undefined,
     }));
-  }, [profile, countries]);
+  }, [form._addressNames, countries]);
 
-  // ---- Personal save ----
-  function validatePersonal() {
-    const next = {};
-    if (!personal.firstName.trim()) next.firstName = 'First name is required.';
-    if (!personal.lastName.trim()) next.lastName = 'Last name is required.';
-    if (!personal.email.trim()) next.email = 'Email is required.';
-    else if (!EMAIL_RE.test(personal.email.trim()))
-      next.email = 'Enter a valid email.';
-    if (!personal.countryId) next.country = 'Country is required.';
-    if (!personal.stateId) next.state = 'State is required.';
-    if (!personal.cityId) next.city = 'City is required.';
-    if (!personal.addressLine.trim())
-      next.addressLine = 'Address line is required.';
-    setPersonalErrors(next);
-    return Object.keys(next).length === 0;
-  }
+  // ---- Per-tab save handlers -----------------------------------------
 
   async function savePersonal() {
-    if (personalSaving) return;
-    if (!validatePersonal()) return;
-    setPersonalSaving(true);
+    if (savingPersonal) return;
+    setSavingPersonal(true);
     setBanner({ text: '', tone: 'error' });
     try {
-      const country = countries.find((c) => c.id === personal.countryId);
-      const state = country?.states?.find((s) => s.id === personal.stateId);
-      const city = state?.cities?.find((c) => c.id === personal.cityId);
+      const country = countries.find((c) => c.id === form.countryId);
+      const state = country?.states?.find((s) => s.id === form.stateId);
+      const city = state?.cities?.find((c) => c.id === form.cityId);
       await updateMyProfile({
-        firstName: personal.firstName.trim(),
-        lastName: personal.lastName.trim(),
-        email: personal.email.trim(),
-        profilePhoto: personal.profilePhoto || undefined,
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        email: form.email.trim(),
+        profilePhoto: form.profilePhoto || undefined,
         address: {
           country: country ? country.name : undefined,
           state: state ? state.name : undefined,
           city: city ? city.name : undefined,
-          addressLine: personal.addressLine.trim(),
+          addressLine: form.addressLine.trim(),
         },
+      });
+      // Also save bio + sub-categories + practice cities to the
+      // professional detail so Step 1's additional fields persist.
+      await updateMyProfessionalProfile({
+        bio: form.bio || undefined,
+        subCategoryIds: form.subCategoryIds,
+        practiceCities: form.practiceCityIds,
       });
       try {
         await refresh();
@@ -216,42 +327,69 @@ export default function ProProfileScreen() {
       setBanner({ text: 'Personal details saved.', tone: 'success' });
     } catch (err) {
       if (err && err.code === 'EMAIL_ALREADY_REGISTERED') {
-        setPersonalErrors((p) => ({ ...p, email: err.message }));
-        setBanner({ text: err.message, tone: 'error' });
-      } else {
-        setBanner({
-          text: err?.message || 'Could not save your profile.',
-          tone: 'error',
-        });
+        setErrors((p) => ({ ...p, email: err.message }));
       }
+      setBanner({
+        text: err?.message || 'Could not save your profile.',
+        tone: 'error',
+      });
     } finally {
-      setPersonalSaving(false);
+      setSavingPersonal(false);
     }
   }
 
-  // ---- Details save ----
   async function saveDetails() {
-    if (detailsSaving) return;
-    setDetailsSaving(true);
+    if (savingDetails) return;
+    setSavingDetails(true);
     setBanner({ text: '', tone: 'error' });
     try {
-      const payload = {
-        designation: details.designation.trim() || undefined,
-        organization: details.organization.trim() || undefined,
-        yearsOfExperience: details.yearsOfExperience
-          ? Number(details.yearsOfExperience)
+      const splitCsv = (s) =>
+        s
+          ? String(s)
+              .split(',')
+              .map((x) => x.trim())
+              .filter(Boolean)
+          : [];
+      const base = {
+        yearsOfExperience: form.yearsOfExperience
+          ? Number(form.yearsOfExperience)
           : undefined,
-        consultationFee: details.consultationFee
-          ? Number(details.consultationFee)
+        consultationFee: form.consultationFee
+          ? Number(form.consultationFee)
           : undefined,
-        bio: details.bio.trim() || undefined,
-        website: details.website.trim() || undefined,
-        languages: details.languages
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean),
+        skills: splitCsv(form.skills),
+        languages: splitCsv(form.languages),
+        education: splitCsv(form.education),
+        certifications: splitCsv(form.certifications),
+        website: form.website || undefined,
+        linkedin: form.linkedin || undefined,
+        availability: form.availability || undefined,
       };
-      await updateMyProfessionalProfile(payload);
+      if (isLegal) {
+        Object.assign(base, {
+          barRegistrationNumber: form.barRegistrationNumber || undefined,
+          enrollmentNumber: form.enrollmentNumber || undefined,
+          advocateLicenseNumber: form.advocateLicenseNumber || undefined,
+          courtsPracticing: form.courtPractice || undefined,
+          jurisdiction: form.jurisdiction || undefined,
+          chamberAddress: form.chamberAddress || undefined,
+          lawDegree: form.lawDegree || undefined,
+          consultancyType: form.legalConsultationType,
+        });
+      } else {
+        Object.assign(base, {
+          taxRegistrationNumber: form.taxRegistrationNumber || undefined,
+          specializationAreas: splitCsv(form.specializationAreas),
+          gstExpertise: form.gstExpertise,
+          incomeTaxExpertise: form.incomeTaxExpertise,
+          corporateTaxExpertise: form.corporateTaxExpertise,
+          businessAdvisory: form.businessAdvisory,
+          accountingServices: form.accountingServices,
+          financialPlanning: form.financialPlanning,
+          consultancyType: form.taxConsultationType,
+        });
+      }
+      await updateMyProfessionalProfile(base);
       setBanner({ text: 'Professional details saved.', tone: 'success' });
     } catch (err) {
       setBanner({
@@ -259,20 +397,23 @@ export default function ProProfileScreen() {
         tone: 'error',
       });
     } finally {
-      setDetailsSaving(false);
+      setSavingDetails(false);
     }
   }
 
-  // ---- Documents save ----
   async function saveDocs() {
-    if (docsSaving) return;
-    setDocsSaving(true);
+    if (savingDocs) return;
+    setSavingDocs(true);
     setBanner({ text: '', tone: 'error' });
     try {
       await updateMyProfessionalProfile({
-        identityDocument: docs.identityDocument || undefined,
-        licenseDocument: docs.licenseDocument || undefined,
-        certificationsDocuments: docs.certifications || undefined,
+        identityDocument: form.governmentId || undefined,
+        licenseDocument: form.advocateLicense || undefined,
+        barCouncilRegistration: form.barCouncilRegistration || undefined,
+        lawDegreeDocument: form.lawDegreeDocument || undefined,
+        taxConsultantCertificate: form.taxConsultantCertificate || undefined,
+        registrationCertificate: form.registrationCertificate || undefined,
+        professionalLicense: form.professionalLicense || undefined,
       });
       setBanner({ text: 'Documents saved.', tone: 'success' });
     } catch (err) {
@@ -281,36 +422,24 @@ export default function ProProfileScreen() {
         tone: 'error',
       });
     } finally {
-      setDocsSaving(false);
+      setSavingDocs(false);
     }
   }
 
   return (
-    <ScreenContainer hasNavHeader keyboard contentStyle={styles.page}>
+    <ScreenContainer
+      hasNavHeader
+      keyboard
+      contentStyle={styles.pageContent}
+    >
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} />
         </View>
       ) : (
-        <View style={{ gap: spacing.md }}>
-          {/* Identity strip */}
-          <Card>
-            <Text style={styles.identityName}>{displayName(user)}</Text>
-            <Text style={styles.identityEmail}>{user.email}</Text>
-            <View style={styles.badges}>
-              <Badge variant="amber">{user.role || 'professional'}</Badge>
-              {user.emailVerified ? (
-                <Badge variant="green">Email verified</Badge>
-              ) : (
-                <Badge variant="gray">Email unverified</Badge>
-              )}
-              {user.mobileVerified ? (
-                <Badge variant="green">Phone verified</Badge>
-              ) : null}
-            </View>
-          </Card>
-
-          {/* Tab strip — three steps that match the signup wizard. */}
+        <View>
+          {/* Tab strip — numbered, same shape as the signup wizard's
+              StepProgress widget. */}
           <View style={styles.tabBar}>
             {TABS.map((label, i) => {
               const active = tab === i;
@@ -375,285 +504,52 @@ export default function ProProfileScreen() {
             </View>
           ) : null}
 
-          {/* ===== Tab 1 — Personal ===== */}
+          {/* The exact same Step components the signup wizard renders. */}
           {tab === 0 ? (
             <>
-              <Card>
-                <SectionLabel>Profile photo</SectionLabel>
-                <PhotoUpload
-                  value={personal.profilePhoto}
-                  onChange={(url) =>
-                    setPersonal((p) => ({ ...p, profilePhoto: url }))
-                  }
-                  category="profile_photo"
-                />
-              </Card>
-
-              <Card>
-                <SectionLabel>Personal</SectionLabel>
-                <View style={styles.row}>
-                  <View style={{ flex: 1 }}>
-                    <AuthInput
-                      label="First name"
-                      icon="user"
-                      autoCapitalize="words"
-                      value={personal.firstName}
-                      onChangeText={(v) =>
-                        setPersonal((p) => ({ ...p, firstName: v }))
-                      }
-                      error={personalErrors.firstName}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <AuthInput
-                      label="Last name"
-                      icon="user"
-                      autoCapitalize="words"
-                      value={personal.lastName}
-                      onChangeText={(v) =>
-                        setPersonal((p) => ({ ...p, lastName: v }))
-                      }
-                      error={personalErrors.lastName}
-                    />
-                  </View>
-                </View>
-                <AuthInput
-                  label="Email address"
-                  icon="mail"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  value={personal.email}
-                  onChangeText={(v) =>
-                    setPersonal((p) => ({ ...p, email: v }))
-                  }
-                  error={personalErrors.email}
-                  hint="Changing your email marks it as unverified."
-                />
-
-                <SectionLabel top>Mobile number</SectionLabel>
-                <View style={styles.phoneRow}>
-                  <View style={styles.phoneField}>
-                    <Feather
-                      name="smartphone"
-                      size={14}
-                      color={colors.textMuted}
-                    />
-                    <Text style={styles.phoneValue}>
-                      {user.mobileNumber || 'Not added yet'}
-                    </Text>
-                  </View>
-                  <Pressable
-                    onPress={() => setPhoneModalOpen(true)}
-                    style={({ pressed }) => [
-                      styles.changePhoneBtn,
-                      { opacity: pressed ? 0.85 : 1 },
-                    ]}
-                  >
-                    <Feather name="edit-3" size={12} color={colors.primary} />
-                    <Text style={styles.changePhoneText}>
-                      {user.mobileNumber ? 'Change' : 'Add number'}
-                    </Text>
-                  </Pressable>
-                </View>
-                <Text style={styles.phoneHint}>
-                  Phone changes require OTP verification on the new number.
-                </Text>
-              </Card>
-
-              <Card>
-                <SectionLabel>Location</SectionLabel>
-                <LocationFields
-                  countries={countries}
-                  countryId={personal.countryId}
-                  stateId={personal.stateId}
-                  cityId={personal.cityId}
-                  onChange={(next) =>
-                    setPersonal((p) => ({ ...p, ...next }))
-                  }
-                  errors={personalErrors}
-                />
-                <AuthInput
-                  label="Address line"
-                  icon="home"
-                  value={personal.addressLine}
-                  onChangeText={(v) =>
-                    setPersonal((p) => ({ ...p, addressLine: v }))
-                  }
-                  error={personalErrors.addressLine}
-                />
-              </Card>
-
+              <Step1
+                form={form}
+                set={set}
+                setLocation={setLocation}
+                errors={errors}
+                countries={countries}
+                flatCities={flatCities}
+                typeCat={typeCat}
+                verifiedPhone={form.mobileNumber}
+                onChangePhone={() => setPhoneModalOpen(true)}
+              />
               <GradientButton
-                title={personalSaving ? 'Saving…' : 'Save personal details'}
-                loading={personalSaving}
+                title={savingPersonal ? 'Saving…' : 'Save personal details'}
+                loading={savingPersonal}
                 onPress={savePersonal}
+                style={{ marginTop: spacing.md }}
               />
             </>
           ) : null}
 
-          {/* ===== Tab 2 — Details ===== */}
           {tab === 1 ? (
             <>
-              <Card>
-                <SectionLabel>Practice</SectionLabel>
-                <AuthInput
-                  label="Designation"
-                  icon="award"
-                  placeholder="Senior Advocate / Tax Consultant"
-                  value={details.designation}
-                  onChangeText={(v) =>
-                    setDetails((d) => ({ ...d, designation: v }))
-                  }
-                />
-                <AuthInput
-                  label="Organization"
-                  icon="briefcase"
-                  placeholder="Firm / Chambers / Independent"
-                  value={details.organization}
-                  onChangeText={(v) =>
-                    setDetails((d) => ({ ...d, organization: v }))
-                  }
-                />
-                <View style={styles.row}>
-                  <View style={{ flex: 1 }}>
-                    <AuthInput
-                      label="Years of experience"
-                      icon="clock"
-                      keyboardType="numeric"
-                      value={details.yearsOfExperience}
-                      onChangeText={(v) =>
-                        setDetails((d) => ({
-                          ...d,
-                          yearsOfExperience: v.replace(/[^0-9]/g, ''),
-                        }))
-                      }
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <AuthInput
-                      label="Consultation fee (₹)"
-                      icon="credit-card"
-                      keyboardType="numeric"
-                      value={details.consultationFee}
-                      onChangeText={(v) =>
-                        setDetails((d) => ({
-                          ...d,
-                          consultationFee: v.replace(/[^0-9]/g, ''),
-                        }))
-                      }
-                    />
-                  </View>
-                </View>
-              </Card>
-
-              <Card>
-                <SectionLabel>Profile</SectionLabel>
-                <AuthInput
-                  label="Bio"
-                  icon="edit-3"
-                  multiline
-                  numberOfLines={5}
-                  placeholder="Tell clients about your practice"
-                  value={details.bio}
-                  onChangeText={(v) => setDetails((d) => ({ ...d, bio: v }))}
-                />
-                <AuthInput
-                  label="Languages"
-                  icon="globe"
-                  placeholder="English, Hindi, Tamil"
-                  value={details.languages}
-                  onChangeText={(v) =>
-                    setDetails((d) => ({ ...d, languages: v }))
-                  }
-                  hint="Separate languages with commas."
-                />
-                <AuthInput
-                  label="Website"
-                  icon="link"
-                  autoCapitalize="none"
-                  keyboardType="url"
-                  placeholder="https://"
-                  value={details.website}
-                  onChangeText={(v) =>
-                    setDetails((d) => ({ ...d, website: v }))
-                  }
-                />
-              </Card>
-
+              <Step2 form={form} set={set} errors={errors} isLegal={isLegal} />
               <GradientButton
-                title={detailsSaving ? 'Saving…' : 'Save details'}
-                loading={detailsSaving}
+                title={savingDetails ? 'Saving…' : 'Save details'}
+                loading={savingDetails}
                 onPress={saveDetails}
+                style={{ marginTop: spacing.md }}
               />
             </>
           ) : null}
 
-          {/* ===== Tab 3 — Documents ===== */}
           {tab === 2 ? (
             <>
-              <Card>
-                <SectionLabel>Identity document</SectionLabel>
-                <Text style={styles.docHint}>
-                  Aadhaar / Passport / PAN — used to verify your identity.
-                </Text>
-                <DocSlot
-                  label="Upload identity document"
-                  value={docs.identityDocument}
-                  onChange={(url) =>
-                    setDocs((d) => ({ ...d, identityDocument: url }))
-                  }
-                  category="identity_document"
-                />
-              </Card>
-
-              <Card>
-                <SectionLabel>License / Bar enrollment</SectionLabel>
-                <Text style={styles.docHint}>
-                  Bar council certificate, ICAI / CA license, or equivalent.
-                </Text>
-                <DocSlot
-                  label="Upload license document"
-                  value={docs.licenseDocument}
-                  onChange={(url) =>
-                    setDocs((d) => ({ ...d, licenseDocument: url }))
-                  }
-                  category="license_document"
-                />
-              </Card>
-
-              <Card>
-                <SectionLabel>Certifications</SectionLabel>
-                <Text style={styles.docHint}>
-                  Additional certifications or specialisation documents.
-                </Text>
-                <DocSlot
-                  label="Upload certification"
-                  value={docs.certifications}
-                  onChange={(url) =>
-                    setDocs((d) => ({ ...d, certifications: url }))
-                  }
-                  category="certification"
-                />
-              </Card>
-
+              <Step3 form={form} set={set} isLegal={isLegal} />
               <GradientButton
-                title={docsSaving ? 'Saving…' : 'Save documents'}
-                loading={docsSaving}
+                title={savingDocs ? 'Saving…' : 'Save documents'}
+                loading={savingDocs}
                 onPress={saveDocs}
+                style={{ marginTop: spacing.md }}
               />
             </>
           ) : null}
-
-          <Pressable
-            onPress={logout}
-            style={({ pressed }) => [
-              styles.logoutBtn,
-              { opacity: pressed ? 0.85 : 1 },
-            ]}
-          >
-            <Feather name="log-out" size={14} color={colors.danger} />
-            <Text style={styles.logoutText}>Sign out</Text>
-          </Pressable>
         </View>
       )}
 
@@ -674,8 +570,7 @@ export default function ProProfileScreen() {
 }
 
 // ---------------------------------------------------------------------
-// Phone change modal — identical to the client version. Shared logic
-// could be extracted later if a third caller appears.
+// Phone change modal — duplicate of the client version.
 // ---------------------------------------------------------------------
 
 function PhoneChangeModal({ visible, currentPhone, onClose, onChanged }) {
@@ -828,41 +723,30 @@ function PhoneChangeModal({ visible, currentPhone, onClose, onChanged }) {
   );
 }
 
-function SectionLabel({ children, top }) {
-  return (
-    <Text
-      style={[styles.sectionLabel, top ? { marginTop: spacing.md } : null]}
-    >
-      {children}
-    </Text>
-  );
-}
-
 const styles = StyleSheet.create({
-  page: { paddingTop: spacing.lg },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: spacing.xl,
   },
-
-  identityName: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.bold,
-    color: colors.textPrimary,
+  pageContent: { paddingTop: spacing.md },
+  shellBack: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  identityEmail: {
-    marginTop: 2,
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-  },
-  badges: { marginTop: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
 
   // Tab strip
   tabBar: {
     flexDirection: 'row',
     gap: 6,
+    marginBottom: spacing.md,
   },
   tabBtn: {
     flex: 1,
@@ -903,71 +787,7 @@ const styles = StyleSheet.create({
   },
   tabLabelActive: { color: colors.primary },
 
-  sectionLabel: {
-    marginBottom: 10,
-    fontSize: 11,
-    fontWeight: fontWeight.bold,
-    color: colors.textMuted,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-  },
-
-  row: { flexDirection: 'row', gap: spacing.sm },
-
-  // Phone read-only display + change CTA
-  phoneRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  phoneField: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceMuted,
-  },
-  phoneValue: {
-    flex: 1,
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.semibold,
-    color: colors.textPrimary,
-  },
-  changePhoneBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    backgroundColor: colors.primarySoft,
-  },
-  changePhoneText: {
-    fontSize: 12,
-    fontWeight: fontWeight.bold,
-    color: colors.primary,
-  },
-  phoneHint: {
-    marginTop: 6,
-    fontSize: 11,
-    color: colors.textMuted,
-  },
-
-  docHint: {
-    marginTop: -4,
-    marginBottom: 8,
-    fontSize: 11,
-    color: colors.textSecondary,
-    lineHeight: 16,
-  },
-
+  // Banner
   banner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -976,10 +796,30 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: radius.md,
     borderWidth: 1,
+    marginBottom: spacing.md,
   },
   bannerError: { backgroundColor: '#fee2e2', borderColor: '#fca5a5' },
   bannerSuccess: { backgroundColor: '#d1fae5', borderColor: '#6ee7b7' },
   bannerText: { flex: 1, fontSize: 12, fontWeight: fontWeight.semibold },
+
+  changePhoneBtn: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+    marginBottom: spacing.sm,
+  },
+  changePhoneText: {
+    fontSize: 11,
+    fontWeight: fontWeight.bold,
+    color: colors.primary,
+  },
 
   logoutBtn: {
     marginTop: spacing.lg,

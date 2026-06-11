@@ -45,6 +45,21 @@ function buildSlotsByDay(pro) {
   return map;
 }
 
+// Pull the explicit "day off" set out of the same availability array.
+// We store off days as entries with `enabled: false` so the public
+// /api/professionals/:id endpoint can decide whether to show / hide
+// each day on the booking calendar.
+function buildDaysOff(pro) {
+  const off = new Set();
+  const source = Array.isArray(pro && pro.availability) ? pro.availability : [];
+  source.forEach((entry) => {
+    if (entry && entry.day && entry.enabled === false) {
+      off.add(entry.day);
+    }
+  });
+  return off;
+}
+
 // Pick the initial rate from a `professional` object (consultationFee then
 // legacy perMinuteRate).
 function pickRate(pro) {
@@ -66,6 +81,9 @@ export default function AvailabilityManager({ professional, onSaved }) {
   );
   const [rate, setRate] = useState(() => pickRate(pro));
   const [slotsByDay, setSlotsByDay] = useState(() => buildSlotsByDay(pro));
+  // Days the pro has explicitly marked off — blocks new bookings and
+  // hides the day from the public availability list.
+  const [daysOff, setDaysOff] = useState(() => buildDaysOff(pro));
   const [draft, setDraft] = useState({ day: 'Monday', time: '' });
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState(null);
@@ -80,6 +98,7 @@ export default function AvailabilityManager({ professional, onSaved }) {
     setAvailableNow(professional.availableNow === false ? false : true);
     setRate(pickRate(professional));
     setSlotsByDay(buildSlotsByDay(professional));
+    setDaysOff(buildDaysOff(professional));
   }, [
     professional && professional.id,
     professional && professional.availableNow,
@@ -91,10 +110,21 @@ export default function AvailabilityManager({ professional, onSaved }) {
     setSaving(true);
     setFeedback(null);
     try {
-      const availability = DAYS.map((day) => ({
-        day,
-        slots: slotsByDay[day] || [],
-      })).filter((entry) => entry.slots.length > 0);
+      // Keep the same array shape — one entry per day. Off days are
+      // explicitly marked `enabled: false` (with empty slots) so the
+      // public profile can render "Day off" instead of falling back
+      // to "No slots listed".
+      const availability = DAYS.map((day) => {
+        if (daysOff.has(day)) {
+          return { day, enabled: false, slots: [] };
+        }
+        return { day, enabled: true, slots: slotsByDay[day] || [] };
+      }).filter(
+        (entry) =>
+          // Drop fully-empty on-days so we don't pollute the payload
+          // with rows that mean nothing.
+          entry.enabled === false || entry.slots.length > 0
+      );
       const payload = {
         availableNow,
         availability,
@@ -119,6 +149,15 @@ export default function AvailabilityManager({ professional, onSaved }) {
   function addSlot() {
     const time = draft.time.trim();
     if (!/^\d{1,2}:\d{2}$/.test(time)) return;
+    // Adding a slot to a day implicitly un-marks it as off — saves
+    // the pro from having to toggle "Unmark off" first.
+    if (daysOff.has(draft.day)) {
+      setDaysOff((prev) => {
+        const next = new Set(prev);
+        next.delete(draft.day);
+        return next;
+      });
+    }
     setSlotsByDay((prev) => {
       const existing = prev[draft.day] || [];
       if (existing.includes(time)) return prev;
@@ -195,42 +234,74 @@ export default function AvailabilityManager({ professional, onSaved }) {
           {t('dash.availability.weekly')}
         </p>
         <div className="space-y-2">
-          {DAYS.map((day) => (
-            <div
-              key={day}
-              className="flex flex-col gap-2 rounded-lg border border-slate-200 p-3 sm:flex-row sm:items-center"
-            >
-              <span className="w-28 shrink-0 text-sm font-medium text-slate-700">
-                {t(`dash.availability.day.${day}`)}
-              </span>
-              <div className="flex flex-wrap gap-2">
-                {(slotsByDay[day] || []).length === 0 && (
-                  <span className="text-xs text-slate-400">
-                    {t('dash.availability.noSlots')}
-                  </span>
-                )}
-                {(slotsByDay[day] || []).map((time) => (
-                  <span
-                    key={time}
-                    className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700"
-                  >
-                    {time}
-                    <button
-                      type="button"
-                      onClick={() => removeSlot(day, time)}
-                      aria-label={t('dash.availability.removeSlot', {
-                        time,
-                        day: t(`dash.availability.day.${day}`),
-                      })}
-                      className="text-blue-400 hover:text-blue-600"
-                    >
-                      <X size={12} />
-                    </button>
-                  </span>
-                ))}
+          {DAYS.map((day) => {
+            const isOff = daysOff.has(day);
+            const toggleOff = () =>
+              setDaysOff((prev) => {
+                const next = new Set(prev);
+                if (next.has(day)) next.delete(day);
+                else next.add(day);
+                return next;
+              });
+            return (
+              <div
+                key={day}
+                className={`flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center ${
+                  isOff
+                    ? 'border-rose-200 bg-rose-50/40'
+                    : 'border-slate-200'
+                }`}
+              >
+                <span className="w-28 shrink-0 text-sm font-medium text-slate-700">
+                  {t(`dash.availability.day.${day}`)}
+                </span>
+                <div className="flex flex-1 flex-wrap items-center gap-2">
+                  {isOff ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-700">
+                      Day off
+                    </span>
+                  ) : (slotsByDay[day] || []).length === 0 ? (
+                    <span className="text-xs text-slate-400">
+                      {t('dash.availability.noSlots')}
+                    </span>
+                  ) : (
+                    (slotsByDay[day] || []).map((time) => (
+                      <span
+                        key={time}
+                        className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700"
+                      >
+                        {time}
+                        <button
+                          type="button"
+                          onClick={() => removeSlot(day, time)}
+                          aria-label={t('dash.availability.removeSlot', {
+                            time,
+                            day: t(`dash.availability.day.${day}`),
+                          })}
+                          className="text-blue-400 hover:text-blue-600"
+                        >
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ))
+                  )}
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={isOff}
+                  onClick={toggleOff}
+                  className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    isOff
+                      ? 'border-rose-300 bg-rose-100 text-rose-700 hover:bg-rose-200'
+                      : 'border-slate-300 bg-white text-slate-600 hover:border-rose-300 hover:text-rose-700'
+                  }`}
+                >
+                  {isOff ? 'Unmark off' : 'Mark off'}
+                </button>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">

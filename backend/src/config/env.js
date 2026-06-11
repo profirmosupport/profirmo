@@ -23,6 +23,11 @@ function parseFrontendUrls(value) {
   if (process.env.NODE_ENV !== 'production') {
     set.add('http://localhost:3000');
     set.add('http://127.0.0.1:3000');
+    // Port 3001 is a common fallback when 3000 is occupied by
+    // another local project — keep it whitelisted in dev so a
+    // `next dev -p 3001` doesn't get CORS-blocked.
+    set.add('http://localhost:3001');
+    set.add('http://127.0.0.1:3001');
   }
   if (set.size === 0) set.add('http://localhost:3000');
   return [...set];

@@ -89,6 +89,20 @@ export default function BookingPage() {
   const rate = professional ? Number(professional.consultationFee) || 0 : 0;
   const estimatedCost = duration * rate;
 
+  // Weekdays the professional has explicitly marked as "Day off" on
+  // their availability manager. The calendar disables those buttons,
+  // and the slot lookup below treats them as empty.
+  const disabledWeekdays = useMemo(() => {
+    const out = new Set();
+    if (!professional || !Array.isArray(professional.availability)) return out;
+    professional.availability.forEach((entry) => {
+      if (entry && entry.day && entry.enabled === false) {
+        out.add(entry.day);
+      }
+    });
+    return out;
+  }, [professional]);
+
   // Seed time slots from the professional's availability for the selected day.
   const slotsForDay = useMemo(() => {
     if (!selectedDate || !professional) return undefined;
@@ -99,6 +113,8 @@ export default function BookingPage() {
     const entry = (professional.availability || []).find(
       (s) => s && s.day === weekday
     );
+    // An entry explicitly marked off — no slots.
+    if (entry && entry.enabled === false) return [];
     return entry && Array.isArray(entry.slots) && entry.slots.length > 0
       ? entry.slots
       : undefined;
@@ -379,6 +395,7 @@ export default function BookingPage() {
                     <BookingCalendar
                       selectedDate={selectedDate}
                       onSelectDate={handleSelectDate}
+                      disabledWeekdays={disabledWeekdays}
                     />
                   </Card>
 
