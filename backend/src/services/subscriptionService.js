@@ -497,6 +497,44 @@ async function listPublicPlans() {
  *
  * Returns null when the user has no active subscription on record.
  */
+/**
+ * Auto-provision the Starter (free) plan for a professional user that
+ * has no subscription on record. Idempotent — a second call returns
+ * the existing row instead of creating a duplicate. Returns null for
+ * non-professional users or when the Starter plan isn't published.
+ */
+async function ensureStarterForProfessional(userId) {
+  const user = await User.findByPk(userId, { raw: true });
+  if (!user || user.role !== 'professional') return null;
+
+  const starter = await SubscriptionPlan.findOne({
+    where: { slug: 'starter', status: 'active' },
+  });
+  if (!starter) return null;
+
+  // Race-safety: another concurrent caller may have just created the
+  // row. Re-check before insert.
+  const existing = await ProfessionalSubscription.findOne({
+    where: { userId, status: ['active', 'pending'] },
+  });
+  if (existing) return existing;
+
+  return ProfessionalSubscription.create({
+    userId,
+    subscriptionPlanId: starter.id,
+    billingCycle: 'monthly',
+    startDate: new Date(),
+    endDate: null,
+    status: 'active',
+    amountPaid: 0,
+    currency: starter.currency || 'INR',
+    commissionPercentSnapshot: starter.commissionPercent || 0,
+    paymentStatus: 'free',
+    autoRenew: false,
+    adminNotes: 'Auto-assigned default Starter plan on first dashboard load.',
+  });
+}
+
 async function getActiveSubscriptionForUser(userId) {
   if (!userId) return null;
   // Prefer an active subscription, but fall back to a pending one so the
@@ -512,6 +550,12 @@ async function getActiveSubscriptionForUser(userId) {
       where: { userId, status: 'pending' },
       order: [['startDate', 'DESC']],
     });
+  }
+  // No subscription on record — auto-provision the Starter (free) plan
+  // for professionals so the dashboard never shows "No active plan".
+  // Clients are skipped; they don't have a subscription model.
+  if (!sub) {
+    sub = await ensureStarterForProfessional(userId);
   }
   if (!sub) return null;
 
@@ -566,6 +610,27 @@ async function getActiveSubscriptionForUser(userId) {
  * Custom plans are rejected — they must go via the support CTA.
  */
 async function upgradeSubscription(userId, { planSlug, billingCycle = 'monthly' }) {
+  try {
+    return await upgradeSubscriptionInner(userId, { planSlug, billingCycle });
+  } catch (err) {
+    // Best-effort safety net: an upgrade that aborts after the
+    // previous subscription was already cancelled would leave the
+    // pro with NO active/pending row → dashboard reads "No active
+    // plan". Re-provision the Starter (free) plan so they always
+    // land back on a sensible default, then re-throw the original
+    // error so the API still surfaces the upgrade failure.
+    try {
+      await ensureStarterForProfessional(userId);
+    } catch (fallbackErr) {
+      console.warn(
+        `[subscriptionService] starter fallback after failed upgrade failed: ${fallbackErr.message || fallbackErr}`
+      );
+    }
+    throw err;
+  }
+}
+
+async function upgradeSubscriptionInner(userId, { planSlug, billingCycle = 'monthly' }) {
   if (!userId) {
     throw { statusCode: 401, message: 'Not authenticated.' };
   }
@@ -603,21 +668,47 @@ async function upgradeSubscription(userId, { planSlug, billingCycle = 'monthly' 
   if (liveOnPlan) {
     const plain = liveOnPlan.get({ plain: true });
     plain.plan = publicView(plan);
+    // If the existing row is still PENDING (payment never completed),
+    // re-surface the Razorpay subscription id + short_url so the
+    // frontend can resume the Checkout flow instead of silently
+    // succeeding without a payment popup.
+    if (
+      plain.status === 'pending' &&
+      plain.razorpaySubscriptionId
+    ) {
+      const amount =
+        plan.planType === 'free'
+          ? 0
+          : billingCycle === 'annual'
+            ? plan.annualPrice
+            : plan.monthlyPrice;
+      plain.razorpay = {
+        subscriptionId: plain.razorpaySubscriptionId,
+        customerId: plain.razorpayCustomerId || null,
+        shortUrl: plain.razorpayShortUrl || null,
+        status: plain.razorpaySubscriptionStatus || 'created',
+        amount,
+        currency: plan.currency || 'INR',
+      };
+    }
     return plain;
   }
 
-  // Cancel any previous active/pending sub so we never have two live rows.
+  // Look up the previous active/pending sub — but DO NOT cancel it
+  // yet. We cancel only AFTER the new subscription is successfully
+  // created so a Razorpay failure (e.g., "id provided does not
+  // exist") leaves the user on their existing plan.
   const previous = await ProfessionalSubscription.findOne({
     where: { userId, status: { [Op.in]: ['active', 'pending'] } },
     order: [['startDate', 'DESC']],
   });
-  if (previous) {
-    // If a Razorpay subscription is attached, cancel it too. Downgrading
-    // to a free plan cancels IMMEDIATELY (the user wanted off the paid
-    // plan — keep no recurring mandate alive). Switching between paid
-    // plans cancels at cycle end so the user isn't double-billed for
-    // the rest of their already-paid period.
+  async function cancelPrevious() {
+    if (!previous) return;
     if (previous.razorpaySubscriptionId) {
+      // Downgrading to a free plan cancels IMMEDIATELY (the user
+      // wanted off the paid plan — keep no recurring mandate alive).
+      // Switching between paid plans cancels at cycle end so the
+      // user isn't double-billed for their already-paid period.
       const atCycleEnd = plan.planType !== 'free';
       try {
         const sr = require('./subscriptionRazorpayService');
@@ -677,13 +768,17 @@ async function upgradeSubscription(userId, { planSlug, billingCycle = 'monthly' 
       autoRenew: false,
       adminNotes: 'Free plan — no Razorpay subscription required.',
     });
+    // New row is live — safe to retire the previous one now.
+    await cancelPrevious();
     const plain = created.get({ plain: true });
     plain.plan = publicView(plan);
     return plain;
   }
 
   // Paid plan path — create the Razorpay subscription first so we can
-  // store its id on the local row.
+  // store its id on the local row. If this throws (e.g., "id does not
+  // exist"), the previous subscription is still untouched and the
+  // upgradeSubscription wrapper re-throws the error to the caller.
   const sr = require('./subscriptionRazorpayService');
   const { subscription, customerId } = await sr.createSubscription({
     userId,
@@ -710,6 +805,8 @@ async function upgradeSubscription(userId, { planSlug, billingCycle = 'monthly' 
     razorpayShortUrl: subscription.short_url || null,
     adminNotes: `Awaiting Razorpay subscription activation (${subscription.id}).`,
   });
+  // New paid row is in place — now safe to cancel the previous.
+  await cancelPrevious();
   const plain = created.get({ plain: true });
   plain.plan = publicView(plan);
   // Expose the checkout-relevant fields so the frontend can open
@@ -1230,6 +1327,7 @@ module.exports = {
   // Public / professional surface
   listPublicPlans,
   getActiveSubscriptionForUser,
+  ensureStarterForProfessional,
   upgradeSubscription,
   confirmSubscriptionPayment,
   listSubscriptionPaymentsForUser,

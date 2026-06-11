@@ -236,6 +236,18 @@ async function onCancelled(event) {
     cancelledAt: new Date(),
     autoRenew: false,
   });
+  // Restore the user to the default Starter plan so the dashboard
+  // never shows "No active plan" after a cancellation / payment
+  // failure. Failure here is non-fatal — the next dashboard load will
+  // also call ensureStarterForProfessional as a fallback.
+  try {
+    const subscriptionService = require('./subscriptionService');
+    await subscriptionService.ensureStarterForProfessional(sub.userId);
+  } catch (err) {
+    console.warn(
+      `[subscriptionWebhook] starter restore after cancel failed: ${err.message || err}`
+    );
+  }
   await logAudit({
     userId: sub.userId,
     action: 'subscription.cancelled',

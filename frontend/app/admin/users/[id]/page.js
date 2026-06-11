@@ -45,6 +45,7 @@ import {
 } from '@/services/adminService';
 import { adminListPlans } from '@/services/subscriptionService';
 import { formatINR } from '@/services/paymentService';
+import { resolveFileUrl } from '@/services/fileService';
 import { formatDate } from '@/utils/formatters';
 
 const STATUS_VARIANT = {
@@ -117,7 +118,12 @@ function ProfileCard({ user }) {
         <div className="flex items-center gap-3">
           {user.profilePhoto ? (
             <img
-              src={user.profilePhoto}
+              // `user.profilePhoto` may be a bare S3 key (e.g.
+              // `profile-images/abc.jpg`) or a legacy `/uploads/...`
+              // path. `resolveFileUrl` turns either into an absolute
+              // URL using the live storage config (S3 CDN base or
+              // API base for local dev).
+              src={resolveFileUrl(user.profilePhoto)}
               alt={fullName}
               className="h-14 w-14 rounded-full object-cover ring-2 ring-amber-200"
             />

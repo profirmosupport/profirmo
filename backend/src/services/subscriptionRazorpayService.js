@@ -219,25 +219,27 @@ async function createSubscription({ userId, plan, billingCycle = 'monthly' }) {
   if (!userId) throw { statusCode: 401, message: 'Not authenticated.' };
   if (!plan) throw { statusCode: 404, message: 'Plan not found.' };
 
-  // Auto-provisions a Razorpay plan if one isn't already linked to this
-  // local plan + cycle. Admins only need to set the price; the Razorpay
-  // plan id is created and persisted on first use.
-  const razorpayPlanId = await ensureRazorpayPlanId(plan, billingCycle);
-  const customerId = await getOrCreateCustomer(userId);
-
-  const rzp = await razorpayClient();
   // total_count is required by Razorpay. Cap recurring billing windows so
   // they're not effectively perpetual — Razorpay rejects unbounded subs.
   const totalCount = billingCycle === 'annual' ? 10 : 60;
+  const planField =
+    billingCycle === 'annual'
+      ? 'razorpayPlanIdAnnual'
+      : 'razorpayPlanIdMonthly';
 
-  let subscription;
-  try {
-    subscription = await rzp.subscriptions.create({
+  // Auto-provisions a Razorpay plan if one isn't already linked to this
+  // local plan + cycle. Admins only need to set the price; the Razorpay
+  // plan id is created and persisted on first use.
+  let razorpayPlanId = await ensureRazorpayPlanId(plan, billingCycle);
+  let customerId = await getOrCreateCustomer(userId);
+
+  async function attempt() {
+    const rzp = await razorpayClient();
+    return rzp.subscriptions.create({
       plan_id: razorpayPlanId,
       customer_id: customerId,
       total_count: totalCount,
       customer_notify: 1,
-      // Useful audit context inside the Razorpay dashboard.
       notes: {
         userId,
         planId: plan.id,
@@ -245,11 +247,78 @@ async function createSubscription({ userId, plan, billingCycle = 'monthly' }) {
         billingCycle,
       },
     });
+  }
+
+  function describeError(err) {
+    return String(
+      err?.error?.description ||
+        err?.message ||
+        err ||
+        ''
+    );
+  }
+  // Razorpay returns this generic message when EITHER the plan_id OR
+  // the customer_id is from another account / environment (e.g. after
+  // an admin flipped the live/test mode toggle without clearing the
+  // cached ids on the local SubscriptionPlan / ProfessionalSubscription
+  // rows).
+  function isUnknownIdError(err) {
+    const msg = describeError(err).toLowerCase();
+    return (
+      msg.includes('id provided does not exist') ||
+      msg.includes('does not exist') ||
+      msg.includes('no such')
+    );
+  }
+
+  let subscription;
+  try {
+    subscription = await attempt();
   } catch (err) {
-    throw {
-      statusCode: 502,
-      message: `Razorpay subscription create failed: ${err.message || err.error?.description || err}`,
-    };
+    if (!isUnknownIdError(err)) {
+      throw {
+        statusCode: 502,
+        message: `Razorpay subscription create failed: ${describeError(err) || err}`,
+      };
+    }
+    // Recovery — the admin-configured `razorpayPlanIdMonthly` /
+    // `razorpayPlanIdAnnual` is the SOURCE OF TRUTH for which Razorpay
+    // plan to bill against. We never overwrite it here. If it's stale,
+    // the admin must update it on the subscription plan edit page.
+    // Only the user's auto-generated customer id is cleared and
+    // re-minted, since that's a record we own end-to-end.
+    try {
+      await ProfessionalSubscription.update(
+        { razorpayCustomerId: null },
+        { where: { userId } }
+      );
+      customerId = await getOrCreateCustomer(userId);
+    } catch (innerErr) {
+      throw {
+        statusCode: 502,
+        message: `Razorpay customer re-provision failed: ${describeError(innerErr) || innerErr}`,
+      };
+    }
+    try {
+      subscription = await attempt();
+    } catch (retryErr) {
+      // Still failing — the configured plan id is the prime suspect.
+      // Surface that explicitly so the admin knows where to look.
+      if (isUnknownIdError(retryErr)) {
+        throw {
+          statusCode: 502,
+          message:
+            `Razorpay rejected plan id "${razorpayPlanId}" for the ` +
+            `"${plan.name}" plan (${billingCycle}). Update the ` +
+            `${planField} field on the admin subscription plan edit page ` +
+            `with a valid id from your active Razorpay account.`,
+        };
+      }
+      throw {
+        statusCode: 502,
+        message: `Razorpay subscription create failed (after retry): ${describeError(retryErr) || retryErr}`,
+      };
+    }
   }
   return {
     subscription,

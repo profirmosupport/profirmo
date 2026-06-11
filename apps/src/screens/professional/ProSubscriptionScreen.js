@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import ScreenContainer from '../../components/common/ScreenContainer';
 import Card from '../../components/common/Card';
 import Badge from '../../components/common/Badge';
@@ -18,6 +19,12 @@ import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
 // server-side (which creates a Razorpay subscription) and then open the
 // returned short_url in the device browser so the user can authorise
 // the mandate — no native Razorpay SDK needed.
+//
+// Custom (sales-led) plans skip the Razorpay flow entirely and instead
+// open a pre-filled WhatsApp chat to the Profirmo sales line.
+
+const SALES_WHATSAPP_DIGITS = '919310819195';
+const SALES_WHATSAPP_DISPLAY = '+91 93108 19195';
 
 export default function ProSubscriptionScreen() {
   const [plans, setPlans] = useState([]);
@@ -71,35 +78,41 @@ export default function ProSubscriptionScreen() {
   }
 
   return (
-    <ScreenContainer refreshing={refreshing} onRefresh={load} hasNavHeader>
-      <Card>
-        <Text style={styles.eyebrow}>Current plan</Text>
-        <View style={styles.headRow}>
-          <Text style={styles.planName}>
-            {(current && current.plan && current.plan.name) || 'No active plan'}
-          </Text>
-          {current ? (
-            <Badge variant={current.paymentStatus === 'paid' ? 'green' : 'amber'}>
-              {current.paymentStatus}
-            </Badge>
+    <ScreenContainer
+      refreshing={refreshing}
+      onRefresh={load}
+      hasNavHeader
+      contentStyle={styles.page}
+    >
+      <View style={styles.stack}>
+        <Card>
+          <Text style={styles.eyebrow}>Current plan</Text>
+          <View style={styles.headRow}>
+            <Text style={styles.planName}>
+              {(current && current.plan && current.plan.name) || 'No active plan'}
+            </Text>
+            {current ? (
+              <Badge variant={current.paymentStatus === 'paid' ? 'green' : 'amber'}>
+                {current.paymentStatus}
+              </Badge>
+            ) : null}
+          </View>
+          {current && current.endDate ? (
+            <Text style={styles.muted}>
+              Renews / expires {formatDate(current.endDate)}
+            </Text>
           ) : null}
-        </View>
-        {current && current.endDate ? (
-          <Text style={styles.muted}>
-            Renews / expires {formatDate(current.endDate)}
-          </Text>
-        ) : null}
-        {current && current.billingCycle ? (
-          <Text style={styles.muted}>Billing cycle: {current.billingCycle}</Text>
-        ) : null}
-      </Card>
+          {current && current.billingCycle ? (
+            <Text style={styles.muted}>Billing cycle: {current.billingCycle}</Text>
+          ) : null}
+        </Card>
 
-      {message ? <Text style={styles.success}>{message}</Text> : null}
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+        {message ? <Text style={styles.success}>{message}</Text> : null}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <Section
-        title="Available plans"
-        action={
+        <Section
+          title="Available plans"
+          action={
           <View style={styles.cycleToggle}>
             {['monthly', 'annual'].map((c) => (
               <Pressable
@@ -115,35 +128,45 @@ export default function ProSubscriptionScreen() {
           </View>
         }
       >
-        {plans.length === 0 ? (
-          <EmptyState
-            icon="package"
-            title="No plans available"
-            description="An admin needs to publish plans before you can subscribe."
-          />
-        ) : (
-          plans.map((plan) => (
-            <PlanCard
-              key={plan.id}
-              plan={plan}
-              cycle={cycle}
-              current={current}
-              busy={busy === plan.id}
-              onSwitch={handleSwitch}
+          {plans.length === 0 ? (
+            <EmptyState
+              icon="package"
+              title="No plans available"
+              description="An admin needs to publish plans before you can subscribe."
             />
-          ))
-        )}
-      </Section>
+          ) : (
+            plans.map((plan) => (
+              <PlanCard
+                key={plan.id}
+                plan={plan}
+                cycle={cycle}
+                current={current}
+                busy={busy === plan.id}
+                onSwitch={handleSwitch}
+              />
+            ))
+          )}
+        </Section>
+      </View>
     </ScreenContainer>
   );
 }
 
 function PlanCard({ plan, cycle, current, busy, onSwitch }) {
   const isCurrent = current && current.subscriptionPlanId === plan.id;
+  const isCustom = Boolean(plan.isCustomPlan) || plan.planType === 'custom';
   const price =
     cycle === 'annual' && plan.annualEnabled
       ? plan.annualPrice
       : plan.monthlyPrice;
+
+  function contactSales() {
+    const message =
+      `Hi Profirmo team, I'd like to discuss the "${plan.name}" plan for my professional account.`;
+    const url = `https://wa.me/${SALES_WHATSAPP_DIGITS}?text=${encodeURIComponent(message)}`;
+    Linking.openURL(url).catch(() => {});
+  }
+
   return (
     <Card style={{ marginBottom: spacing.sm }}>
       <View style={styles.headRow}>
@@ -154,9 +177,11 @@ function PlanCard({ plan, cycle, current, busy, onSwitch }) {
         <Text style={styles.muted}>{plan.shortDescription}</Text>
       ) : null}
       <Text style={styles.price}>
-        {price && Number(price) > 0
-          ? `${formatRupees(price, plan.currency)} ${cycle === 'annual' ? '/ year' : '/ month'}`
-          : 'Free'}
+        {isCustom
+          ? 'Custom pricing'
+          : price && Number(price) > 0
+            ? `${formatRupees(price, plan.currency)} ${cycle === 'annual' ? '/ year' : '/ month'}`
+            : 'Free'}
       </Text>
       <View style={styles.featureList}>
         <Feature>
@@ -171,14 +196,36 @@ function PlanCard({ plan, cycle, current, busy, onSwitch }) {
         {plan.priorityListing ? <Feature>Priority listing</Feature> : null}
         {plan.whatsappSupport ? <Feature>WhatsApp support</Feature> : null}
       </View>
-      <Button
-        title={isCurrent ? 'Your current plan' : `Switch to ${plan.name}`}
-        variant={isCurrent ? 'outline' : 'primary'}
-        onPress={() => (!isCurrent ? onSwitch(plan) : undefined)}
-        disabled={isCurrent}
-        loading={busy}
-        style={{ marginTop: spacing.md }}
-      />
+      {isCustom ? (
+        // Custom (sales-led) plans skip Razorpay and go straight to a
+        // pre-filled WhatsApp chat with the Profirmo sales team.
+        <Pressable
+          onPress={contactSales}
+          style={({ pressed }) => [
+            styles.whatsappBtn,
+            { opacity: pressed ? 0.92 : 1 },
+          ]}
+        >
+          <Feather name="message-circle" size={14} color={colors.textInverse} />
+          <Text style={styles.whatsappText}>
+            {plan.customCtaLabel || 'Chat with sales on WhatsApp'}
+          </Text>
+        </Pressable>
+      ) : (
+        <Button
+          title={isCurrent ? 'Your current plan' : `Switch to ${plan.name}`}
+          variant={isCurrent ? 'outline' : 'primary'}
+          onPress={() => (!isCurrent ? onSwitch(plan) : undefined)}
+          disabled={isCurrent}
+          loading={busy}
+          style={{ marginTop: spacing.md }}
+        />
+      )}
+      {isCustom ? (
+        <Text style={styles.whatsappHint}>
+          We&apos;ll respond from {SALES_WHATSAPP_DISPLAY}.
+        </Text>
+      ) : null}
     </Card>
   );
 }
@@ -193,6 +240,11 @@ function Feature({ children }) {
 }
 
 const styles = StyleSheet.create({
+  // Breathing room below the dark nav header + between every section
+  // so cards / lists don't crowd each other.
+  page: { paddingTop: spacing.md },
+  stack: { gap: spacing.md },
+
   eyebrow: { fontSize: 11, color: colors.textMuted, fontWeight: fontWeight.semibold, textTransform: 'uppercase', letterSpacing: 0.5 },
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   planName: { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: colors.textPrimary },
@@ -229,5 +281,29 @@ const styles = StyleSheet.create({
     color: colors.dangerSoftText,
     borderRadius: 8,
     fontSize: fontSize.sm,
+  },
+  // Sales-led custom-plan CTA — green pill so it visually reads as a
+  // WhatsApp action instead of a normal upgrade button.
+  whatsappBtn: {
+    marginTop: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: radius.pill,
+    backgroundColor: '#25D366',
+  },
+  whatsappText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.bold,
+    color: colors.textInverse,
+    letterSpacing: 0.2,
+  },
+  whatsappHint: {
+    marginTop: 8,
+    fontSize: 11,
+    color: colors.textMuted,
+    textAlign: 'center',
   },
 });
