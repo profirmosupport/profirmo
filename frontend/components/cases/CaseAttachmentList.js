@@ -13,7 +13,7 @@
 
 import { Paperclip } from 'lucide-react';
 import CaseAttachmentLink from '@/components/cases/CaseAttachmentLink';
-import { resolveFileUrl } from '@/services/fileService';
+import AuthedAttachmentImage from '@/components/cases/AuthedAttachmentImage';
 
 const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|heic|heif|bmp)(\?|$)/i;
 
@@ -57,7 +57,6 @@ export default function CaseAttachmentList({ caseId, attachments }) {
       {images.length > 0 && (
         <ul className="flex flex-wrap gap-2">
           {images.map((a, i) => {
-            const previewUrl = resolveFileUrl(a.url) || a.url;
             const label = prettyName(a, i);
             return (
               <li key={`img-${i}`}>
@@ -66,11 +65,13 @@ export default function CaseAttachmentList({ caseId, attachments }) {
                   attachment={a}
                   className="block overflow-hidden rounded-lg border border-slate-200 transition hover:border-blue-300"
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={previewUrl}
+                  {/* Auth-gated preview — fetches the bytes through
+                      /api/cases/:id/attachments/stream so private S3
+                      objects render without leaking signed URLs. */}
+                  <AuthedAttachmentImage
+                    caseId={caseId}
+                    attachment={a}
                     alt={label}
-                    title={label}
                     className="h-16 w-16 object-cover"
                   />
                 </CaseAttachmentLink>

@@ -2296,20 +2296,10 @@ function UpdateViewModal({
               <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Attachments
               </h4>
-              <ul className="flex flex-wrap gap-2">
-                {update.attachments.map((a, i) => (
-                  <li key={i}>
-                    <CaseAttachmentLink
-                      caseId={caseId}
-                      attachment={a}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-                    >
-                      <Paperclip size={12} className="text-slate-400" />
-                      {a.name || `Attachment ${i + 1}`}
-                    </CaseAttachmentLink>
-                  </li>
-                ))}
-              </ul>
+              <CaseAttachmentList
+                caseId={caseId}
+                attachments={update.attachments}
+              />
             </div>
           )}
         </div>
