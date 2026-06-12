@@ -3,9 +3,9 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
-  Twitter,
   Linkedin,
-  Github,
+  Facebook,
+  Instagram,
   Mail,
   ArrowRight,
   MapPin,
@@ -55,11 +55,31 @@ const FEATURED_CITY_NAMES = [
   'Raipur',
 ];
 
+// Footer social links. Each external profile carries `rel="nofollow
+// noopener noreferrer"` so we (a) don't pass link equity to the
+// third-party page and (b) open them in a tab that can't reach back
+// into our session via `window.opener`.
 const SOCIALS = [
-  { icon: Twitter, label: 'X (Twitter)' },
-  { icon: Linkedin, label: 'LinkedIn' },
-  { icon: Github, label: 'GitHub' },
-  { icon: Mail, label: 'Email' },
+  {
+    icon: Linkedin,
+    label: 'LinkedIn',
+    href: 'https://www.linkedin.com/company/pro-firmo/',
+  },
+  {
+    icon: Facebook,
+    label: 'Facebook',
+    href: 'https://www.facebook.com/fbprofirmo',
+  },
+  {
+    icon: Instagram,
+    label: 'Instagram',
+    href: 'https://www.instagram.com/profirmoinsta/',
+  },
+  {
+    icon: Mail,
+    label: 'Email',
+    href: 'mailto:support@profirmo.com',
+  },
 ];
 
 const COLUMNS = [
@@ -317,16 +337,24 @@ export default function Footer() {
             </p>
 
             <div className="flex items-center gap-2">
-              {SOCIALS.map(({ icon: Icon, label }) => (
-                <button
-                  key={label}
-                  type="button"
-                  aria-label={label}
-                  className="glass-dark grid h-9 w-9 place-items-center rounded-xl text-slate-300 transition hover:-translate-y-0.5 hover:text-teal-300 hover:shadow-glow-cyan"
-                >
-                  <Icon className="h-4 w-4" />
-                </button>
-              ))}
+              {SOCIALS.map(({ icon: Icon, label, href }) => {
+                // mailto: links open in the same tab; external https
+                // social profiles open in a new tab and never pass
+                // link equity (rel="nofollow").
+                const isMail = href && href.startsWith('mailto:');
+                return (
+                  <a
+                    key={label}
+                    href={href}
+                    aria-label={label}
+                    target={isMail ? undefined : '_blank'}
+                    rel={isMail ? undefined : 'nofollow noopener noreferrer'}
+                    className="glass-dark grid h-9 w-9 place-items-center rounded-xl text-slate-300 transition hover:-translate-y-0.5 hover:text-teal-300 hover:shadow-glow-cyan"
+                  >
+                    <Icon className="h-4 w-4" />
+                  </a>
+                );
+              })}
             </div>
 
             <div className="flex items-center gap-5 text-xs">
