@@ -46,7 +46,7 @@ const PROFESSIONAL_ITEMS = [
   { key: 'profile', icon: 'user', label: 'My profile', tone: 'amber' },
   { key: 'bookings', icon: 'calendar', label: 'Bookings', tone: 'amber' },
   { key: 'cases', icon: 'folder', label: 'Cases' },
-  { key: 'clients', icon: 'users', label: 'Manage clients' },
+  { key: 'clients', icon: 'users', label: 'Clients' },
   { key: 'payments', icon: 'credit-card', label: 'Payments' },
   { key: 'wallet', icon: 'pocket', label: 'Wallet' },
   { key: 'availability', icon: 'clock', label: 'Manage availability' },

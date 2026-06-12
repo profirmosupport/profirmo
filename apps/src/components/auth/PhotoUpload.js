@@ -18,16 +18,8 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { Feather } from '@expo/vector-icons';
 import { uploadFile } from '../../services/uploadService';
-import { API_BASE_URL } from '../../config/api';
+import { imageUrl } from '../../utils/imageUrl';
 import { colors, fontSize, fontWeight, spacing } from '../../theme';
-
-function fullUrl(rawUrl) {
-  if (!rawUrl) return null;
-  if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
-    return rawUrl;
-  }
-  return `${API_BASE_URL}${rawUrl}`;
-}
 
 export default function PhotoUpload({
   value,
@@ -89,7 +81,11 @@ export default function PhotoUpload({
     }
   }
 
-  const resolvedUrl = fullUrl(value);
+  // Resolve through the storage helper so bare S3 keys (the shape
+  // the backend persists for new uploads) get prefixed with the
+  // configured CDN/base URL instead of being concatenated onto the
+  // API host — which would 404 for objects in the S3 bucket.
+  const resolvedUrl = imageUrl(value);
   const badgeSize = Math.round(size * 0.32);
 
   return (
