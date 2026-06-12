@@ -223,6 +223,28 @@ export default function ProDashboardScreen({ navigation }) {
         <Feather name="arrow-right" size={16} color={colors.textMuted} />
       </Pressable>
 
+      {/* Manage firm — dark CTA. Same destination as the web's
+          /dashboard/professional/firm route; opens the existing
+          ProFirmScreen which handles create/edit/team management. */}
+      <Pressable
+        onPress={() => navigation.navigate('AccountFirm')}
+        style={({ pressed }) => [
+          styles.firmBtn,
+          { opacity: pressed ? 0.92 : 1 },
+        ]}
+      >
+        <View style={styles.firmIcon}>
+          <Feather name="briefcase" size={16} color="#fcd34d" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.firmTitle}>Manage firm</Text>
+          <Text style={styles.firmSub}>
+            Create or update your firm, manage members and team settings.
+          </Text>
+        </View>
+        <Feather name="arrow-right" size={16} color="rgba(255,255,255,0.85)" />
+      </Pressable>
+
       <Card style={{ marginTop: spacing.md }}>
         <View style={styles.subHeader}>
           <View style={{ flex: 1 }}>
@@ -433,6 +455,40 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontSize: 11,
     color: colors.textSecondary,
+  },
+
+  // Manage-firm CTA — dark ink panel, same destination as
+  // /dashboard/professional/firm on the web. Prominent so a pro
+  // notices it on cold open.
+  firmBtn: {
+    marginTop: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+    borderRadius: radius.md,
+    backgroundColor: '#0f172a',
+    borderWidth: 1,
+    borderColor: '#1e293b',
+  },
+  firmIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(245,158,11,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  firmTitle: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.bold,
+    color: '#ffffff',
+  },
+  firmSub: {
+    marginTop: 2,
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.7)',
   },
 
   // Plan allowance grid — four icon-led tiles laid out as a single

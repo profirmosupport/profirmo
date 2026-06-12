@@ -35,6 +35,7 @@ import FileUpload from '@/components/common/FileUpload';
 import AddCaseModal from '@/components/cases/AddCaseModal';
 import { resolveFileUrl } from '@/services/fileService';
 import CaseAttachmentLink from '@/components/cases/CaseAttachmentLink';
+import CaseAttachmentList from '@/components/cases/CaseAttachmentList';
 import caseService from '@/services/caseService';
 import { getLawFirm } from '@/services/profileService';
 import { syncCaseFromEcourts } from '@/services/ecourtsService';
@@ -306,12 +307,14 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
     }
   }
 
-  function addNoteAttachment(url) {
+  function addNoteAttachment(url, meta) {
     if (!url) return;
+    // Strip query params (signed URLs leak X-Amz-Signature etc) if we
+    // ever have to fall back to deriving from the URL path.
+    const cleanFromUrl = String(url).split('?')[0].split('/').pop();
+    const name = (meta && meta.name) || cleanFromUrl;
     setNoteAttachments((prev) =>
-      prev.some((a) => a.url === url)
-        ? prev
-        : [...prev, { url, name: url.split('/').pop() }]
+      prev.some((a) => a.url === url) ? prev : [...prev, { url, name }]
     );
   }
   function removeNoteAttachment(url) {
@@ -330,12 +333,12 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
     setEditingNoteDraft('');
     setEditingNoteAttachments([]);
   }
-  function addEditingNoteAttachment(url) {
+  function addEditingNoteAttachment(url, meta) {
     if (!url) return;
+    const cleanFromUrl = String(url).split('?')[0].split('/').pop();
+    const name = (meta && meta.name) || cleanFromUrl;
     setEditingNoteAttachments((prev) =>
-      prev.some((a) => a.url === url)
-        ? prev
-        : [...prev, { url, name: url.split('/').pop() }]
+      prev.some((a) => a.url === url) ? prev : [...prev, { url, name }]
     );
   }
   function removeEditingNoteAttachment(url) {
@@ -690,7 +693,7 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                   `case-files/<caseId>/`, isolated per case. */}
               <FileUpload
                 value=""
-                onChange={(url) => addNoteAttachment(url)}
+                onChange={(url, meta) => addNoteAttachment(url, meta)}
                 category="case_note"
                 caseId={caseId}
                 accept=".pdf,.doc,.docx,image/*"
@@ -803,7 +806,9 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                           />
                           <FileUpload
                             value=""
-                            onChange={(url) => addEditingNoteAttachment(url)}
+                            onChange={(url, meta) =>
+                              addEditingNoteAttachment(url, meta)
+                            }
                             category="case_note"
                             caseId={caseId}
                             accept=".pdf,.doc,.docx,image/*"
@@ -857,26 +862,10 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                             {truncated}
                             {didTruncate && '…'}
                           </p>
-                          {Array.isArray(n.attachments) &&
-                            n.attachments.length > 0 && (
-                              <ul className="mt-2 flex flex-wrap gap-1.5">
-                                {n.attachments.map((a, i) => (
-                                  <li key={i}>
-                                    <CaseAttachmentLink
-                                      caseId={caseId}
-                                      attachment={a}
-                                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-                                    >
-                                      <Paperclip
-                                        size={10}
-                                        className="text-slate-400"
-                                      />
-                                      {a.name || `Attachment ${i + 1}`}
-                                    </CaseAttachmentLink>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
+                          <CaseAttachmentList
+                            caseId={caseId}
+                            attachments={n.attachments}
+                          />
                           {didTruncate && (
                             <button
                               type="button"
@@ -1025,12 +1014,6 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                           Next hearing {formatDate(u.nextHearingDate)}
                         </Badge>
                       )}
-                      {Array.isArray(u.attachments) && u.attachments.length > 0 && (
-                        <Badge variant="gray">
-                          <Paperclip size={11} className="mr-0.5" />
-                          {u.attachments.length}
-                        </Badge>
-                      )}
                     </div>
                   </div>
                   {u.body && (
@@ -1039,6 +1022,17 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                     </p>
                   )}
                 </button>
+                {/* Attachments rendered OUTSIDE the button so each link
+                    is its own actionable element (a <a> inside <button>
+                    is invalid HTML and the click would bubble). Images
+                    appear as thumbnails; PDFs/DOCs as paperclip pills.
+                    All open in a new tab via CaseAttachmentLink. */}
+                <div className="mt-1 px-3 pb-3">
+                  <CaseAttachmentList
+                    caseId={caseId}
+                    attachments={u.attachments}
+                  />
+                </div>
               </li>
             ))}
           </ol>
@@ -1139,20 +1133,10 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                   <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Attachments
                   </h4>
-                  <ul className="flex flex-wrap gap-2">
-                    {viewingNote.attachments.map((a, i) => (
-                      <li key={i}>
-                        <CaseAttachmentLink
-                          caseId={caseId}
-                          attachment={a}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-                        >
-                          <Paperclip size={12} className="text-slate-400" />
-                          {a.name || `Attachment ${i + 1}`}
-                        </CaseAttachmentLink>
-                      </li>
-                    ))}
-                  </ul>
+                  <CaseAttachmentList
+                    caseId={caseId}
+                    attachments={viewingNote.attachments}
+                  />
                 </div>
               )}
           </div>
@@ -1195,22 +1179,10 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                 <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
                   {n.body}
                 </p>
-                {Array.isArray(n.attachments) && n.attachments.length > 0 && (
-                  <ul className="mt-2 flex flex-wrap gap-1.5">
-                    {n.attachments.map((a, i) => (
-                      <li key={i}>
-                        <CaseAttachmentLink
-                          caseId={caseId}
-                          attachment={a}
-                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-                        >
-                          <Paperclip size={10} className="text-slate-400" />
-                          {a.name || `Attachment ${i + 1}`}
-                        </CaseAttachmentLink>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                <CaseAttachmentList
+                  caseId={caseId}
+                  attachments={n.attachments}
+                />
               </li>
             ))}
           </ul>
@@ -1872,10 +1844,12 @@ function AddUpdateModal({ open, caseId, onClose, onAdded, authorDisplayName }) {
     }
   }, [open]);
 
-  function addAttachment(url) {
+  function addAttachment(url, meta) {
     if (!url) return;
+    const cleanFromUrl = String(url).split('?')[0].split('/').pop();
+    const name = (meta && meta.name) || cleanFromUrl;
     setAttachments((prev) =>
-      prev.some((a) => a.url === url) ? prev : [...prev, { url, name: url.split('/').pop() }]
+      prev.some((a) => a.url === url) ? prev : [...prev, { url, name }]
     );
   }
   function removeAttachment(url) {
@@ -1996,7 +1970,7 @@ function AddUpdateModal({ open, caseId, onClose, onAdded, authorDisplayName }) {
           </label>
           <FileUpload
             value=""
-            onChange={(url) => addAttachment(url)}
+            onChange={(url, meta) => addAttachment(url, meta)}
             category="case_note"
             caseId={caseId}
             accept=".pdf,.doc,.docx,image/*"
@@ -2086,12 +2060,12 @@ function UpdateViewModal({
     setDeleting(false);
   }, [open, update]);
 
-  function addAttachment(url) {
+  function addAttachment(url, meta) {
     if (!url) return;
+    const cleanFromUrl = String(url).split('?')[0].split('/').pop();
+    const name = (meta && meta.name) || cleanFromUrl;
     setAttachments((prev) =>
-      prev.some((a) => a.url === url)
-        ? prev
-        : [...prev, { url, name: url.split('/').pop() }]
+      prev.some((a) => a.url === url) ? prev : [...prev, { url, name }]
     );
   }
   function removeAttachment(url) {
@@ -2266,7 +2240,7 @@ function UpdateViewModal({
             </label>
             <FileUpload
               value=""
-              onChange={(url) => addAttachment(url)}
+              onChange={(url, meta) => addAttachment(url, meta)}
               category="case_note"
               caseId={caseId}
               accept=".pdf,.doc,.docx,image/*"

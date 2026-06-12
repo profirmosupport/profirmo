@@ -17,7 +17,11 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Keyboard,
+  KeyboardAvoidingView,
   Linking,
+  Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -28,6 +32,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import ScreenContainer from '../../components/common/ScreenContainer';
 import Card from '../../components/common/Card';
 import Badge from '../../components/common/Badge';
@@ -35,7 +40,10 @@ import EmptyState from '../../components/common/EmptyState';
 import AvatarWithInitials from '../../components/common/AvatarWithInitials';
 import {
   addCaseNote,
+  addCaseUpdate,
   deleteCase,
+  deleteCaseUpdate,
+  editCaseUpdate,
   getCase,
   listCaseLog,
   listCaseNotes,
@@ -399,7 +407,24 @@ export default function CaseDetailScreen({ navigation, route }) {
 
       <DetailsCard item={item} professionals={professionals} />
 
-      <UpdatesCard updates={updates} loadError={updatesError} />
+      <UpdatesCard
+        updates={updates}
+        loadError={updatesError}
+        caseId={caseId}
+        canEdit={!isClient}
+        onChanged={async () => {
+          // Refresh updates + log after any add / edit / delete.
+          const [u, l] = await Promise.allSettled([
+            listCaseUpdates(caseId),
+            listCaseLog(caseId),
+          ]);
+          if (u.status === 'fulfilled') {
+            setUpdates(u.value || []);
+            setUpdatesError('');
+          }
+          if (l.status === 'fulfilled') setLog(l.value || []);
+        }}
+      />
 
       <NotesCard
         notes={notes}
@@ -602,13 +627,61 @@ function Field({ label, value }) {
 // Updates card — rich updates (title + body + scheduled date)
 // ---------------------------------------------------------------------
 
-function UpdatesCard({ updates, loadError }) {
+function UpdatesCard({ updates, loadError, caseId, canEdit, onChanged }) {
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [editing, setEditing] = useState(null); // update object being edited
+  const [deletingId, setDeletingId] = useState('');
+
+  function startNew() {
+    setEditing(null);
+    setComposerOpen(true);
+  }
+
+  function startEdit(u) {
+    setEditing(u);
+    setComposerOpen(true);
+  }
+
+  async function handleDelete(u) {
+    if (deletingId) return;
+    setDeletingId(u.id);
+    try {
+      await deleteCaseUpdate(caseId, u.id);
+      if (typeof onChanged === 'function') await onChanged();
+    } catch (err) {
+      Alert.alert(
+        'Delete failed',
+        err?.message || 'Could not delete the update.'
+      );
+    } finally {
+      setDeletingId('');
+    }
+  }
+
   return (
     <Card>
-      <SectionHeader
-        icon="calendar"
-        label={updates.length > 0 ? `Case updates (${updates.length})` : 'Case updates'}
-      />
+      <View style={styles.updatesHead}>
+        <SectionHeader
+          icon="calendar"
+          label={
+            updates.length > 0
+              ? `Case updates (${updates.length})`
+              : 'Case updates'
+          }
+        />
+        {canEdit ? (
+          <Pressable
+            onPress={startNew}
+            style={({ pressed }) => [
+              styles.addUpdateBtn,
+              { opacity: pressed ? 0.85 : 1 },
+            ]}
+          >
+            <Feather name="plus" size={13} color={colors.textInverse} />
+            <Text style={styles.addUpdateText}>Add update</Text>
+          </Pressable>
+        ) : null}
+      </View>
       {loadError ? (
         <View style={styles.inlineError}>
           <Feather name="alert-circle" size={13} color={colors.danger} />
@@ -617,46 +690,554 @@ function UpdatesCard({ updates, loadError }) {
       ) : null}
       {updates.length === 0 ? (
         <Text style={styles.muted}>
-          Your professional&apos;s scheduled updates and hearing notes will
-          appear here.
+          {canEdit
+            ? 'No updates yet. Tap “Add update” to log a hearing summary, scheduled milestone, or status note.'
+            : 'Your professional’s scheduled updates and hearing notes will appear here.'}
         </Text>
       ) : (
         <View style={{ gap: spacing.md }}>
-          {updates.slice(0, 8).map((u) => (
-            <View key={u.id} style={styles.updateRow}>
-              <View style={styles.updateDot} />
-              <View style={{ flex: 1 }}>
-                <View style={styles.updateHeadRow}>
-                  <Text style={styles.updateTitle} numberOfLines={2}>
-                    {u.title || 'Update'}
-                  </Text>
-                  {u.scheduledAt ? (
-                    <Text style={styles.updateWhen}>
-                      {formatDate(u.scheduledAt)}
+          {updates.slice(0, 8).map((u) => {
+            const busy = deletingId === u.id;
+            return (
+              <View key={u.id} style={styles.updateRow}>
+                <View style={styles.updateDot} />
+                <View style={{ flex: 1 }}>
+                  <View style={styles.updateHeadRow}>
+                    <Text style={styles.updateTitle} numberOfLines={2}>
+                      {u.title || 'Update'}
                     </Text>
+                    {u.scheduledAt ? (
+                      <Text style={styles.updateWhen}>
+                        {formatDate(u.scheduledAt)}
+                      </Text>
+                    ) : null}
+                  </View>
+                  {u.body ? (
+                    <Text style={styles.updateBody}>{u.body}</Text>
+                  ) : null}
+                  {u.nextHearingDate ? (
+                    <View style={styles.hearingPill}>
+                      <Feather name="calendar" size={10} color="#92400e" />
+                      <Text style={styles.hearingText}>
+                        Next hearing {formatDate(u.nextHearingDate)}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <AttachmentList
+                    attachments={u.attachments}
+                    keyPrefix={u.id}
+                  />
+                  {canEdit ? (
+                    <View style={styles.updateActions}>
+                      <Pressable
+                        onPress={() => startEdit(u)}
+                        disabled={busy}
+                        style={({ pressed }) => [
+                          styles.updateActionBtn,
+                          { opacity: pressed ? 0.85 : 1 },
+                        ]}
+                      >
+                        <Feather name="edit-2" size={11} color={colors.primary} />
+                        <Text style={styles.updateActionText}>Edit</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() =>
+                          Alert.alert(
+                            'Delete update',
+                            'This will remove the update permanently.',
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              {
+                                text: 'Delete',
+                                style: 'destructive',
+                                onPress: () => handleDelete(u),
+                              },
+                            ]
+                          )
+                        }
+                        disabled={busy}
+                        style={({ pressed }) => [
+                          styles.updateActionBtn,
+                          styles.updateDangerBtn,
+                          { opacity: pressed ? 0.85 : 1 },
+                        ]}
+                      >
+                        <Feather
+                          name="trash-2"
+                          size={11}
+                          color={colors.danger}
+                        />
+                        <Text style={styles.updateDangerText}>
+                          {busy ? 'Deleting…' : 'Delete'}
+                        </Text>
+                      </Pressable>
+                    </View>
                   ) : null}
                 </View>
-                {u.body ? (
-                  <Text style={styles.updateBody}>{u.body}</Text>
-                ) : null}
-                {u.nextHearingDate ? (
-                  <View style={styles.hearingPill}>
-                    <Feather name="calendar" size={10} color="#92400e" />
-                    <Text style={styles.hearingText}>
-                      Next hearing {formatDate(u.nextHearingDate)}
-                    </Text>
-                  </View>
-                ) : null}
-                <AttachmentList
-                  attachments={u.attachments}
-                  keyPrefix={u.id}
-                />
               </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
       )}
+
+      <UpdateComposerModal
+        visible={composerOpen}
+        caseId={caseId}
+        editing={editing}
+        onClose={() => setComposerOpen(false)}
+        onSaved={async () => {
+          setComposerOpen(false);
+          setEditing(null);
+          if (typeof onChanged === 'function') await onChanged();
+        }}
+      />
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------------
+// UpdateComposerModal — add / edit a case update.
+// Same fields the web's case-update form ships: title, body,
+// scheduledAt, nextHearingDate, attachments (image upload via
+// expo-image-picker, sent to /uploads with category `case_note`).
+// ---------------------------------------------------------------------
+
+function UpdateComposerModal({ visible, caseId, editing, onClose, onSaved }) {
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [scheduledAt, setScheduledAt] = useState('');
+  const [nextHearingDate, setNextHearingDate] = useState('');
+  const [attachments, setAttachments] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  // Tracks which date field has the native picker open: '' | 'scheduledAt'
+  // | 'nextHearingDate'. iOS shows the picker inline; Android shows it as
+  // a system dialog that auto-dismisses on pick.
+  const [pickingField, setPickingField] = useState('');
+
+  // Re-seed the form whenever the modal opens. Editing fills the
+  // existing values; new-update mode clears every field.
+  useEffect(() => {
+    if (!visible) return;
+    if (editing) {
+      setTitle(editing.title || '');
+      setBody(editing.body || '');
+      setScheduledAt(
+        editing.scheduledAt ? String(editing.scheduledAt).slice(0, 10) : ''
+      );
+      setNextHearingDate(
+        editing.nextHearingDate
+          ? String(editing.nextHearingDate).slice(0, 10)
+          : ''
+      );
+      setAttachments(
+        Array.isArray(editing.attachments) ? editing.attachments : []
+      );
+    } else {
+      setTitle('');
+      setBody('');
+      setScheduledAt('');
+      setNextHearingDate('');
+      setAttachments([]);
+    }
+    setError('');
+  }, [visible, editing]);
+
+  async function attach() {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(
+          'Photo library access',
+          'Allow access to your photos so you can attach files to this update.'
+        );
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.9,
+        allowsMultipleSelection: false,
+      });
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+      const asset = result.assets[0];
+      setUploading(true);
+      const uploaded = await uploadFile({
+        uri: asset.uri,
+        name: asset.fileName || `update-${Date.now()}.jpg`,
+        type: asset.mimeType,
+        category: 'case_note',
+        caseId,
+      });
+      const url =
+        uploaded && (uploaded.url || uploaded.publicUrl || uploaded.path);
+      if (!url) throw new Error('Upload did not return a URL.');
+      const name =
+        uploaded.originalName ||
+        uploaded.name ||
+        asset.fileName ||
+        String(url).split('/').pop();
+      setAttachments((prev) =>
+        prev.some((a) => a.url === url) ? prev : [...prev, { url, name }]
+      );
+    } catch (err) {
+      Alert.alert(
+        'Attachment failed',
+        err?.message || 'Could not upload file.'
+      );
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function removeAttachment(url) {
+    setAttachments((prev) => prev.filter((a) => a.url !== url));
+  }
+
+  async function save() {
+    if (saving || uploading) return;
+    const trimmedBody = body.trim();
+    if (!trimmedBody && attachments.length === 0) {
+      setError('Write an update or attach a file before saving.');
+      return;
+    }
+    setError('');
+    setSaving(true);
+    try {
+      const payload = {
+        title: title.trim() || undefined,
+        body: trimmedBody,
+        scheduledAt: scheduledAt || undefined,
+        nextHearingDate: nextHearingDate || undefined,
+        attachments,
+      };
+      if (editing) {
+        await editCaseUpdate(caseId, editing.id, payload);
+      } else {
+        await addCaseUpdate(caseId, payload);
+      }
+      if (typeof onSaved === 'function') await onSaved();
+    } catch (err) {
+      setError(err?.message || 'Could not save the update.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Buffer the date the user is editing in the bottom-sheet so iOS
+  // users can scroll the wheel without each tick writing back to the
+  // form. Committed when they tap "Done".
+  const [draftPickerDate, setDraftPickerDate] = useState(null);
+
+  function openPicker(field) {
+    // Drop the keyboard before showing the picker so the native sheet
+    // / dialog appears on a clean surface — was the root cause of
+    // "picker invisible / not switching with keyboard up".
+    Keyboard.dismiss();
+    const seed =
+      field === 'scheduledAt'
+        ? scheduledAt
+        : nextHearingDate;
+    setDraftPickerDate(seed ? new Date(seed) : new Date());
+    // Defer the open by a frame so the keyboard-dismiss animation
+    // doesn't fight the picker's slide-in.
+    setTimeout(() => setPickingField(field), 50);
+  }
+
+  function commitPicker() {
+    if (!pickingField || !draftPickerDate) {
+      setPickingField('');
+      return;
+    }
+    const iso = draftPickerDate.toISOString().slice(0, 10);
+    if (pickingField === 'scheduledAt') setScheduledAt(iso);
+    else setNextHearingDate(iso);
+    setPickingField('');
+  }
+
+  function onPickerChange(event, picked) {
+    // Android: system dialog returns once; commit and close.
+    if (Platform.OS !== 'ios') {
+      if (event && event.type === 'dismissed') {
+        setPickingField('');
+        return;
+      }
+      if (picked) {
+        const iso = picked.toISOString().slice(0, 10);
+        if (pickingField === 'scheduledAt') setScheduledAt(iso);
+        else setNextHearingDate(iso);
+      }
+      setPickingField('');
+      return;
+    }
+    // iOS: buffer in draftPickerDate; "Done" commits.
+    if (picked) setDraftPickerDate(picked);
+  }
+
+  // Save is disabled while a file is uploading, while saving, or
+  // when the form is empty — matches the request "save disabled
+  // until image uploaded".
+  const saveDisabled = saving || uploading;
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="fade"
+      transparent
+      onRequestClose={() => !saving && onClose()}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.composerBackdrop}
+      >
+        <View style={styles.composerCard}>
+          <View style={styles.composerHead}>
+            <Text style={styles.composerTitle}>
+              {editing ? 'Edit update' : 'Add update'}
+            </Text>
+            <Pressable onPress={() => !saving && onClose()} hitSlop={8}>
+              <Feather name="x" size={18} color={colors.textMuted} />
+            </Pressable>
+          </View>
+
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ gap: spacing.sm, paddingBottom: spacing.md }}
+          >
+            <View style={styles.composerField}>
+              <Text style={styles.composerLabel}>Title</Text>
+              <TextInput
+                value={title}
+                onChangeText={setTitle}
+                placeholder="Hearing summary, scheduled milestone…"
+                placeholderTextColor={colors.textMuted}
+                style={styles.composerInput}
+              />
+            </View>
+
+            <View style={styles.composerField}>
+              <Text style={styles.composerLabel}>Details *</Text>
+              <TextInput
+                value={body}
+                onChangeText={setBody}
+                placeholder="Describe what happened or what's next…"
+                placeholderTextColor={colors.textMuted}
+                multiline
+                numberOfLines={5}
+                style={[styles.composerInput, styles.composerTextarea]}
+              />
+            </View>
+
+            <View style={styles.composerField}>
+              <Text style={styles.composerLabel}>Scheduled date</Text>
+              <DateField
+                value={scheduledAt}
+                onPressOpen={() => openPicker('scheduledAt')}
+                onClear={() => setScheduledAt('')}
+                placeholder="Pick a date"
+              />
+            </View>
+
+            <View style={styles.composerField}>
+              <Text style={styles.composerLabel}>Next hearing</Text>
+              <DateField
+                value={nextHearingDate}
+                onPressOpen={() => openPicker('nextHearingDate')}
+                onClear={() => setNextHearingDate('')}
+                placeholder="Pick a date"
+              />
+            </View>
+
+            <View style={styles.composerField}>
+              <View style={styles.attachRow}>
+                <Text style={styles.composerLabel}>Attachments</Text>
+                <Pressable
+                  onPress={attach}
+                  disabled={uploading || saving}
+                  style={({ pressed }) => [
+                    styles.attachBtn,
+                    {
+                      opacity: pressed || uploading || saving ? 0.85 : 1,
+                    },
+                  ]}
+                >
+                  {uploading ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <Feather
+                      name="paperclip"
+                      size={12}
+                      color={colors.primary}
+                    />
+                  )}
+                  <Text style={styles.attachBtnText}>
+                    {uploading ? 'Uploading…' : 'Attach file'}
+                  </Text>
+                </Pressable>
+              </View>
+              {attachments.length === 0 ? (
+                <Text style={styles.attachHint}>
+                  {uploading
+                    ? 'Uploading… Save will be enabled once the upload finishes.'
+                    : 'Add images / scanned documents. They render inline with the update and open in the device browser on tap.'}
+                </Text>
+              ) : (
+                <View style={styles.attachList}>
+                  {attachments.map((a) => (
+                    <View key={a.url} style={styles.attachItem}>
+                      <Feather
+                        name="paperclip"
+                        size={11}
+                        color={colors.textMuted}
+                      />
+                      <Text style={styles.attachItemName} numberOfLines={1}>
+                        {prettyAttachmentName(a, 0)}
+                      </Text>
+                      <Pressable
+                        onPress={() => removeAttachment(a.url)}
+                        hitSlop={6}
+                      >
+                        <Feather name="x" size={11} color={colors.danger} />
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            {error ? (
+              <View style={styles.inlineError}>
+                <Feather
+                  name="alert-circle"
+                  size={13}
+                  color={colors.danger}
+                />
+                <Text style={styles.inlineErrorText}>{error}</Text>
+              </View>
+            ) : null}
+          </ScrollView>
+
+          <View style={styles.composerActions}>
+            <Pressable
+              onPress={() => !saving && onClose()}
+              disabled={saving}
+              style={({ pressed }) => [
+                styles.composerCancel,
+                { opacity: pressed ? 0.85 : 1 },
+              ]}
+            >
+              <Text style={styles.composerCancelText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              onPress={save}
+              disabled={saveDisabled}
+              style={({ pressed }) => [
+                styles.composerSave,
+                saveDisabled && styles.composerSaveDisabled,
+                { opacity: pressed || saveDisabled ? 0.85 : 1 },
+              ]}
+            >
+              <Text style={styles.composerSaveText}>
+                {uploading
+                  ? 'Waiting for upload…'
+                  : saving
+                    ? 'Saving…'
+                    : editing
+                      ? 'Save changes'
+                      : 'Post update'}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
+      </KeyboardAvoidingView>
+
+      {/* Date picker —
+          • Android: render the bare DateTimePicker, which is a system
+            modal dialog that auto-dismisses on pick / cancel. No own
+            sheet needed.
+          • iOS: wrap the picker in a bottom-sheet Modal so it's
+            actually visible on top of the composer modal. The user
+            scrolls the wheel and taps Done to commit. */}
+      {Platform.OS === 'android' && pickingField ? (
+        <DateTimePicker
+          value={draftPickerDate || new Date()}
+          mode="date"
+          display="default"
+          onChange={onPickerChange}
+        />
+      ) : null}
+      {Platform.OS === 'ios' ? (
+        <Modal
+          visible={!!pickingField}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setPickingField('')}
+        >
+          <Pressable
+            style={styles.pickerBackdrop}
+            onPress={() => setPickingField('')}
+          />
+          <View style={styles.pickerSheet}>
+            <View style={styles.pickerSheetHead}>
+              <Pressable
+                onPress={() => setPickingField('')}
+                hitSlop={8}
+              >
+                <Text style={styles.pickerCancelText}>Cancel</Text>
+              </Pressable>
+              <Text style={styles.pickerSheetTitle}>
+                {pickingField === 'scheduledAt'
+                  ? 'Scheduled date'
+                  : 'Next hearing'}
+              </Text>
+              <Pressable onPress={commitPicker} hitSlop={8}>
+                <Text style={styles.pickerDoneText}>Done</Text>
+              </Pressable>
+            </View>
+            <DateTimePicker
+              value={draftPickerDate || new Date()}
+              mode="date"
+              display="spinner"
+              onChange={onPickerChange}
+              style={{ alignSelf: 'stretch' }}
+            />
+          </View>
+        </Modal>
+      ) : null}
+    </Modal>
+  );
+}
+
+// Pressable field that looks like an input but launches the native
+// date picker on tap. Right-side X clears the value.
+function DateField({ value, onPressOpen, onClear, placeholder }) {
+  return (
+    <Pressable
+      onPress={onPressOpen}
+      style={({ pressed }) => [
+        styles.composerInput,
+        styles.dateField,
+        { opacity: pressed ? 0.92 : 1 },
+      ]}
+    >
+      <Feather name="calendar" size={14} color={colors.textMuted} />
+      <Text
+        style={[
+          styles.dateFieldText,
+          !value && { color: colors.textMuted },
+        ]}
+      >
+        {value || placeholder}
+      </Text>
+      {value ? (
+        <Pressable onPress={onClear} hitSlop={8}>
+          <Feather name="x" size={13} color={colors.textMuted} />
+        </Pressable>
+      ) : null}
+    </Pressable>
   );
 }
 
@@ -667,6 +1248,23 @@ function UpdatesCard({ updates, loadError }) {
 // ---------------------------------------------------------------------
 
 const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|heic|heif|bmp)(\?|$)/i;
+
+// Pretty filename for an attachment, defending against legacy rows
+// whose `name` was set to a signed S3 URL (which leaks X-Amz-* query
+// params). Drops everything after `?`, strips path segments, falls
+// back to a generic label if nothing usable remains.
+function prettyAttachmentName(att, index) {
+  const candidates = [att && att.name, att && att.url];
+  for (const c of candidates) {
+    if (!c) continue;
+    const s = String(c);
+    const noQs = s.split('?')[0];
+    const tail = noQs.split('/').pop();
+    if (tail && tail.length > 0 && tail.length < 80) return tail;
+  }
+  return `Attachment ${index + 1}`;
+}
+
 function isImageAttachment(att) {
   if (!att) return false;
   if (att.mimeType && String(att.mimeType).startsWith('image/')) return true;
@@ -714,9 +1312,7 @@ function AttachmentList({ attachments, keyPrefix }) {
         <View style={styles.attachmentRow}>
           {others.map((a, i) => {
             const uri = imageUrl(a.url);
-            const fallbackName =
-              a.name ||
-              (a.url ? String(a.url).split('/').pop() : 'Attachment');
+            const fallbackName = prettyAttachmentName(a, i);
             return (
               <Pressable
                 key={`${keyPrefix}-att-${i}`}
@@ -793,7 +1389,7 @@ function NotesCard({
                   style={styles.composerAttachText}
                   numberOfLines={1}
                 >
-                  {a.name}
+                  {prettyAttachmentName(a, 0)}
                 </Text>
                 <Pressable
                   onPress={() => onRemoveAttach(a.url)}
@@ -949,7 +1545,10 @@ function ActivityLogCard({ entries }) {
               <View style={{ flex: 1 }}>
                 <Text style={styles.logLine}>
                   <Text style={styles.logActor}>
-                    {entry.actor || 'System'}
+                    {entry.actorName ||
+                      entry.actor ||
+                      (entry.user && (entry.user.fullName || entry.user.name)) ||
+                      'System'}
                   </Text>
                   {entry.action ? `  ${entry.action}` : ''}
                 </Text>
@@ -1204,6 +1803,229 @@ const styles = StyleSheet.create({
   },
 
   // Updates
+  updatesHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  addUpdateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primary,
+  },
+  addUpdateText: {
+    fontSize: 11,
+    fontWeight: fontWeight.bold,
+    color: colors.textInverse,
+  },
+  updateActions: {
+    marginTop: spacing.sm,
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  updateActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  updateActionText: {
+    fontSize: 11,
+    fontWeight: fontWeight.bold,
+    color: colors.primary,
+  },
+  updateDangerBtn: {
+    borderColor: colors.danger,
+    backgroundColor: '#fff5f5',
+  },
+  updateDangerText: {
+    fontSize: 11,
+    fontWeight: fontWeight.bold,
+    color: colors.danger,
+  },
+
+  // Composer modal
+  composerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.55)',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  composerCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    maxHeight: '90%',
+  },
+  composerHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  composerTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
+    color: colors.textPrimary,
+  },
+  composerField: { gap: 4 },
+  composerLabel: {
+    fontSize: 11,
+    fontWeight: fontWeight.bold,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  composerInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    fontSize: fontSize.sm,
+    color: colors.textPrimary,
+    backgroundColor: colors.surface,
+  },
+  composerTextarea: {
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+
+  attachRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  attachBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  attachBtnText: {
+    fontSize: 11,
+    fontWeight: fontWeight.bold,
+    color: colors.primary,
+  },
+  attachHint: { fontSize: 11, color: colors.textMuted },
+  attachList: { gap: 6, marginTop: 6 },
+  attachItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
+  },
+  attachItemName: {
+    flex: 1,
+    fontSize: 12,
+    color: colors.textPrimary,
+  },
+
+  composerActions: {
+    marginTop: spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+  },
+  composerCancel: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  composerCancelText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.textSecondary,
+  },
+  composerSave: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 10,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+  },
+  composerSaveDisabled: {
+    backgroundColor: colors.textMuted,
+  },
+  composerSaveText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.bold,
+    color: colors.textInverse,
+  },
+
+  // Date-picker trigger field — looks like an input row.
+  dateField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dateFieldText: {
+    flex: 1,
+    fontSize: fontSize.sm,
+    color: colors.textPrimary,
+  },
+
+  // iOS date-picker bottom sheet.
+  pickerBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15,23,42,0.45)',
+  },
+  pickerSheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingBottom: spacing.xl,
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+  },
+  pickerSheetHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  pickerSheetTitle: {
+    fontSize: fontSize.base,
+    fontWeight: fontWeight.bold,
+    color: colors.textPrimary,
+  },
+  pickerCancelText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.textSecondary,
+  },
+  pickerDoneText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.bold,
+    color: colors.primary,
+  },
+
   updateRow: {
     flexDirection: 'row',
     gap: spacing.sm,

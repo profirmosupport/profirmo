@@ -35,7 +35,8 @@
           "resizeMode": "contain",
           "imageWidth": 200
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "extra": {
       "apiBaseUrl": "https://profirmo.onrender.com"
