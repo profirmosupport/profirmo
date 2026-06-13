@@ -247,9 +247,57 @@ async function approve(approvalId, adminId) {
         err.message || err
       );
     }
+
+    // Employee module — credit commission if this professional was
+    // onboarded by an employee. Idempotent: the (employeeId,
+    // professionalUserId) pair has a UNIQUE index so re-approving the
+    // same pro doesn't duplicate the row.
+    try {
+      await creditEmployeeCommissionOnApprove(user.id);
+    } catch (err) {
+      console.error(
+        '[ProApproval] employee commission credit failed:',
+        err.message || err
+      );
+    }
   }
 
   return approval.get({ plain: true });
+}
+
+// Look up the ProfessionalDetail for `userId`. If it carries an
+// employeeId, write (or update) one EmployeeCommission row with the
+// current per-pro commission setting. Failures are non-fatal — the
+// rest of approval has already committed.
+async function creditEmployeeCommissionOnApprove(userId) {
+  const { ProfessionalDetail, EmployeeCommission } = require('../models');
+  const employeeDashboardService = require('./employeeDashboardService');
+  const detail = await ProfessionalDetail.findOne({ where: { userId }, raw: true });
+  if (!detail || !detail.employeeId) return;
+  const settings = await employeeDashboardService.readEmployeeSettings();
+  // Upsert: re-approval after a clawback/reverse flips the row back to
+  // 'earned' with the current setting amount rather than stacking a
+  // second row.
+  const existing = await EmployeeCommission.findOne({
+    where: {
+      employeeId: detail.employeeId,
+      professionalUserId: userId,
+    },
+  });
+  if (existing) {
+    await existing.update({
+      commissionAmount: settings.commission,
+      status: 'earned',
+      remark: null,
+    });
+    return;
+  }
+  await EmployeeCommission.create({
+    employeeId: detail.employeeId,
+    professionalUserId: userId,
+    commissionAmount: settings.commission,
+    status: 'earned',
+  });
 }
 
 /**

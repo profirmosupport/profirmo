@@ -112,6 +112,13 @@ const SYNC_ORDER = [
   db.SubscriptionPayment,
   // E-Courts India bookmarks — no FK dependency, plain user_id index.
   db.ECourtsFavorite,
+  // --- Employee module: field agents who onboard professionals -------
+  // Employee is independent of User; commissions + payouts reference
+  // it. Professional onboarded by an employee carries employeeId /
+  // employeeCode columns on ProfessionalDetail (additive migration).
+  db.Employee,
+  db.EmployeeCommission,
+  db.EmployeePayout,
 ];
 
 // Boot the Profirmo HTTP server.

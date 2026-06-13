@@ -402,6 +402,26 @@ async function runMigrations() {
     }
   }
 
+  // 7j. ProfessionalDetail.employeeId / employeeCode — set when a
+  // /join-team employee onboards the professional. Used by the
+  // employee-commission credit hook on admin approval.
+  for (const [col, type] of [
+    ['employeeId', 'VARCHAR(64) NULL'],
+    ['employeeCode', 'VARCHAR(16) NULL'],
+  ]) {
+    try {
+      await sequelize.query(
+        `ALTER TABLE \`professional_details\` ADD COLUMN IF NOT EXISTS \`${col}\` ${type}`
+      );
+    } catch (err) {
+      if (!/doesn'?t exist|Unknown table/i.test(err.message)) {
+        console.warn(
+          `[Migrate] Could not add professional_details.${col}: ${err.message}`
+        );
+      }
+    }
+  }
+
   // 7i. ProfessionalDetail.acceptsOnlineBooking + Booking.completedAt.
   // Both are NULL-safe: NULL on acceptsOnlineBooking means "accepting"
   // (existing pros stay bookable); completedAt is set when a booking flips

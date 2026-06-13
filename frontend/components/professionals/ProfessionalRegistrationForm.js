@@ -61,6 +61,11 @@ function emptyValues() {
     mobileNumber: '',
     password: '',
     confirmPassword: '',
+    // Optional employee_code of the field agent who referred this
+    // professional. When present, the backend stamps employeeId +
+    // employeeCode on the ProfessionalDetail row so admin approval
+    // credits the right employee. Empty for self-service signups.
+    referralCode: '',
     country: '',
     state: '',
     city: '',
@@ -434,6 +439,12 @@ export function buildPayload(values, professionalType, mode) {
     professionalType,
     ...professional,
   };
+  // Optional referral — the employee_code of the field agent who
+  // brought this professional. Backend resolves it to an Employee row
+  // and stamps employeeId + employeeCode on the new ProfessionalDetail
+  // so admin approval credits the right person.
+  const referral = String(values.referralCode || '').trim();
+  if (referral) payload.referralCode = referral;
   if (isLegal) payload.legal = legal;
   else payload.tax = tax;
   return payload;
@@ -638,6 +649,15 @@ export default function ProfessionalRegistrationForm({
   banner = '',
   serverErrors,
   onSubmit,
+  // Optional. When set, an extension area is rendered directly under
+  // the mobile-number input (employee onboarding uses it for inline
+  // OTP send/verify). Receives the current values object so the
+  // adapter can read `values.mobileNumber`.
+  phoneFieldFooter,
+  // Optional. When true, the "Referred by" employee-code field is
+  // disabled (employee onboarding pre-fills it with the field agent's
+  // own code and locks it so it can't be reassigned).
+  referralLocked = false,
   // Edit mode: optional async (payload, currentStep) => Promise — invoked
   // before advancing to the next step so the visitor's data is persisted
   // immediately instead of waiting for the final submit. If it rejects,
@@ -1034,31 +1054,62 @@ export default function ProfessionalRegistrationForm({
                   </button>
                 </div>
               )}
+              {/* Extension slot for callers that need OTP / verify
+                  controls inline (e.g. employee onboarding sends the
+                  OTP to the professional's phone here). */}
+              {typeof phoneFieldFooter === 'function'
+                ? phoneFieldFooter(values)
+                : phoneFieldFooter}
             </div>
           </div>
           {mode === 'register' && (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Input
+                  label="Password"
+                  name="password"
+                  type="password"
+                  value={values.password}
+                  onChange={handleChange}
+                  placeholder="At least 8 characters"
+                  required
+                  error={allErrors.password}
+                />
+                <Input
+                  label="Confirm password"
+                  name="confirmPassword"
+                  type="password"
+                  value={values.confirmPassword}
+                  onChange={handleChange}
+                  placeholder="Re-enter password"
+                  required
+                  error={allErrors.confirmPassword}
+                />
+              </div>
+              {/* Optional employee_code of the field agent who
+                  referred you. The employee earns commission once
+                  the admin approves your profile. Leave blank if you
+                  signed up on your own. Locked + pre-filled when an
+                  employee is onboarding via /join-team. */}
               <Input
-                label="Password"
-                name="password"
-                type="password"
-                value={values.password}
+                label={
+                  referralLocked
+                    ? 'Referred by (your employee code)'
+                    : 'Referred by (optional)'
+                }
+                name="referralCode"
+                value={values.referralCode}
                 onChange={handleChange}
-                placeholder="At least 8 characters"
-                required
-                error={allErrors.password}
+                placeholder="Employee code (e.g. 9876543210)"
+                hint={
+                  referralLocked
+                    ? 'Locked to your employee code so this onboarding is credited to you.'
+                    : 'If a Profirmo team member referred you, paste their employee code here. Leave blank otherwise.'
+                }
+                error={allErrors.referralCode}
+                disabled={referralLocked}
               />
-              <Input
-                label="Confirm password"
-                name="confirmPassword"
-                type="password"
-                value={values.confirmPassword}
-                onChange={handleChange}
-                placeholder="Re-enter password"
-                required
-                error={allErrors.confirmPassword}
-              />
-            </div>
+            </>
           )}
 
           {/* Admin-managed sub-categories filtered by Legal/Tax.

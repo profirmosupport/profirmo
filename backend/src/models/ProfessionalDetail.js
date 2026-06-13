@@ -110,6 +110,11 @@ const ProfessionalDetail = sequelize.define(
     qualificationCertDoc: { type: DataTypes.STRING, allowNull: true },
     professionalLicenseDoc: { type: DataTypes.STRING, allowNull: true },
     governmentIdDoc: { type: DataTypes.STRING, allowNull: true },
+    // --- Employee-onboarding link -----------------------------------
+    // Set when an employee onboards the professional via /join-team.
+    // Used to credit commission on admin approval.
+    employeeId: { type: DataTypes.STRING(64), allowNull: true },
+    employeeCode: { type: DataTypes.STRING(16), allowNull: true },
     // Computed by the backend on every write; 0–100 ratio of filled
     // mandatory + recommended fields.
     completionPercent: {

@@ -108,6 +108,14 @@ const SubscriptionPayment = require('./SubscriptionPayment');
 // associations — userId + cnr are plain indexed columns.
 const ECourtsFavorite = require('./ECourtsFavorite');
 
+// --- Employee module: field agents who onboard professionals -------------
+// Independent of User. Commissions + payouts reference the employee
+// row directly. ProfessionalDetail picks up an additive employeeId /
+// employeeCode column via the migration runner.
+const Employee = require('./Employee');
+const EmployeeCommission = require('./EmployeeCommission');
+const EmployeePayout = require('./EmployeePayout');
+
 // Optional relationship — clearing the parent nulls the foreign key.
 const fkSetNull = (foreignKey) => ({
   foreignKey,
@@ -436,4 +444,7 @@ module.exports = {
   ProfessionalSubscription,
   SubscriptionPayment,
   ECourtsFavorite,
+  Employee,
+  EmployeeCommission,
+  EmployeePayout,
 };

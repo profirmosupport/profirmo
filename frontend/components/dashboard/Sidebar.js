@@ -279,6 +279,25 @@ const NAV_BY_ROLE = {
         },
       ],
     },
+    // Employee module — field agents who onboard professionals via
+    // /join-team. Listing + payout queue + commission/payout settings.
+    {
+      label: 'Employees',
+      icon: UserPlus,
+      children: [
+        { label: 'Employee listing', href: '/admin/employees', icon: Users },
+        {
+          label: 'Payout requests',
+          href: '/admin/employee-payouts',
+          icon: ArrowDownToLine,
+        },
+        {
+          label: 'Module settings',
+          href: '/admin/employee-settings',
+          icon: Settings,
+        },
+      ],
+    },
     // Blog / journal — admin-managed. The three children mirror the
     // backend's posts / categories / tags split.
     {
@@ -364,7 +383,7 @@ function SidebarLink({ item, active }) {
       }`}
     >
       {Icon ? <Icon size={18} /> : null}
-      {t(item.labelKey)}
+      {item.labelKey ? t(item.labelKey) : item.label}
     </Link>
   );
 }
@@ -398,7 +417,7 @@ function SidebarGroup({ item, isActive }) {
         }`}
       >
         {Icon ? <Icon size={18} /> : null}
-        <span className="flex-1 text-left">{t(item.labelKey)}</span>
+        <span className="flex-1 text-left">{item.labelKey ? t(item.labelKey) : item.label}</span>
         <ChevronRight
           size={16}
           className={`text-slate-400 transition-transform ${
@@ -494,7 +513,7 @@ export default function Sidebar({ role }) {
           if (Array.isArray(item.children) && item.children.length > 0) {
             return (
               <SidebarGroup
-                key={item.labelKey}
+                key={item.labelKey || item.label}
                 item={item}
                 isActive={isActive}
               />

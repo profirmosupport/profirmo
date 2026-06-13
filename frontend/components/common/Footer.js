@@ -106,6 +106,10 @@ const COLUMNS = [
     links: [
       { key: 'footer.linkJoinPro', href: '/auth/register-professional' },
       { key: 'footer.linkLogin', href: '/auth/login' },
+      // /join-team — field-agent (Employee) module. Plain string label
+      // because translations live in the language pack; we'll fall
+      // back to the literal text when no key is provided.
+      { label: 'Join our team', href: '/join-team' },
     ],
   },
 ];
@@ -292,7 +296,11 @@ export default function Footer() {
                       href={link.href}
                       className="text-sm text-slate-400 transition hover:text-teal-300"
                     >
-                      {t(link.key)}
+                      {/* Some links carry a plain `label` instead of
+                          a translation key (e.g. /join-team) — fall
+                          back to it so newer links don't have to wait
+                          for a translation entry. */}
+                      {link.key ? t(link.key) : link.label}
                     </Link>
                   </li>
                 ))}

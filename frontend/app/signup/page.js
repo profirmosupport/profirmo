@@ -201,7 +201,19 @@ function SignupInner() {
 
   // Auth gate: send finished users to /dashboard, BUT keep professionals
   // with an incomplete signup on this page so they can finish.
+  // An active /join-team employee session also bounces here — they
+  // belong on the employee dashboard, not the user signup wizard.
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const empToken = window.localStorage.getItem('pf.employee.access');
+      if (empToken) {
+        router.replace('/join-team/dashboard');
+        return;
+      }
+    } catch {
+      /* localStorage unavailable — fall through */
+    }
     if (loading || !isAuthenticated) return;
     const incompletePro =
       user && user.role === 'professional' && user.signupComplete === false;
