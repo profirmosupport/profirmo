@@ -16,6 +16,27 @@ import { useLanguage } from '@/components/LanguageProvider';
 import professionalService from '@/services/professionalService';
 import { JsonLd, buildProfessionalJsonLd } from '@/utils/seo';
 
+// Format a value from the `lawyer` detail object for display.
+// Plain strings/numbers go straight through; arrays get comma-joined; empty
+// or object-shaped values render as "Information not provided" — without
+// this, `availability: {}` (and similar) would stringify to `[object Object]`.
+function formatLawyerValue(value) {
+  if (value === null || value === undefined || value === '') {
+    return 'Information not provided';
+  }
+  if (Array.isArray(value)) {
+    return value.length ? value.join(', ') : 'Information not provided';
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value).filter(
+      ([, v]) => v !== null && v !== undefined && v !== ''
+    );
+    if (entries.length === 0) return 'Information not provided';
+    return entries.map(([k, v]) => `${k}: ${v}`).join(', ');
+  }
+  return String(value);
+}
+
 /** Render a section with a labelled list of strings. */
 function ChipSection({ icon, title, items }) {
   if (!Array.isArray(items) || items.length === 0) return null;
@@ -175,6 +196,33 @@ export default function ProfessionalProfilePage() {
         <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
           <ProfessionalProfileHeader professional={professional} />
 
+          {/* Lawyer / tax specifics — shown above About so the credentials
+              (bar registration, jurisdiction, practice areas) lead the
+              profile narrative. */}
+          {lawyer && (
+            <Card>
+              <h2 className="mb-3 text-base font-semibold text-slate-900">
+                Legal practice details
+              </h2>
+              <dl className="grid gap-3 sm:grid-cols-2">
+                {Object.entries(lawyer)
+                  .filter(([, v]) => v !== null && v !== undefined && v !== '')
+                  .map(([key, value]) => (
+                    <div key={key}>
+                      <dt className="text-xs uppercase tracking-wide text-slate-400">
+                        {key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) =>
+                          c.toUpperCase()
+                        )}
+                      </dt>
+                      <dd className="text-sm text-slate-700">
+                        {formatLawyerValue(value)}
+                      </dd>
+                    </div>
+                  ))}
+              </dl>
+            </Card>
+          )}
+
           {(aboutText ||
             (Array.isArray(professional.subCategoryTree) &&
               professional.subCategoryTree.length > 0)) && (
@@ -261,30 +309,6 @@ export default function ProfessionalProfilePage() {
             items={achievements}
           />
 
-          {/* Lawyer / tax specifics, if present on the detail payload. */}
-          {lawyer && (
-            <Card>
-              <h2 className="mb-3 text-base font-semibold text-slate-900">
-                Legal practice details
-              </h2>
-              <dl className="grid gap-3 sm:grid-cols-2">
-                {Object.entries(lawyer)
-                  .filter(([, v]) => v !== null && v !== undefined && v !== '')
-                  .map(([key, value]) => (
-                    <div key={key}>
-                      <dt className="text-xs uppercase tracking-wide text-slate-400">
-                        {key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) =>
-                          c.toUpperCase()
-                        )}
-                      </dt>
-                      <dd className="text-sm text-slate-700">
-                        {Array.isArray(value) ? value.join(', ') : String(value)}
-                      </dd>
-                    </div>
-                  ))}
-              </dl>
-            </Card>
-          )}
           {/* Tax practice details section was removed — the identifiers
               we surface to clients (consultation fee, sub-categories,
               languages, etc.) already render in the header / about cards. */}
