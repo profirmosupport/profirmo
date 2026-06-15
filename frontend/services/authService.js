@@ -209,24 +209,33 @@ export async function getMe(token) {
 // ---------------------------------------------------------------------------
 
 /**
- * Request a password-reset OTP for the given email. The backend always
- * resolves with a generic message regardless of whether the account exists.
- * @param {string} email
+ * Request a password-reset OTP. The `identifier` may be either an email or
+ * a phone number — the backend infers the dispatch channel from its shape.
+ * Always resolves with a generic message regardless of whether the account
+ * exists.
+ * @param {string} identifier - email OR phone
  * @returns {Promise<*>} the parsed `data` payload (may be null)
  */
-export async function forgotPassword(email) {
-  const res = await post(ENDPOINTS.forgotPassword, { email });
+export async function forgotPassword(identifier) {
+  const res = await post(ENDPOINTS.forgotPassword, { identifier });
   return unwrap(res);
 }
 
 /**
  * Request a fresh password-reset OTP. Throws HTTP 429 if within the
- * 60-second cooldown or once the 5-resend cap is reached.
- * @param {string} email
+ * 60-second cooldown or once the 5-resend cap is reached. Pass
+ * `channel: 'phone'` to force an SMS dispatch even when the original
+ * identifier was an email — used by the "Send OTP to phone" fallback.
+ * @param {string} identifier - email OR phone
+ * @param {Object} [opts] - { channel?: 'phone' | 'email' }
  * @returns {Promise<*>} the parsed `data` payload (may be null)
  */
-export async function resendOtp(email) {
-  const res = await post(ENDPOINTS.resendOtp, { email });
+export async function resendOtp(identifier, opts = {}) {
+  const body = { identifier };
+  if (opts.channel === 'phone' || opts.channel === 'email') {
+    body.channel = opts.channel;
+  }
+  const res = await post(ENDPOINTS.resendOtp, body);
   return unwrap(res);
 }
 
@@ -235,12 +244,12 @@ export async function resendOtp(email) {
  * On success returns `{ resetToken }`. On failure throws — inspect
  * `err.payload.code` ('OTP_INVALID' | 'OTP_INCORRECT' | 'OTP_ATTEMPTS_EXCEEDED')
  * and `err.payload.data.attemptsRemaining`.
- * @param {string} email
+ * @param {string} identifier - email OR phone (same one used at forgot-password)
  * @param {string} otp - 6-digit code
  * @returns {Promise<{resetToken:string}>}
  */
-export async function verifyPasswordOtp(email, otp) {
-  const res = await post(ENDPOINTS.verifyPasswordOtp, { email, otp });
+export async function verifyPasswordOtp(identifier, otp) {
+  const res = await post(ENDPOINTS.verifyPasswordOtp, { identifier, otp });
   return unwrap(res);
 }
 

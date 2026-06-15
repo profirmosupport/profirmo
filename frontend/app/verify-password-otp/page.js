@@ -1,9 +1,10 @@
 'use client';
 
-// Verify-password-OTP — step 2 of the email-OTP password-reset flow.
-// Reads pf_reset_email from sessionStorage, collects the 6-digit code with a
-// 10-minute validity countdown + a 60-second resend cooldown, then stores the
-// returned resetToken and hands off to /reset-password.
+// Verify-password-OTP — step 2 of the OTP password-reset flow.
+// Reads pf_reset_identifier (email OR phone) from sessionStorage, collects
+// the 6-digit code with a 10-minute validity countdown + a 60-second resend
+// cooldown, then stores the returned resetToken and hands off to
+// /reset-password.
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
@@ -15,12 +16,14 @@ import {
   ShieldCheck,
   Clock,
   RefreshCw,
+  Phone,
 } from 'lucide-react';
 import BrandLogo from '@/components/common/BrandLogo';
 import { verifyPasswordOtp, resendOtp } from '@/services/authService';
+import { isEmail } from '@/utils/validators';
 
 // sessionStorage keys shared across the reset flow.
-const RESET_EMAIL_KEY = 'pf_reset_email';
+const RESET_IDENTIFIER_KEY = 'pf_reset_identifier';
 const RESET_TOKEN_KEY = 'pf_reset_token';
 
 const OTP_LENGTH = 6;
@@ -37,7 +40,7 @@ function formatTime(totalSeconds) {
 
 function clearResetStorage() {
   try {
-    window.sessionStorage.removeItem(RESET_EMAIL_KEY);
+    window.sessionStorage.removeItem(RESET_IDENTIFIER_KEY);
     window.sessionStorage.removeItem(RESET_TOKEN_KEY);
   } catch {
     /* ignore */
@@ -47,7 +50,8 @@ function clearResetStorage() {
 export default function VerifyPasswordOtpPage() {
   const router = useRouter();
 
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
+  const identifierIsEmail = identifier && isEmail(identifier);
   const [ready, setReady] = useState(false);
 
   // Six single-character boxes.
@@ -65,22 +69,23 @@ export default function VerifyPasswordOtpPage() {
   const [resendSeconds, setResendSeconds] = useState(RESEND_COOLDOWN_SECONDS);
   const [resendCount, setResendCount] = useState(0);
   const [resending, setResending] = useState(false);
+  const [phoneResending, setPhoneResending] = useState(false);
 
   const expired = validitySeconds <= 0;
 
-  // On mount: require pf_reset_email, else bounce to step 1.
+  // On mount: require pf_reset_identifier, else bounce to step 1.
   useEffect(() => {
-    let storedEmail = '';
+    let stored = '';
     try {
-      storedEmail = window.sessionStorage.getItem(RESET_EMAIL_KEY) || '';
+      stored = window.sessionStorage.getItem(RESET_IDENTIFIER_KEY) || '';
     } catch {
-      storedEmail = '';
+      stored = '';
     }
-    if (!storedEmail) {
+    if (!stored) {
       router.replace('/forgot-password');
       return;
     }
-    setEmail(storedEmail);
+    setIdentifier(stored);
     setReady(true);
   }, [router]);
 
@@ -199,7 +204,7 @@ export default function VerifyPasswordOtpPage() {
 
     setSubmitting(true);
     try {
-      const data = await verifyPasswordOtp(email, otp);
+      const data = await verifyPasswordOtp(identifier, otp);
       const resetToken = data && data.resetToken;
       if (!resetToken) {
         setError('Something went wrong. Please try again.');
@@ -244,12 +249,14 @@ export default function VerifyPasswordOtpPage() {
     }
   }
 
-  async function handleResend() {
-    if (resending || resendSeconds > 0) return;
+  async function handleResend(channel) {
+    const inFlight = channel === 'phone' ? phoneResending : resending;
+    if (inFlight || resendSeconds > 0) return;
     resetMessages();
-    setResending(true);
+    if (channel === 'phone') setPhoneResending(true);
+    else setResending(true);
     try {
-      const data = await resendOtp(email);
+      const data = await resendOtp(identifier, channel === 'phone' ? { channel: 'phone' } : {});
       // Fresh code — reset both countdowns and clear stale entry.
       setValiditySeconds(OTP_VALIDITY_SECONDS);
       setResendSeconds(RESEND_COOLDOWN_SECONDS);
@@ -259,7 +266,9 @@ export default function VerifyPasswordOtpPage() {
       setExceeded(false);
       setInfo(
         (data && data.message) ||
-          'A new verification code has been sent to your email.'
+          (channel === 'phone'
+            ? 'A new verification code has been sent via SMS.'
+            : 'A new verification code has been sent.')
       );
     } catch (err) {
       if (err && err.status === 429) {
@@ -275,7 +284,8 @@ export default function VerifyPasswordOtpPage() {
         );
       }
     } finally {
-      setResending(false);
+      if (channel === 'phone') setPhoneResending(false);
+      else setResending(false);
     }
   }
 
@@ -319,7 +329,8 @@ export default function VerifyPasswordOtpPage() {
             </h1>
             <p className="mt-1.5 text-sm text-slate-500">
               We sent a 6-digit code to{' '}
-              <span className="font-semibold text-slate-700">{email}</span>.
+              <span className="font-semibold text-slate-700">{identifier}</span>
+              {identifierIsEmail ? ' (check your email).' : ' (via SMS).'}
             </p>
           </div>
 
@@ -447,8 +458,8 @@ export default function VerifyPasswordOtpPage() {
                 </p>
                 <button
                   type="button"
-                  onClick={handleResend}
-                  disabled={resending || resendSeconds > 0}
+                  onClick={() => handleResend()}
+                  disabled={resending || phoneResending || resendSeconds > 0}
                   className="mt-1.5 inline-flex items-center justify-center gap-1.5 text-sm font-semibold text-amber-700 transition hover:text-amber-800 disabled:cursor-not-allowed disabled:text-slate-400"
                 >
                   {resending ? (
@@ -468,6 +479,34 @@ export default function VerifyPasswordOtpPage() {
                     </>
                   )}
                 </button>
+
+                {/* Phone fallback — only shown when the user submitted an
+                    email. They can request the same OTP via SMS instead. */}
+                {identifierIsEmail && (
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => handleResend('phone')}
+                      disabled={
+                        resending || phoneResending || resendSeconds > 0
+                      }
+                      className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-teal-700 transition hover:text-teal-800 disabled:cursor-not-allowed disabled:text-slate-400"
+                    >
+                      {phoneResending ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Sending SMS…
+                        </>
+                      ) : (
+                        <>
+                          <Phone className="h-3.5 w-3.5" />
+                          Send OTP to phone instead
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
                 {resendCount > 0 && (
                   <p className="mt-1 text-xs text-slate-400">
                     Code resent {resendCount}{' '}
@@ -479,7 +518,7 @@ export default function VerifyPasswordOtpPage() {
           </div>
 
           <p className="mt-6 text-center text-sm text-slate-600">
-            Entered the wrong email?{' '}
+            Entered the wrong {identifierIsEmail ? 'email' : 'phone number'}?{' '}
             <button
               type="button"
               onClick={handleRestart}

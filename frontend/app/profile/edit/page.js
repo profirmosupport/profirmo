@@ -12,7 +12,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, AlertCircle } from 'lucide-react';
+import { ArrowLeft, AlertCircle, KeyRound } from 'lucide-react';
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
 import Card from '@/components/common/Card';
@@ -283,6 +283,23 @@ export default function ProfileEditPage() {
                 <ArrowLeft className="h-4 w-4" />
                 Back to dashboard
               </Button>
+            </div>
+
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                  <KeyRound className="h-4 w-4" />
+                </div>
+                <div className="text-sm text-amber-900">
+                  <p className="font-semibold">Want to change your password?</p>
+                  <p className="mt-0.5 text-amber-800">
+                    Log out and use{' '}
+                    <span className="font-semibold">Forgot password</span> on
+                    the login screen. You can request the OTP via your email
+                    or your registered mobile number.
+                  </p>
+                </div>
+              </div>
             </div>
 
             {isProfessional ? (

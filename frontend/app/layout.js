@@ -1,7 +1,10 @@
 import './globals.css';
+import Script from 'next/script';
 import { Inter } from 'next/font/google';
 import { LanguageProvider } from '@/components/LanguageProvider';
 import { AuthProvider } from '@/components/AuthProvider';
+
+const GA_MEASUREMENT_ID = 'G-MM8DBY5HWH';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -82,6 +85,20 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" className={inter.variable}>
       <body className="font-sans">
+        {/* Google Analytics (gtag.js) — loaded after page becomes interactive
+            so it never blocks the initial render. */}
+        <Script
+          src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
+          strategy="afterInteractive"
+        />
+        <Script id="gtag-init" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', '${GA_MEASUREMENT_ID}');
+          `}
+        </Script>
         <LanguageProvider>
           <AuthProvider>{children}</AuthProvider>
         </LanguageProvider>
