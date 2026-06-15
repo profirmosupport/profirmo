@@ -84,6 +84,15 @@ export const viewport = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={inter.variable}>
+      <head>
+        {/* Cheap perf hints — open TLS to the third-party origins we know
+            we'll hit so the browser doesn't pay DNS+TLS RTT on first use. */}
+        <link rel="preconnect" href="https://www.googletagmanager.com" />
+        <link rel="preconnect" href="https://www.google-analytics.com" />
+        <link rel="dns-prefetch" href="https://i.pravatar.cc" />
+        <link rel="dns-prefetch" href="https://picsum.photos" />
+        <link rel="dns-prefetch" href="https://ui-avatars.com" />
+      </head>
       <body className="font-sans">
         {/* Google Analytics (gtag.js) — loaded after page becomes interactive
             so it never blocks the initial render. */}
