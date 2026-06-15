@@ -4,7 +4,7 @@ import { Inter } from 'next/font/google';
 import { LanguageProvider } from '@/components/LanguageProvider';
 import { AuthProvider } from '@/components/AuthProvider';
 
-const GA_MEASUREMENT_ID = 'G-MM8DBY5HWH';
+const GA_MEASUREMENT_ID = 'G-K1LJGC40Y6';
 
 const inter = Inter({
   subsets: ['latin'],
