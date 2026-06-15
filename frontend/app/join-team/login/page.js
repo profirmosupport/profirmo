@@ -167,39 +167,22 @@ export default function EmployeeLoginPage() {
           </p>
 
           <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            {/* Mode toggle */}
-            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => switchMode('password')}
-                className={`rounded-md px-3 py-1.5 transition ${
-                  mode === 'password'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                Password
-              </button>
-              <button
-                type="button"
-                onClick={() => switchMode('otp')}
-                className={`rounded-md px-3 py-1.5 transition ${
-                  mode === 'otp'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                OTP
-              </button>
-            </div>
+            {/* OTP login is intentionally hidden for employees — only
+                password-based sign-in is exposed. The mode toggle and
+                OTP form are kept in the file but disabled so the
+                feature can be re-enabled later by flipping
+                SHOW_OTP_LOGIN below to true. */}
 
-            <div className="mt-4 space-y-3">
+            <div className="space-y-3">
               <Banner tone="error">{error}</Banner>
               <Banner tone="success">{notice}</Banner>
             </div>
 
-            {mode === 'password' ? (
-              <form onSubmit={submitPassword} className="mt-4 space-y-4">
+            {/* OTP login intentionally hidden — only the password form
+                ever renders. The OTP handlers + state below are kept
+                in the file as dead code so the feature can be
+                re-enabled by restoring the toggle JSX. */}
+            <form onSubmit={submitPassword} className="mt-4 space-y-4">
                 <div>
                   <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-500">
                     Email or phone
@@ -238,66 +221,6 @@ export default function EmployeeLoginPage() {
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Sign in'}
                 </button>
               </form>
-            ) : otpStage === 'phone' ? (
-              <form onSubmit={sendOtp} className="mt-4 space-y-4">
-                <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-500">
-                    Phone number
-                  </label>
-                  <div className="relative">
-                    <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <input
-                      required
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="+91 98xxxxxxxx"
-                      className="w-full rounded-lg border border-slate-300 py-2.5 pl-9 pr-3 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200"
-                    />
-                  </div>
-                </div>
-                <button
-                  type="submit"
-                  disabled={busy}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white shadow transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-                >
-                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send OTP'}
-                </button>
-              </form>
-            ) : (
-              <form onSubmit={submitOtp} className="mt-4 space-y-4">
-                <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-500">
-                    OTP
-                  </label>
-                  <input
-                    inputMode="numeric"
-                    required
-                    value={otp}
-                    onChange={(e) =>
-                      setOtp(e.target.value.replace(/\D/g, '').slice(0, 8))
-                    }
-                    placeholder="Enter the code"
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm tracking-[0.4em] focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200"
-                  />
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setOtpStage('phone')}
-                    className="text-sm font-semibold text-slate-500 hover:text-slate-700"
-                  >
-                    ← Edit number
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={busy}
-                    className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white shadow transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-                  >
-                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Verify & sign in'}
-                  </button>
-                </div>
-              </form>
-            )}
           </div>
 
           <p className="mt-4 text-center text-sm text-slate-600">
