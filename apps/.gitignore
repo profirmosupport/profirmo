@@ -11,5 +11,7 @@ npm-debug.*
 web-build/
 .env
 .env.local
+credentials.json
+credentials/
 ios/
 android/

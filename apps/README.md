@@ -54,12 +54,14 @@ Or edit `app.json → extra.apiBaseUrl`.
 ## What's wired
 
 **Both roles**
+
 - Email + password sign in / sign up (`POST /api/auth/login`, `/api/auth/signup`)
 - Persistent session via AsyncStorage (`profirmo:access_token`)
 - Notifications inbox + auto-mark-as-read
 - Profile + sign out
 
 **Professional**
+
 - Dashboard with current plan, quota usage, upcoming bookings
 - Bookings + Cases lists (tap → detail)
 - Subscription page — switch plans, opens Razorpay short_url in the
@@ -69,6 +71,7 @@ Or edit `app.json → extra.apiBaseUrl`.
 - Firm — owned firm + members + pending invitations
 
 **Client**
+
 - Dashboard with CTA to find a professional + upcoming bookings
 - Find a professional (search + list)
 - Professional detail with "Book a consultation" CTA

@@ -3,7 +3,7 @@
     "name": "Profirmo",
     "slug": "profirmo",
     "scheme": "profirmo",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "orientation": "portrait",
     "icon": "./src/assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -17,6 +17,12 @@
     },
     "android": {
       "package": "com.profirmo.app",
+      "versionCode": 2,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./src/assets/adaptive-icon.png",
         "backgroundColor": "#0f172a"
@@ -38,7 +44,11 @@
       ]
     ],
     "extra": {
-      "apiBaseUrl": "https://profirmo.onrender.com"
-    }
+      "apiBaseUrl": "https://profirmo.onrender.com",
+      "eas": {
+        "projectId": "35655f73-2172-4c19-b061-c94899ca263d"
+      }
+    },
+    "owner": "dcexpo"
   }
 }
