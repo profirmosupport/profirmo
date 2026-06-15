@@ -14,6 +14,7 @@ import FirmProfessionalsList from '@/components/firms/FirmProfessionalsList';
 import FirmReviews from '@/components/firms/FirmReviews';
 import { useLanguage } from '@/components/LanguageProvider';
 import firmService from '@/services/firmService';
+import { JsonLd, buildFirmJsonLd } from '@/utils/seo';
 
 export default function FirmProfilePage() {
   const { t } = useLanguage();
@@ -119,6 +120,10 @@ export default function FirmProfilePage() {
 
   return (
     <div className="flex min-h-screen flex-col">
+      {/* Structured data — gives Googlebot / Bingbot / ChatGPT / Claude /
+          Perplexity a machine-readable view of the firm (LegalService /
+          ProfessionalService) so it can be cited in AI answers. */}
+      <JsonLd id="firm-jsonld" data={buildFirmJsonLd(firm)} />
       <Header />
       <main className="flex-1 bg-slate-50">
         <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">

@@ -81,6 +81,68 @@ export const viewport = {
   initialScale: 1,
 };
 
+// Site-wide JSON-LD. Two graphs: Organization (the brand) + WebSite
+// (with a SearchAction so Google can render the sitelinks search box, and
+// so AI assistants understand how to query us). Kept in this layout so it
+// renders on every page.
+const SITE_LD = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      '@id': `${SITE_URL}#organization`,
+      name: 'Pro Firmo',
+      alternateName: 'Profirmo',
+      url: SITE_URL,
+      logo: `${SITE_URL}/logos/profirmo-512.png`,
+      description: DESCRIPTION,
+      foundingDate: '2024',
+      areaServed: { '@type': 'Country', name: 'India' },
+      knowsAbout: [
+        'Legal consultation',
+        'Tax consultation',
+        'GST advisory',
+        'Income tax filing',
+        'Company registration',
+        'Property law',
+        'Family law',
+        'Corporate law',
+      ],
+      sameAs: [
+        'https://www.linkedin.com/company/pro-firmo/',
+        'https://www.facebook.com/fbprofirmo',
+        'https://www.instagram.com/profirmoinsta/',
+      ],
+      contactPoint: [
+        {
+          '@type': 'ContactPoint',
+          contactType: 'customer support',
+          email: 'support@profirmo.com',
+          areaServed: 'IN',
+          availableLanguage: ['en', 'hi'],
+        },
+      ],
+    },
+    {
+      '@type': 'WebSite',
+      '@id': `${SITE_URL}#website`,
+      url: SITE_URL,
+      name: 'Pro Firmo',
+      description: DESCRIPTION,
+      inLanguage: 'en-IN',
+      publisher: { '@id': `${SITE_URL}#organization` },
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: {
+          '@type': 'EntryPoint',
+          urlTemplate: `${SITE_URL}/search?q={search_term_string}`,
+        },
+        'query-input': 'required name=search_term_string',
+      },
+    },
+  ],
+};
+
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={inter.variable}>
@@ -92,6 +154,14 @@ export default function RootLayout({ children }) {
         <link rel="dns-prefetch" href="https://i.pravatar.cc" />
         <link rel="dns-prefetch" href="https://picsum.photos" />
         <link rel="dns-prefetch" href="https://ui-avatars.com" />
+        {/* Site-wide structured data — read by Google, Bing, and the AI
+            assistants (ChatGPT/Gemini/Claude/Perplexity) to understand
+            what the site is and how to cite it. */}
+        <script
+          type="application/ld+json"
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(SITE_LD) }}
+        />
       </head>
       <body className="font-sans">
         {/* Google Analytics (gtag.js) — loaded after page becomes interactive

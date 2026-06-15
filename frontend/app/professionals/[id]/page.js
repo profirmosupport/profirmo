@@ -14,6 +14,7 @@ import ProfessionalReviews from '@/components/professionals/ProfessionalReviews'
 import ProfessionalCard from '@/components/professionals/ProfessionalCard';
 import { useLanguage } from '@/components/LanguageProvider';
 import professionalService from '@/services/professionalService';
+import { JsonLd, buildProfessionalJsonLd } from '@/utils/seo';
 
 /** Render a section with a labelled list of strings. */
 function ChipSection({ icon, title, items }) {
@@ -162,6 +163,13 @@ export default function ProfessionalProfilePage() {
 
   return (
     <div className="flex min-h-screen flex-col">
+      {/* Structured data — gives Googlebot / Bingbot / ChatGPT / Claude /
+          Perplexity a machine-readable view of the professional so they can
+          cite the profile in answers (rating, fee, specialties, location). */}
+      <JsonLd
+        id="professional-jsonld"
+        data={buildProfessionalJsonLd(professional)}
+      />
       <Header />
       <main className="flex-1 bg-slate-50">
         <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
