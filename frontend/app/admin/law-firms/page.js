@@ -24,6 +24,7 @@ import {
   Star,
   StarOff,
   X,
+  EyeOff,
 } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import Card from '@/components/common/Card';
@@ -55,6 +56,7 @@ const STATUS_OPTIONS = [
   { value: 'PENDING_APPROVAL', label: 'Pending approval' },
   { value: 'MODIFICATIONS_REQUESTED', label: 'Modifications requested' },
   { value: 'REJECTED', label: 'Rejected' },
+  { value: 'SUSPENDED', label: 'Suspended (hidden)' },
 ];
 
 // Same options as the filter, minus the "all" placeholder — used in forms.
@@ -71,6 +73,7 @@ function statusBadge(status) {
     return { label: 'Modifications requested', variant: 'amber' };
   }
   if (s === 'REJECTED') return { label: 'Rejected', variant: 'red' };
+  if (s === 'SUSPENDED') return { label: 'Suspended', variant: 'red' };
   return { label: status || 'Unknown', variant: 'gray' };
 }
 
@@ -113,9 +116,10 @@ const EMPTY_CREATE_FORM = {
  * Mirrors the UserActionsMenu pattern from app/admin/users/page.js so the
  * table stays compact across widths.
  */
-function FirmActionsMenu({ onView, onEdit, onDelete }) {
+function FirmActionsMenu({ row, onView, onEdit, onSuspend, onReinstate, onDelete }) {
+  const isSuspended = String(row && row.status).toUpperCase() === 'SUSPENDED';
   return (
-    <RowMenu width="w-44">
+    <RowMenu width="w-48">
       <button
         type="button"
         role="menuitem"
@@ -132,6 +136,25 @@ function FirmActionsMenu({ onView, onEdit, onDelete }) {
       >
         <Pencil size={14} /> Edit
       </button>
+      {isSuspended ? (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={onReinstate}
+          className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-left text-sm text-emerald-700 transition hover:bg-emerald-50"
+        >
+          <CheckCircle2 size={14} /> Reinstate (make visible)
+        </button>
+      ) : (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={onSuspend}
+          className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-left text-sm text-amber-700 transition hover:bg-amber-50"
+        >
+          <EyeOff size={14} /> Suspend (hide)
+        </button>
+      )}
       <button
         type="button"
         role="menuitem"
@@ -389,6 +412,12 @@ export default function AdminLawFirmsPage() {
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
+  // Suspend / reinstate modal state. `mode` is 'suspend' or 'reinstate'.
+  const [statusTarget, setStatusTarget] = useState(null);
+  const [statusMode, setStatusMode] = useState('suspend');
+  const [statusSubmitting, setStatusSubmitting] = useState(false);
+  const [statusError, setStatusError] = useState('');
+
   // Bulk selection — same shape as the users page.
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -504,12 +533,13 @@ export default function AdminLawFirmsPage() {
       fn: (r) => updateLawFirm(r.id, { featured: false }),
     });
   }
-  function bulkSetStatus(nextStatus, label) {
+  function bulkSetStatus(nextStatus, label, { destructive = false } = {}) {
     return runBulk({
       action: `status-${nextStatus}`,
       label,
       eligible: selectedRows.filter((r) => r.status !== nextStatus),
       fn: (r) => updateLawFirm(r.id, { status: nextStatus }),
+      destructive,
     });
   }
   function bulkDelete() {
@@ -699,6 +729,42 @@ export default function AdminLawFirmsPage() {
     }
   }
 
+  // ----- Suspend / reinstate firm ------------------------------------------
+
+  function openSuspend(row) {
+    setStatusError('');
+    setStatusMode('suspend');
+    setStatusTarget(row);
+  }
+
+  function openReinstate(row) {
+    setStatusError('');
+    setStatusMode('reinstate');
+    setStatusTarget(row);
+  }
+
+  function closeStatus() {
+    if (statusSubmitting) return;
+    setStatusTarget(null);
+    setStatusError('');
+  }
+
+  async function confirmStatus() {
+    if (!statusTarget || statusSubmitting) return;
+    setStatusSubmitting(true);
+    setStatusError('');
+    try {
+      const next = statusMode === 'suspend' ? 'SUSPENDED' : 'ACTIVE';
+      await updateLawFirm(statusTarget.id, { status: next });
+      setStatusTarget(null);
+      await load();
+    } catch (err) {
+      setStatusError(err.message || 'Failed to update firm status.');
+    } finally {
+      setStatusSubmitting(false);
+    }
+  }
+
   // ----- Guards ------------------------------------------------------------
 
   if (authLoading || !isAuthenticated) {
@@ -825,6 +891,11 @@ export default function AdminLawFirmsPage() {
                 onActivate={() => bulkSetStatus('ACTIVE', 'Activate')}
                 onPending={() => bulkSetStatus('PENDING_APPROVAL', 'Send to pending')}
                 onReject={() => bulkSetStatus('REJECTED', 'Reject')}
+                onSuspend={() =>
+                  bulkSetStatus('SUSPENDED', 'Suspend (hide from frontend)', {
+                    destructive: true,
+                  })
+                }
                 onDelete={bulkDelete}
               />
             )}
@@ -935,8 +1006,11 @@ export default function AdminLawFirmsPage() {
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-2">
                             <FirmActionsMenu
+                              row={row}
                               onView={() => openView(row)}
                               onEdit={() => openEdit(row)}
+                              onSuspend={() => openSuspend(row)}
+                              onReinstate={() => openReinstate(row)}
                               onDelete={() => openDelete(row)}
                             />
                           </div>
@@ -1466,6 +1540,64 @@ export default function AdminLawFirmsPage() {
         )}
       </Modal>
 
+      {/* Suspend / reinstate confirm modal */}
+      <Modal
+        open={!!statusTarget}
+        onClose={closeStatus}
+        title={
+          statusMode === 'suspend'
+            ? 'Suspend firm'
+            : 'Reinstate firm'
+        }
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={closeStatus}
+              disabled={statusSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant={statusMode === 'suspend' ? 'danger' : 'primary'}
+              size="sm"
+              onClick={confirmStatus}
+              disabled={statusSubmitting}
+            >
+              {statusSubmitting
+                ? 'Working…'
+                : statusMode === 'suspend'
+                  ? 'Suspend firm'
+                  : 'Reinstate firm'}
+            </Button>
+          </>
+        }
+      >
+        {statusTarget && (
+          <p className="text-sm text-slate-600">
+            {statusMode === 'suspend' ? (
+              <>
+                Suspend <strong>{firmName(statusTarget)}</strong>? The firm will
+                be hidden from the public directory and its public profile page
+                will return Not Found. Members keep their access; the firm
+                record stays in the admin list and can be reinstated any time.
+              </>
+            ) : (
+              <>
+                Reinstate <strong>{firmName(statusTarget)}</strong> and set its
+                status back to <strong>Active</strong>? The firm will be
+                visible on the public directory again.
+              </>
+            )}
+          </p>
+        )}
+        {statusError && (
+          <p className="mt-3 text-xs text-red-600">{statusError}</p>
+        )}
+      </Modal>
+
       {/* Delete firm confirm modal */}
       <Modal
         open={!!deleteTarget}
@@ -1564,6 +1696,7 @@ function FirmBulkActionBar({
   onActivate,
   onPending,
   onReject,
+  onSuspend,
   onDelete,
 }) {
   return (
@@ -1607,6 +1740,10 @@ function FirmBulkActionBar({
           <Button size="sm" variant="outline" onClick={onReject} disabled={busy}>
             <AlertTriangle size={14} />
             Reject
+          </Button>
+          <Button size="sm" variant="outline" onClick={onSuspend} disabled={busy}>
+            <EyeOff size={14} />
+            Suspend
           </Button>
           <Button size="sm" variant="danger" onClick={onDelete} disabled={busy}>
             <Trash2 size={14} />

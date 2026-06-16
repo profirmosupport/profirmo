@@ -570,6 +570,10 @@ const VALID_FIRM_STATUS = [
   'PENDING_APPROVAL',
   'MODIFICATIONS_REQUESTED',
   'REJECTED',
+  // Admin-imposed hide. SUSPENDED firms stay in the database (and remain
+  // visible to admins) but are filtered out of every public listing
+  // and the public detail endpoint 404s — see firmService.getById.
+  'SUSPENDED',
 ];
 
 // Build a public-shaped firm row, optionally with owner + member counts.

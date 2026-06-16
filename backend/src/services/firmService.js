@@ -643,6 +643,9 @@ const getById = async (id) => {
     });
   }
   if (!lawFirm) return null;
+  // Suspended firms are admin-hidden — return 404 to public callers so the
+  // public detail page mirrors the public listing (which filters by ACTIVE).
+  if (lawFirm.status === 'SUSPENDED') return null;
 
   const memberRows = await FirmMember.findAll({
     where: { firmId: lawFirm.id },

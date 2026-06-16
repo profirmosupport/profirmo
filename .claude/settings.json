@@ -122,7 +122,10 @@
       "Bash(node -c src/routes/supportRoutes.js)",
       "Bash(node -c src/server.js)",
       "Bash(awk '/Worker.*started|Health:|EADDRINUSE|Error.*starting|Failed to/ {print; fflush\\(\\); if \\(/Worker.*started|EADDRINUSE/\\) exit}')",
-      "Bash(nc -zv -w 3 b2bportaldb.cwdkqifvjovy.ap-south-1.rds.amazonaws.com 3306)"
+      "Bash(nc -zv -w 3 b2bportaldb.cwdkqifvjovy.ap-south-1.rds.amazonaws.com 3306)",
+      "WebFetch(domain:lawrato.com)",
+      "Bash(python3)",
+      "Bash(/bin/bash)"
     ]
   }
 }
