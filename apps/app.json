@@ -3,7 +3,7 @@
     "name": "Profirmo",
     "slug": "profirmo",
     "scheme": "profirmo",
-    "version": "0.1.1",
+    "version": "0.1.4",
     "orientation": "portrait",
     "icon": "./src/assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -17,11 +17,9 @@
     },
     "android": {
       "package": "com.profirmo.app",
-      "versionCode": 2,
+      "versionCode": 5,
       "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.READ_MEDIA_IMAGES"
+        "android.permission.CAMERA"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./src/assets/adaptive-icon.png",

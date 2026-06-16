@@ -1,10 +1,41 @@
-import { useEffect } from 'react';
+import { Component, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
+import { Text, View, StyleSheet } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/contexts/AuthContext';
 import RootNavigator from './src/navigation/RootNavigator';
 import { ensureAssetsReady } from './src/utils/assetPreloader';
+
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    console.error('[Profirmo] Uncaught error:', error, info);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <View style={eb.wrap}>
+          <Text style={eb.title}>Something went wrong</Text>
+          <Text style={eb.msg}>{String(this.state.error)}</Text>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+const eb = StyleSheet.create({
+  wrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: '#0f172a' },
+  title: { fontSize: 18, fontWeight: '700', color: '#fff', marginBottom: 12 },
+  msg: { fontSize: 13, color: 'rgba(255,255,255,0.7)', textAlign: 'center' },
+});
 
 // Keep the native splash visible until React renders its first frame.
 // AuthContext hydrates the cached session, then flips loading=false;
@@ -34,11 +65,13 @@ export default function App() {
   }, []);
 
   return (
-    <SafeAreaProvider>
-      <AuthProvider>
-        <StatusBar style="light" />
-        <RootNavigator />
-      </AuthProvider>
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <AuthProvider>
+          <StatusBar style="light" />
+          <RootNavigator />
+        </AuthProvider>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
