@@ -589,8 +589,25 @@ function MultiFileList({ label, hint, category, value, onChange }) {
   );
 }
 
-/** A simple labelled textarea matching the design system. */
-function TextArea({ label, name, value, onChange, placeholder, error }) {
+/**
+ * Labelled textarea with optional character limit + live counter.
+ * - `charLimit`: maps to the native `maxLength` attribute so browsers cap
+ *   typing AND paste at the limit for free; counter still renders below.
+ * - `rows`: height of the field; defaults to 3.
+ */
+function TextArea({
+  label,
+  name,
+  value,
+  onChange,
+  placeholder,
+  error,
+  rows = 3,
+  charLimit,
+}) {
+  const currentChars = (value || '').length;
+  const nearLimit = charLimit && currentChars >= charLimit * 0.9;
+  const atLimit = charLimit && currentChars >= charLimit;
   return (
     <div className="w-full">
       {label && (
@@ -607,14 +624,35 @@ function TextArea({ label, name, value, onChange, placeholder, error }) {
         value={value}
         onChange={onChange}
         placeholder={placeholder}
-        rows={3}
+        rows={rows}
+        maxLength={charLimit || undefined}
         className={`w-full rounded-lg border bg-white px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 transition focus:outline-none focus:ring-2 ${
           error
             ? 'border-red-400 focus:border-red-500 focus:ring-red-200'
             : 'border-slate-300 focus:border-amber-500 focus:ring-amber-200'
         }`}
       />
-      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+      <div className="mt-1 flex items-start justify-between gap-3">
+        {error ? (
+          <p className="text-xs text-red-600">{error}</p>
+        ) : (
+          <span aria-hidden="true" />
+        )}
+        {charLimit ? (
+          <p
+            className={`text-xs ${
+              atLimit
+                ? 'text-red-600'
+                : nearLimit
+                  ? 'text-amber-600'
+                  : 'text-slate-400'
+            }`}
+            aria-live="polite"
+          >
+            {currentChars.toLocaleString()} / {charLimit.toLocaleString()} characters
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -1197,6 +1235,8 @@ export default function ProfessionalRegistrationForm({
             onChange={handleChange}
             placeholder="A brief introduction about your practice."
             error={allErrors.bio}
+            rows={10}
+            charLimit={5000}
           />
         </div>
       </SectionCard>

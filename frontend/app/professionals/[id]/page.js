@@ -210,6 +210,40 @@ export default function ProfessionalProfilePage() {
   const aboutText = professional.bio || professional.about;
   const { education, certifications, achievements, lawyer } = professional;
 
+  // Build a merged view of legal practice details. The canonical home for
+  // bar reg / enrollment / chamber / courts / consultation type / availability
+  // is now the promoted top-level columns on ProfessionalDetail (see
+  // backend/src/models/ProfessionalDetail.js). The legacy LawyerDetail row
+  // is kept as a fallback for old data that hasn't been backfilled.
+  const legalDetails = lawyer
+    ? {
+        barRegistrationNumber:
+          professional.barRegistrationNumber || lawyer.barRegistrationNumber,
+        enrollmentNumber:
+          professional.enrollmentNumber || lawyer.enrollmentNumber,
+        practiceAreas: lawyer.practiceAreas,
+        courtPractice:
+          (Array.isArray(professional.courtsPracticing) &&
+          professional.courtsPracticing.length
+            ? professional.courtsPracticing
+            : null) || lawyer.courtPractice,
+        jurisdiction: lawyer.jurisdiction,
+        lawDegree: lawyer.lawDegree,
+        chamberAddress: professional.chamberAddress || lawyer.chamberAddress,
+        availability:
+          (Array.isArray(professional.availability) &&
+          professional.availability.length
+            ? professional.availability
+            : null) || lawyer.availability,
+        consultationType:
+          professional.consultancyType || lawyer.consultationType,
+        yearsOfPractice:
+          lawyer.yearsOfPractice || professional.yearsOfExperience,
+        createdAt: lawyer.createdAt,
+        updatedAt: lawyer.updatedAt,
+      }
+    : null;
+
   return (
     <div className="flex min-h-screen flex-col">
       {/* Structured data — gives Googlebot / Bingbot / ChatGPT / Claude /
@@ -227,7 +261,7 @@ export default function ProfessionalProfilePage() {
           {/* Lawyer / tax specifics — shown above About so the credentials
               (bar registration, jurisdiction, practice areas) lead the
               profile narrative. */}
-          {lawyer && (
+          {legalDetails && (
             <Card>
               <h2 className="mb-3 text-base font-semibold text-slate-900">
                 Legal practice details
@@ -235,8 +269,10 @@ export default function ProfessionalProfilePage() {
               <dl className="grid gap-3 sm:grid-cols-2">
                 {Object.entries(LAWYER_FIELD_LABELS)
                   .filter(([key]) => {
-                    const v = lawyer[key];
-                    return v !== null && v !== undefined && v !== '';
+                    const v = legalDetails[key];
+                    if (v === null || v === undefined || v === '') return false;
+                    if (Array.isArray(v) && v.length === 0) return false;
+                    return true;
                   })
                   .map(([key, label]) => (
                     <div key={key}>
@@ -244,7 +280,7 @@ export default function ProfessionalProfilePage() {
                         {label}
                       </dt>
                       <dd className="text-sm text-slate-700">
-                        {formatLawyerValue(key, lawyer[key])}
+                        {formatLawyerValue(key, legalDetails[key])}
                       </dd>
                     </div>
                   ))}
@@ -263,7 +299,7 @@ export default function ProfessionalProfilePage() {
                 </h2>
               </div>
               {aboutText && (
-                <p className="text-sm leading-relaxed text-slate-600">
+                <p className="whitespace-pre-line text-sm leading-relaxed text-slate-600">
                   {aboutText}
                 </p>
               )}

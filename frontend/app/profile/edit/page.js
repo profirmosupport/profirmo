@@ -185,6 +185,16 @@ export default function ProfileEditPage() {
       try {
         if (currentStep === 1) {
           await updateProfile(personalPart(payload));
+          // Bio lives on the Step 1 UI even though the column is on
+          // professional_details. Forward it (and `about`, if present) so
+          // the user's edit doesn't silently vanish on Continue.
+          const proExtras = {};
+          if (payload.bio !== undefined) proExtras.bio = payload.bio;
+          if (payload.about !== undefined) proExtras.about = payload.about;
+          if (Object.keys(proExtras).length > 0) {
+            const refreshed = await updateProfessionalDetails(proExtras);
+            if (refreshed) setProfile(refreshed);
+          }
           setSuccess('Step 1 saved — personal info updated.');
         } else if (currentStep === 2) {
           const refreshed = await updateProfessionalDetails(
