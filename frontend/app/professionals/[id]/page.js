@@ -15,14 +15,40 @@ import ProfessionalCard from '@/components/professionals/ProfessionalCard';
 import { useLanguage } from '@/components/LanguageProvider';
 import professionalService from '@/services/professionalService';
 import { JsonLd, buildProfessionalJsonLd } from '@/utils/seo';
+import { formatDate } from '@/utils/formatters';
+
+// Display labels for the public "Legal practice details" section. Keys not
+// in this map are hidden — internal IDs, document URLs, duplicates of
+// header data (consultation fee), and legacy mirrors (licenseNumber,
+// advocateLicenseNumber — bar reg covers both) all stay off the profile.
+const LAWYER_FIELD_LABELS = {
+  barRegistrationNumber: 'Bar registration number',
+  enrollmentNumber: 'Enrollment number',
+  practiceAreas: 'Practice areas',
+  courtPractice: 'Courts you practice in',
+  jurisdiction: 'Jurisdiction',
+  lawDegree: 'Degrees',
+  chamberAddress: 'Chamber address',
+  availability: 'Availability',
+  consultationType: 'Consultation type',
+  yearsOfPractice: 'Years of practice',
+  createdAt: 'Member since',
+  updatedAt: 'Updated at',
+};
+
+const LAWYER_DATE_KEYS = new Set(['createdAt', 'updatedAt']);
 
 // Format a value from the `lawyer` detail object for display.
-// Plain strings/numbers go straight through; arrays get comma-joined; empty
-// or object-shaped values render as "Information not provided" — without
-// this, `availability: {}` (and similar) would stringify to `[object Object]`.
-function formatLawyerValue(value) {
+// Date keys go through formatDate; plain strings/numbers go straight through;
+// arrays get comma-joined; empty or object-shaped values render as
+// "Information not provided" — without this, `availability: {}` (and similar)
+// would stringify to `[object Object]`.
+function formatLawyerValue(key, value) {
   if (value === null || value === undefined || value === '') {
     return 'Information not provided';
+  }
+  if (LAWYER_DATE_KEYS.has(key)) {
+    return formatDate(value);
   }
   if (Array.isArray(value)) {
     return value.length ? value.join(', ') : 'Information not provided';
@@ -179,7 +205,9 @@ export default function ProfessionalProfilePage() {
     return null;
   }
 
-  const aboutText = professional.about || professional.bio;
+  // The About section is a *short* bio. Prefer the dedicated bio field;
+  // fall back to the longer about/long-form text when bio isn't set.
+  const aboutText = professional.bio || professional.about;
   const { education, certifications, achievements, lawyer } = professional;
 
   return (
@@ -205,17 +233,18 @@ export default function ProfessionalProfilePage() {
                 Legal practice details
               </h2>
               <dl className="grid gap-3 sm:grid-cols-2">
-                {Object.entries(lawyer)
-                  .filter(([, v]) => v !== null && v !== undefined && v !== '')
-                  .map(([key, value]) => (
+                {Object.entries(LAWYER_FIELD_LABELS)
+                  .filter(([key]) => {
+                    const v = lawyer[key];
+                    return v !== null && v !== undefined && v !== '';
+                  })
+                  .map(([key, label]) => (
                     <div key={key}>
                       <dt className="text-xs uppercase tracking-wide text-slate-400">
-                        {key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) =>
-                          c.toUpperCase()
-                        )}
+                        {label}
                       </dt>
                       <dd className="text-sm text-slate-700">
-                        {formatLawyerValue(value)}
+                        {formatLawyerValue(key, lawyer[key])}
                       </dd>
                     </div>
                   ))}
