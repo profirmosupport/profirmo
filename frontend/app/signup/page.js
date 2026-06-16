@@ -356,7 +356,9 @@ function SignupInner() {
         ? legal.barRegistrationNumber || null
         : null,
       enrollmentNumber: isLegal ? legal.enrollmentNumber || null : null,
-      licenseNumber: isLegal ? legal.advocateLicenseNumber || null : null,
+      // Bar registration number IS the advocate license number; the legacy
+      // licenseNumber column mirrors the bar reg so any old reader keeps working.
+      licenseNumber: isLegal ? legal.barRegistrationNumber || null : null,
       taxRegistrationNumber: !isLegal ? tax.taxRegistrationNumber || null : null,
       chamberAddress: isLegal ? legal.chamberAddress || null : null,
       consultancyType: isLegal

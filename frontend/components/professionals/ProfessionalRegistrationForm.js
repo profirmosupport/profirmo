@@ -93,7 +93,6 @@ function emptyValues() {
     // Legal fields
     barRegistrationNumber: '',
     enrollmentNumber: '',
-    advocateLicenseNumber: '',
     practiceAreas: '',
     courtPractice: '',
     jurisdiction: '',
@@ -207,11 +206,6 @@ export function valuesFromProfile(data) {
   // legacy LawyerDetail row when nothing's been migrated.
   v.barRegistrationNumber = pick(pro.barRegistrationNumber, legal.barRegistrationNumber);
   v.enrollmentNumber = pick(pro.enrollmentNumber, legal.enrollmentNumber);
-  v.advocateLicenseNumber = pick(
-    pro.licenseNumber,
-    legal.advocateLicenseNumber,
-    legal.licenseNumber
-  );
   v.practiceAreas = toCsv(legal.practiceAreas);
   // Use whichever source has data — courtsPracticing on professionalDetail is
   // the modern home; legacy rows still have courtPractice on lawyerDetail.
@@ -306,7 +300,9 @@ export function buildPayload(values, professionalType, mode) {
   const legal = {
     barRegistrationNumber: values.barRegistrationNumber.trim(),
     enrollmentNumber: values.enrollmentNumber.trim(),
-    advocateLicenseNumber: values.advocateLicenseNumber.trim(),
+    // Bar registration number IS the advocate license number — mirror so any
+    // backend reader of the legacy field keeps working until the column goes.
+    advocateLicenseNumber: values.barRegistrationNumber.trim(),
     practiceAreas: toArray(values.practiceAreas),
     courtPractice: toArray(values.courtPractice),
     jurisdiction: values.jurisdiction.trim(),
@@ -396,7 +392,7 @@ export function buildPayload(values, professionalType, mode) {
         ? values.enrollmentNumber.trim() || null
         : null,
       licenseNumber: isLegal
-        ? values.advocateLicenseNumber.trim() || null
+        ? values.barRegistrationNumber.trim() || null
         : null,
       taxRegistrationNumber: isLegal
         ? null
@@ -485,7 +481,6 @@ export function validateValues(values, professionalType, mode) {
   if (professionalType === PROFESSIONAL_TYPES.LEGAL) {
     req('barRegistrationNumber', 'Bar registration number is required.');
     req('enrollmentNumber', 'Enrollment number is required.');
-    req('advocateLicenseNumber', 'Advocate license number is required.');
     req('jurisdiction', 'Jurisdiction is required.');
   } else if (professionalType === PROFESSIONAL_TYPES.TAX) {
     req('taxRegistrationNumber', 'Tax registration number is required.');
@@ -790,7 +785,6 @@ export default function ProfessionalRegistrationForm({
       2: [
         'barRegistrationNumber',
         'enrollmentNumber',
-        'advocateLicenseNumber',
         'jurisdiction',
         'taxRegistrationNumber',
       ],
@@ -878,7 +872,6 @@ export default function ProfessionalRegistrationForm({
         2: [
           'barRegistrationNumber',
           'enrollmentNumber',
-          'advocateLicenseNumber',
           'jurisdiction',
           'taxRegistrationNumber',
         ],
@@ -1230,13 +1223,14 @@ export default function ProfessionalRegistrationForm({
               error={allErrors.yearsOfExperience}
             />
             <Input
-              label="Consultation fee (₹)"
+              label="Consultation fee (₹) / per minute call rate"
               name="consultationFee"
               type="number"
               min="0"
               value={values.consultationFee}
               onChange={handleChange}
-              placeholder="1500"
+              placeholder="50"
+              hint="Charged per minute on voice/video consultations"
               error={allErrors.consultationFee}
             />
           </div>
@@ -1416,15 +1410,6 @@ export default function ProfessionalRegistrationForm({
                 error={allErrors.enrollmentNumber}
               />
             </div>
-            <Input
-              label="Advocate license number"
-              name="advocateLicenseNumber"
-              value={values.advocateLicenseNumber}
-              onChange={handleChange}
-              placeholder="ADV-001122"
-              required
-              error={allErrors.advocateLicenseNumber}
-            />
             {/* Practice areas are now covered by the admin-managed
                 sub-categories multi-select above, so this field is no
                 longer collected. */}

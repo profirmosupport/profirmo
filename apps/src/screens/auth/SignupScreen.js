@@ -652,7 +652,6 @@ function ProRegistrationWizard({ professionalType, verifiedPhone }) {
     // Legal
     barRegistrationNumber: '',
     enrollmentNumber: '',
-    advocateLicenseNumber: '',
     practiceAreas: '',
     courtPractice: '',
     jurisdiction: '',
@@ -785,8 +784,10 @@ function ProRegistrationWizard({ professionalType, verifiedPhone }) {
               barRegistrationNumber:
                 form.barRegistrationNumber.trim() || undefined,
               enrollmentNumber: form.enrollmentNumber.trim() || undefined,
+              // Bar reg IS the advocate license number; mirror so legacy
+              // backend readers keep working.
               advocateLicenseNumber:
-                form.advocateLicenseNumber.trim() || undefined,
+                form.barRegistrationNumber.trim() || undefined,
               practiceAreas: form.practiceAreas.trim() || undefined,
               courtPractice: form.courtPractice.trim() || undefined,
               jurisdiction: form.jurisdiction.trim() || undefined,
@@ -797,7 +798,7 @@ function ProRegistrationWizard({ professionalType, verifiedPhone }) {
               legal: {
                 barRegistrationNumber: form.barRegistrationNumber.trim(),
                 enrollmentNumber: form.enrollmentNumber.trim(),
-                advocateLicenseNumber: form.advocateLicenseNumber.trim(),
+                advocateLicenseNumber: form.barRegistrationNumber.trim(),
                 practiceAreas: form.practiceAreas.trim(),
                 courtPractice: form.courtPractice.trim(),
                 jurisdiction: form.jurisdiction.trim(),
@@ -1085,24 +1086,23 @@ export function Step2({ form, set, errors, isLegal }) {
   return (
     <View>
       <SectionLabel>Experience</SectionLabel>
-      <Row>
-        <AuthInput
-          label="Years of experience"
-          icon="clock"
-          keyboardType="numeric"
-          placeholder="5"
-          value={form.yearsOfExperience}
-          onChangeText={(v) => set('yearsOfExperience', v)}
-        />
-        <AuthInput
-          label="Consultation fee (₹)"
-          icon="dollar-sign"
-          keyboardType="numeric"
-          placeholder="1500"
-          value={form.consultationFee}
-          onChangeText={(v) => set('consultationFee', v)}
-        />
-      </Row>
+      <AuthInput
+        label="Years of experience"
+        icon="clock"
+        keyboardType="numeric"
+        placeholder="5"
+        value={form.yearsOfExperience}
+        onChangeText={(v) => set('yearsOfExperience', v)}
+      />
+      <AuthInput
+        label="Consultation fee (₹) / per minute call rate"
+        icon="dollar-sign"
+        keyboardType="numeric"
+        placeholder="50"
+        hint="Charged per minute on voice/video consultations"
+        value={form.consultationFee}
+        onChangeText={(v) => set('consultationFee', v)}
+      />
       <AuthInput
         label="Skills"
         icon="zap"
@@ -1184,13 +1184,6 @@ export function Step2({ form, set, errors, isLegal }) {
             value={form.enrollmentNumber}
             onChangeText={(v) => set('enrollmentNumber', v)}
             error={errors.enrollmentNumber}
-          />
-          <AuthInput
-            label="Advocate license number"
-            icon="hash"
-            autoCapitalize="characters"
-            value={form.advocateLicenseNumber}
-            onChangeText={(v) => set('advocateLicenseNumber', v)}
           />
           <AuthInput
             label="Practice areas"
