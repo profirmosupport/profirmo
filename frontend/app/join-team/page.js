@@ -15,6 +15,11 @@ import {
   Users,
   IndianRupee,
   ShieldCheck,
+  BookOpen,
+  FileText,
+  Lock,
+  LayoutDashboard,
+  ArrowRight,
 } from 'lucide-react';
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
@@ -41,6 +46,55 @@ const PERKS = [
     icon: ShieldCheck,
     title: 'Transparent payouts',
     body: 'Request payout from your available balance any time above the platform minimum. Admin processes approved payouts within 7 business days.',
+  },
+];
+
+// Every page inside the Referral Partner portal, surfaced as one
+// icon grid near the bottom of /join-team so a visitor (or a
+// returning partner) can jump directly to whichever surface they
+// need without having to discover it via the dashboard header.
+const PORTAL_LINKS = [
+  {
+    href: '/join-team/signup',
+    icon: UserPlus,
+    title: 'Sign up',
+    body: 'Create a Referral Partner account in under a minute.',
+    tint: 'amber',
+  },
+  {
+    href: '/join-team/login',
+    icon: LogIn,
+    title: 'Log in',
+    body: 'Already a partner? Sign in with password or OTP.',
+    tint: 'slate',
+  },
+  {
+    href: '/join-team/dashboard',
+    icon: LayoutDashboard,
+    title: 'Partner dashboard',
+    body: 'Track onboardings, commission, and payouts in real time.',
+    tint: 'emerald',
+  },
+  {
+    href: '/join-team/guide',
+    icon: BookOpen,
+    title: 'Onboarding guide',
+    body: 'Step-by-step reference for submitting and getting paid.',
+    tint: 'teal',
+  },
+  {
+    href: '/join-team/terms',
+    icon: FileText,
+    title: 'Terms & conditions',
+    body: 'Commission, clawback, payout SLA, dispute resolution.',
+    tint: 'slate',
+  },
+  {
+    href: '/join-team/privacy',
+    icon: Lock,
+    title: 'Privacy policy',
+    body: 'Data we collect, retention, cross-border, your rights.',
+    tint: 'sky',
   },
 ];
 
@@ -142,6 +196,61 @@ export default function JoinTeamLanding() {
                 </li>
               ))}
             </ol>
+          </div>
+        </section>
+
+        {/* Portal links — every page inside the Referral Partner module
+            surfaced as an icon card so a visitor (or returning partner)
+            can jump directly without hunting through nav menus. */}
+        <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8">
+          <div className="mb-8 flex items-end justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900">
+                Everything in the Referral Partner portal
+              </h2>
+              <p className="mt-2 text-sm text-slate-600">
+                One-click access to sign-up, sign-in, the dashboard, the
+                onboarding guide, and the binding legal documents.
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {PORTAL_LINKS.map(({ href, icon: Icon, title, body, tint }) => {
+              const tints = {
+                amber: 'bg-amber-100 text-amber-700',
+                slate: 'bg-slate-100 text-slate-700',
+                emerald: 'bg-emerald-100 text-emerald-700',
+                teal: 'bg-teal-100 text-teal-700',
+                sky: 'bg-sky-100 text-sky-700',
+              };
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className="group flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-md"
+                >
+                  <span
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                      tints[tint] || tints.slate
+                    }`}
+                  >
+                    <Icon size={18} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="flex items-center gap-1 text-sm font-semibold text-slate-900">
+                      {title}
+                      <ArrowRight
+                        size={14}
+                        className="text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-amber-600"
+                      />
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                      {body}
+                    </p>
+                  </div>
+                </Link>
+              );
+            })}
           </div>
         </section>
 
