@@ -147,6 +147,39 @@ export default function JoinTeamLanding() {
                 I already have an account
               </Link>
             </div>
+
+            {/* Read-first buttons — the binding documents and the
+                operational guide a partner should read before signing
+                up. Surfaced at the top of the hero (rather than buried
+                in the bottom fine-print) so they're impossible to miss. */}
+            <div className="mt-6">
+              <p className="text-xs font-semibold uppercase tracking-widest text-amber-200/80">
+                Read before signing up
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Link
+                  href="/join-team/terms"
+                  className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white backdrop-blur transition hover:border-amber-300/60 hover:bg-amber-300/10 hover:text-amber-100"
+                >
+                  <FileText size={14} />
+                  Referral Partner Terms
+                </Link>
+                <Link
+                  href="/join-team/privacy"
+                  className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white backdrop-blur transition hover:border-amber-300/60 hover:bg-amber-300/10 hover:text-amber-100"
+                >
+                  <Lock size={14} />
+                  Privacy Policy
+                </Link>
+                <Link
+                  href="/join-team/guide"
+                  className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white backdrop-blur transition hover:border-amber-300/60 hover:bg-amber-300/10 hover:text-amber-100"
+                >
+                  <BookOpen size={14} />
+                  Onboarding Guide
+                </Link>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -267,30 +300,6 @@ export default function JoinTeamLanding() {
                   count. Fake, duplicate, or self-referred entries will not
                   be approved and may lead to account block and commission
                   clawback.
-                </p>
-                <p className="mt-3">
-                  Read the full{' '}
-                  <Link
-                    href="/join-team/terms"
-                    className="font-semibold underline underline-offset-2"
-                  >
-                    Referral Partner Terms
-                  </Link>
-                  ,{' '}
-                  <Link
-                    href="/join-team/privacy"
-                    className="font-semibold underline underline-offset-2"
-                  >
-                    Privacy Policy
-                  </Link>
-                  , and the{' '}
-                  <Link
-                    href="/join-team/guide"
-                    className="font-semibold underline underline-offset-2"
-                  >
-                    Onboarding Guide
-                  </Link>{' '}
-                  before signing up.
                 </p>
               </div>
             </div>
