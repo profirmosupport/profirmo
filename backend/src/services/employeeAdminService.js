@@ -298,11 +298,19 @@ async function readSettings() {
   return employeeDashboardService.readEmployeeSettings();
 }
 
-async function writeSettings({ commission, minPayout, maxPayout }, adminUserId) {
+async function writeSettings(
+  { commission, minPayout, maxPayout, topPerformerMultiplier },
+  adminUserId
+) {
   const updates = [
     { key: KEYS.commission, value: commission, fallback: DEFS.commission },
     { key: KEYS.minPayout, value: minPayout, fallback: DEFS.minPayout },
     { key: KEYS.maxPayout, value: maxPayout, fallback: DEFS.maxPayout },
+    {
+      key: KEYS.topPerformerMultiplier,
+      value: topPerformerMultiplier,
+      fallback: DEFS.topPerformerMultiplier,
+    },
   ];
   for (const u of updates) {
     if (u.value == null || u.value === '') continue;

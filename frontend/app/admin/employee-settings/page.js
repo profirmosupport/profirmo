@@ -23,6 +23,7 @@ export default function AdminEmployeeSettingsPage() {
     commission: '',
     minPayout: '',
     maxPayout: '',
+    topPerformerMultiplier: '',
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -38,6 +39,7 @@ export default function AdminEmployeeSettingsPage() {
         commission: String(s?.commission ?? ''),
         minPayout: String(s?.minPayout ?? ''),
         maxPayout: String(s?.maxPayout ?? ''),
+        topPerformerMultiplier: String(s?.topPerformerMultiplier ?? ''),
       });
     } catch (err) {
       setError(err.message || 'Failed to load settings.');
@@ -60,12 +62,14 @@ export default function AdminEmployeeSettingsPage() {
         commission: Number(form.commission),
         minPayout: Number(form.minPayout),
         maxPayout: Number(form.maxPayout),
+        topPerformerMultiplier: Number(form.topPerformerMultiplier),
       });
       setNotice('Settings saved.');
       setForm({
         commission: String(s?.commission ?? ''),
         minPayout: String(s?.minPayout ?? ''),
         maxPayout: String(s?.maxPayout ?? ''),
+        topPerformerMultiplier: String(s?.topPerformerMultiplier ?? ''),
       });
     } catch (err) {
       setError(err.message || 'Could not save settings.');
@@ -97,13 +101,24 @@ export default function AdminEmployeeSettingsPage() {
               and enforced on every payout request.
             </p>
 
-            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Field
                 label="Commission per approved pro (₹)"
                 value={form.commission}
                 onChange={(v) =>
                   setForm((p) => ({ ...p, commission: v.replace(/[^0-9.]/g, '') }))
                 }
+              />
+              <Field
+                label="Top performer multiplier (×)"
+                value={form.topPerformerMultiplier}
+                onChange={(v) =>
+                  setForm((p) => ({
+                    ...p,
+                    topPerformerMultiplier: v.replace(/[^0-9.]/g, ''),
+                  }))
+                }
+                hint="Applied to commission for the Employee-of-the-Month cards."
               />
               <Field
                 label="Minimum payout (₹)"
@@ -156,7 +171,7 @@ export default function AdminEmployeeSettingsPage() {
   );
 }
 
-function Field({ label, value, onChange }) {
+function Field({ label, value, onChange, hint }) {
   return (
     <label className="block">
       <span className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-500">
@@ -168,6 +183,7 @@ function Field({ label, value, onChange }) {
         onChange={(e) => onChange(e.target.value)}
         className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200"
       />
+      {hint ? <p className="mt-1 text-[11px] text-slate-500">{hint}</p> : null}
     </label>
   );
 }

@@ -20,12 +20,17 @@ const SETTING_KEYS = {
   commission: 'employee_commission_per_approved_professional',
   minPayout: 'employee_minimum_payout_amount',
   maxPayout: 'employee_maximum_payout_amount',
+  // Multiplier applied to the base commission for the Employee-of-the-Month
+  // recognition cards on /join-team/dashboard. Surfaced in the dashboard
+  // summary; admin edits via /admin/employee-settings.
+  topPerformerMultiplier: 'employee_top_performer_multiplier',
 };
 
 const DEFAULTS = {
   commission: 10, // ₹10 per approved pro
   minPayout: 100, // ₹100
   maxPayout: 10000, // ₹10,000
+  topPerformerMultiplier: 2, // 2× the base commission for top performers
 };
 
 async function readNumberSetting(key, fallback) {
@@ -36,12 +41,17 @@ async function readNumberSetting(key, fallback) {
 }
 
 async function readEmployeeSettings() {
-  const [commission, minPayout, maxPayout] = await Promise.all([
-    readNumberSetting(SETTING_KEYS.commission, DEFAULTS.commission),
-    readNumberSetting(SETTING_KEYS.minPayout, DEFAULTS.minPayout),
-    readNumberSetting(SETTING_KEYS.maxPayout, DEFAULTS.maxPayout),
-  ]);
-  return { commission, minPayout, maxPayout };
+  const [commission, minPayout, maxPayout, topPerformerMultiplier] =
+    await Promise.all([
+      readNumberSetting(SETTING_KEYS.commission, DEFAULTS.commission),
+      readNumberSetting(SETTING_KEYS.minPayout, DEFAULTS.minPayout),
+      readNumberSetting(SETTING_KEYS.maxPayout, DEFAULTS.maxPayout),
+      readNumberSetting(
+        SETTING_KEYS.topPerformerMultiplier,
+        DEFAULTS.topPerformerMultiplier
+      ),
+    ]);
+  return { commission, minPayout, maxPayout, topPerformerMultiplier };
 }
 
 // --- Balance accounting -------------------------------------------------

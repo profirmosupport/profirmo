@@ -24,6 +24,10 @@ import {
   Trophy,
   Star,
   TrendingUp,
+  ShieldCheck,
+  BriefcaseBusiness,
+  Mail,
+  FileBadge2,
 } from 'lucide-react';
 import EmployeeHeader from '@/components/employee/EmployeeHeader';
 import Footer from '@/components/common/Footer';
@@ -170,8 +174,24 @@ export default function EmployeeDashboardPage() {
             </div>
           ) : (
             <>
+              {/* Three rules a candidate professional must meet before an
+                  admin will approve them. Surfacing this on the dashboard so
+                  every employee onboards with the right expectations. */}
+              <EligibilityRules />
+
+              {/* Single source of truth for the per-approval rate. The
+                  Employee-of-the-Month cards used to repeat this number —
+                  it now lives only here. */}
+              <PerApprovalBanner
+                perListing={summary?.settings?.commission ?? 0}
+                multiplier={summary?.settings?.topPerformerMultiplier ?? 1}
+              />
+
               {/* Employees of the Month — static recognition cards. */}
-              <FeaturedEmployees />
+              <FeaturedEmployees
+                perListing={summary?.settings?.commission ?? 0}
+                multiplier={summary?.settings?.topPerformerMultiplier ?? 1}
+              />
 
               {/* Stats grid */}
               <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -429,6 +449,114 @@ export default function EmployeeDashboardPage() {
 }
 
 // ---------------------------------------------------------------------
+// EligibilityRules — banner with the three rules every onboarded
+// professional must meet before an admin will mark them APPROVED.
+// Lives at the top of the dashboard so every employee sees them on
+// every visit.
+// ---------------------------------------------------------------------
+
+const ELIGIBILITY_RULES = [
+  {
+    icon: BriefcaseBusiness,
+    title: 'Minimum 5 years work experience',
+    body: 'Verified via the professional’s registration documents.',
+  },
+  {
+    icon: Mail,
+    title: 'Verified email & phone number',
+    body: 'Both OTP-verified during signup before submission to admin.',
+  },
+  {
+    icon: FileBadge2,
+    title: 'Registration certificate or card',
+    body: 'Bar Council enrolment, CA registration, or equivalent ID upload.',
+  },
+];
+
+function EligibilityRules() {
+  return (
+    <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-center gap-2">
+        <ShieldCheck size={16} className="text-emerald-600" />
+        <h2 className="text-sm font-semibold uppercase tracking-widest text-slate-700">
+          Rules to get a professional verified
+        </h2>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {ELIGIBILITY_RULES.map((rule) => (
+          <div
+            key={rule.title}
+            className="flex items-start gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3"
+          >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+              <rule.icon size={14} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-900">
+                {rule.title}
+              </p>
+              <p className="mt-0.5 text-xs text-slate-600">{rule.body}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------
+// PerApprovalBanner — single highlighted source of truth for the per-
+// approval (per-listing) rate. The Employee-of-the-Month cards used to
+// repeat this number on every card; per the spec it now lives ONLY
+// here. The top-performer multiplier is shown alongside as a small
+// secondary line.
+// ---------------------------------------------------------------------
+function PerApprovalBanner({ perListing, multiplier }) {
+  const safeMultiplier =
+    Number.isFinite(Number(multiplier)) && Number(multiplier) > 0
+      ? Number(multiplier)
+      : 1;
+  const topRate = Number(perListing) * safeMultiplier;
+  const showTopRate = safeMultiplier > 1 && Number(perListing) > 0;
+  return (
+    <section className="mt-4 overflow-hidden rounded-2xl border border-amber-300 bg-gradient-to-r from-amber-50 via-amber-100/40 to-amber-50 p-5 shadow-sm">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-amber-700">
+            <IndianRupee size={12} />
+            Per-approval rate
+          </p>
+          <p className="mt-1 text-3xl font-extrabold text-slate-900">
+            {rupees(perListing)}{' '}
+            <span className="text-base font-semibold text-slate-500">
+              per approved professional
+            </span>
+          </p>
+        </div>
+        {showTopRate ? (
+          <div className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-right shadow-sm">
+            <p className="flex items-center justify-end gap-1 text-[10px] font-semibold uppercase tracking-widest text-amber-700">
+              <Trophy size={11} />
+              Top performers
+            </p>
+            <p className="mt-0.5 text-lg font-bold text-amber-700">
+              {rupees(topRate)}{' '}
+              <span className="text-xs font-semibold text-amber-600">
+                / approval ({safeMultiplier}×)
+              </span>
+            </p>
+          </div>
+        ) : null}
+      </div>
+      <p className="mt-2 text-xs text-amber-900">
+        Commission credits once the admin marks the professional APPROVED.
+        Rates are set by admin and may change.
+      </p>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------
 // FeaturedEmployees — static "Employees of the Month" recognition
 // cards. Numbers are illustrative; the employee_code is masked so
 // other staff can't memorise it and impersonate the featured pair.
@@ -442,8 +570,6 @@ const FEATURED_EMPLOYEES = [
     code: '9876543210',
     region: 'Pune',
     listings: 549,
-    perListing: 15,
-    earned: 8835,
     // Local asset served from `frontend/public/team/`. Save the
     // attached portrait there as `gaurav-sharma.jpg`. Falls back to
     // an initials avatar if the file is missing.
@@ -457,8 +583,6 @@ const FEATURED_EMPLOYEES = [
     code: '9123456789',
     region: 'New Delhi',
     listings: 289,
-    perListing: 15,
-    earned: 4335,
     photo:
       'https://ui-avatars.com/api/?name=Rachana+Yadav&background=0d9488&color=fff&size=512&font-size=0.4&bold=true',
   },
@@ -478,7 +602,11 @@ function rupeesShort(n) {
   return `₹${(Number(n) || 0).toLocaleString('en-IN')}`;
 }
 
-function FeaturedEmployees() {
+function FeaturedEmployees({ perListing, multiplier }) {
+  const safeMultiplier =
+    Number.isFinite(Number(multiplier)) && Number(multiplier) > 0
+      ? Number(multiplier)
+      : 1;
   return (
     <section className="mt-6">
       <div className="mb-3 flex items-center gap-2">
@@ -487,19 +615,26 @@ function FeaturedEmployees() {
           Employees of the month
         </h2>
         <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
-          Featured
+          {safeMultiplier > 1 ? `${safeMultiplier}× commission` : 'Featured'}
         </span>
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {FEATURED_EMPLOYEES.map((e) => (
-          <FeaturedCard key={e.code} employee={e} />
+          <FeaturedCard
+            key={e.code}
+            employee={e}
+            perListing={Number(perListing) || 0}
+            multiplier={safeMultiplier}
+          />
         ))}
       </div>
     </section>
   );
 }
 
-function FeaturedCard({ employee }) {
+function FeaturedCard({ employee, perListing, multiplier }) {
+  const effectiveRate = perListing * multiplier;
+  const earned = (employee.listings || 0) * effectiveRate;
   return (
     <div className="relative overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-amber-50 p-5 shadow-sm">
       <div
@@ -555,16 +690,14 @@ function FeaturedCard({ employee }) {
             · {employee.region}
           </p>
 
-          {/* Stat row — listings, per-listing rate, total earned. */}
-          <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+          {/* Stat row — listings + total earned. Per-listing rate moved
+              to the dedicated banner above so the dashboard has a single
+              authoritative source for the rate. */}
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
             <Mini label="Listings" value={employee.listings} />
             <Mini
-              label="Per listing"
-              value={rupeesShort(employee.perListing)}
-            />
-            <Mini
-              label="Earned"
-              value={rupeesShort(employee.earned)}
+              label={multiplier > 1 ? `Earned (${multiplier}×)` : 'Earned'}
+              value={rupeesShort(earned)}
               emphasised
             />
           </div>
