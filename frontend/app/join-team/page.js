@@ -1,9 +1,11 @@
-'use client';
-
-// /join-team — Employee module landing.
-// Pitches the field-agent role and surfaces the two CTAs:
-//   1. Sign up as employee
-//   2. Log in (already an employee)
+// /join-team — Referral Partner module landing.
+// Pitches the referral-partner role and surfaces the two CTAs:
+//   1. Sign up as Referral Partner
+//   2. Log in (already a Referral Partner)
+//
+// Server component so we can export `metadata`. The page has no
+// client state — Header / Footer / Link work fine from a server
+// component.
 
 import Link from 'next/link';
 import {
@@ -16,6 +18,13 @@ import {
 } from 'lucide-react';
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
+
+export const metadata = {
+  title: 'Become a Profirmo Referral Partner · Earn for every approved onboarding',
+  description:
+    'Join the Profirmo Referral Partner programme. Refer verified legal & tax consultants, earn a fixed commission for every admin-approved onboarding, and track payouts on your dashboard.',
+  alternates: { canonical: '/join-team' },
+};
 
 const PERKS = [
   {
@@ -31,16 +40,16 @@ const PERKS = [
   {
     icon: ShieldCheck,
     title: 'Transparent payouts',
-    body: 'Request payout from your available balance any time above the platform minimum. Admin approves and marks it paid.',
+    body: 'Request payout from your available balance any time above the platform minimum. Admin processes approved payouts within 7 business days.',
   },
 ];
 
 const STEPS = [
   'Sign up with your name, email and phone — we send a one-time OTP.',
   'Verify the OTP and set a password (or use OTP every time, your call).',
-  'Open the Employee Dashboard and start onboarding professionals.',
+  'Open the Referral Partner Dashboard and start onboarding professionals.',
   'When the admin approves a professional you onboarded, commission is credited automatically.',
-  'Request a payout from your available balance — admin processes it.',
+  'Request a payout from your available balance — admin processes approved requests within 7 business days.',
 ];
 
 export default function JoinTeamLanding() {
@@ -54,18 +63,19 @@ export default function JoinTeamLanding() {
           <div className="pointer-events-none absolute -left-32 bottom-0 h-72 w-72 rounded-full bg-teal-500/20 blur-3xl" />
           <div className="relative mx-auto max-w-6xl px-4 py-20 sm:px-6 lg:px-8">
             <span className="inline-flex items-center gap-2 rounded-full border border-amber-300/40 bg-amber-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-amber-200">
-              Profirmo · Field team
+              Profirmo · Referral Partner programme
             </span>
             <h1 className="mt-4 text-4xl font-bold leading-tight sm:text-5xl">
-              Bring real legal & tax pros onto Profirmo —
+              Bring real legal &amp; tax pros onto Profirmo —
               <br />
               and get paid for every approved onboarding.
             </h1>
             <p className="mt-4 max-w-2xl text-base text-slate-300 sm:text-lg">
-              The Profirmo Employee Portal is for field agents who refer and
-              onboard verified consultants. Sign up in a minute, onboard
-              professionals from the same form they use to register, and
-              earn a fixed commission for every one the admin approves.
+              The Profirmo Referral Partner Portal is for field associates
+              who refer and onboard verified consultants. Sign up in a
+              minute, onboard professionals from the same form they use to
+              register, and earn a fixed commission for every one the admin
+              approves.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link
@@ -73,7 +83,7 @@ export default function JoinTeamLanding() {
                 className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-5 py-3 text-sm font-semibold text-slate-900 shadow-lg shadow-amber-500/30 transition hover:bg-amber-400"
               >
                 <UserPlus size={16} />
-                Sign up as employee
+                Sign up as Referral Partner
               </Link>
               <Link
                 href="/join-team/login"
@@ -144,9 +154,34 @@ export default function JoinTeamLanding() {
                 <p className="font-semibold">Commission is approval-gated.</p>
                 <p className="mt-1">
                   You earn commission only on professionals that the admin
-                  approves. Pending or rejected onboardings don&apos;t count.
-                  Fake or duplicate entries will not be approved and may
-                  lead to account block.
+                  approves. Pending or rejected onboardings don&apos;t
+                  count. Fake, duplicate, or self-referred entries will not
+                  be approved and may lead to account block and commission
+                  clawback.
+                </p>
+                <p className="mt-3">
+                  Read the full{' '}
+                  <Link
+                    href="/join-team/terms"
+                    className="font-semibold underline underline-offset-2"
+                  >
+                    Referral Partner Terms
+                  </Link>
+                  ,{' '}
+                  <Link
+                    href="/join-team/privacy"
+                    className="font-semibold underline underline-offset-2"
+                  >
+                    Privacy Policy
+                  </Link>
+                  , and the{' '}
+                  <Link
+                    href="/join-team/guide"
+                    className="font-semibold underline underline-offset-2"
+                  >
+                    Onboarding Guide
+                  </Link>{' '}
+                  before signing up.
                 </p>
               </div>
             </div>
