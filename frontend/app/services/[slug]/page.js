@@ -137,7 +137,7 @@ export default async function ServiceLandingPage({ params }) {
             </p>
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <Link
-                href={`/home?intent=${encodeURIComponent(s.title)}`}
+                href={`/search?q=${encodeURIComponent(s.title)}`}
                 className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-5 py-3 text-sm font-semibold text-slate-900 shadow-lg shadow-amber-500/30 transition hover:bg-amber-400"
               >
                 <Sparkles size={16} />
@@ -251,7 +251,7 @@ export default async function ServiceLandingPage({ params }) {
           <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Link
-                href={`/home?intent=${encodeURIComponent(s.title)}`}
+                href={`/search?q=${encodeURIComponent(s.title)}`}
                 className="group flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-5 transition hover:border-amber-400 hover:bg-amber-100"
               >
                 <div>

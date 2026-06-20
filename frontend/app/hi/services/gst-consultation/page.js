@@ -107,7 +107,7 @@ export default function HindiGstConsultationPage() {
             </p>
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <Link
-                href="/home?intent=GST"
+                href="/search?q=GST"
                 className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-5 py-3 text-sm font-semibold text-slate-900 shadow-lg shadow-amber-500/30 hover:bg-amber-400"
               >
                 <Sparkles size={16} />
