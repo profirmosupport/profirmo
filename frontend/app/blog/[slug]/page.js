@@ -136,16 +136,37 @@ export default async function BlogPostPage({ params }) {
         {/* Cover image — full-bleed banner, NO text overlay. Falls back
             to a warm gradient when no featured image is set so the page
             still feels intentional. */}
+        {/* LCP — the cover image is the largest element above the fold for
+            blog detail pages. Preload it in <head> so the browser starts the
+            fetch in parallel with the CSS chunk, and mark the <img> itself
+            as eager + high-priority so it's not deferred by the lazy-image
+            heuristic. The SSR'd HTML gives us the URL up front. */}
         {post.featuredImage ? (
-          <figure className="mx-auto mt-5 max-w-5xl overflow-hidden px-4 sm:px-6 lg:px-8">
-            <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-100 shadow-card">
-              <img
-                src={post.featuredImage}
-                alt={post.title}
-                className="aspect-[16/9] w-full object-cover"
-              />
-            </div>
-          </figure>
+          <>
+            {/* eslint-disable-next-line @next/next/no-head-element */}
+            <link
+              rel="preload"
+              as="image"
+              href={post.featuredImage}
+              // Tells the browser this is the LCP candidate.
+              // eslint-disable-next-line react/no-unknown-property
+              fetchpriority="high"
+            />
+            <figure className="mx-auto mt-5 max-w-5xl overflow-hidden px-4 sm:px-6 lg:px-8">
+              <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-100 shadow-card">
+                <img
+                  src={post.featuredImage}
+                  alt={post.title}
+                  width="1200"
+                  height="675"
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
+                  className="aspect-[16/9] w-full object-cover"
+                />
+              </div>
+            </figure>
+          </>
         ) : (
           <div className="mx-auto mt-5 max-w-5xl px-4 sm:px-6 lg:px-8">
             <div className="aspect-[16/9] w-full overflow-hidden rounded-3xl bg-gradient-to-br from-amber-100 via-amber-50 to-white" />

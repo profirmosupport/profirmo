@@ -6,6 +6,16 @@ module.exports = {
     ignoreDuringBuilds: true,
   },
 
+  // Critical-CSS extraction. `optimizeCss` runs `critters` over each route's
+  // HTML output during build, inlining the CSS rules actually used above the
+  // fold and deferring the rest. This cuts the render-blocking CSS payload
+  // that PageSpeed flags as "Eliminate render-blocking resources" — most of
+  // our globals.css (~80 KB compiled Tailwind) is unused per page.
+  // Requires `critters` to be installed in devDependencies.
+  experimental: {
+    optimizeCss: true,
+  },
+
   // Long cache headers for static assets in /public/. Render's default for
   // public files is `max-age=5`, which forces every visitor to re-fetch
   // images / logos / videos on every page load and PSI flags it as

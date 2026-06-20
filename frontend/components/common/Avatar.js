@@ -20,9 +20,19 @@ const SIZES = {
  * - Falls back to initials on a colored background when there is no image,
  *   or when the image URL is broken / deleted / fails to load.
  *
- * Props: { src, name, size='md', className }
+ * Props: { src, name, size='md', className, priority=false }
+ *
+ * When `priority` is true the avatar is treated as an LCP candidate —
+ * loads eagerly with fetchPriority="high", suitable for the profile-header
+ * avatar that sits above the fold on the professional / firm detail pages.
  */
-export default function Avatar({ src, name = '', size = 'md', className = '' }) {
+export default function Avatar({
+  src,
+  name = '',
+  size = 'md',
+  className = '',
+  priority = false,
+}) {
   const [errored, setErrored] = useState(false);
 
   // Reset the error state if the source changes (e.g. after a new upload).
@@ -43,7 +53,9 @@ export default function Avatar({ src, name = '', size = 'md', className = '' }) 
         <img
           src={url}
           alt={name || 'Profile'}
-          loading="lazy"
+          loading={priority ? 'eager' : 'lazy'}
+          fetchPriority={priority ? 'high' : 'auto'}
+          decoding={priority ? 'async' : undefined}
           onError={() => setErrored(true)}
           className="h-full w-full object-cover"
         />

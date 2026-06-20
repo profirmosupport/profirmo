@@ -10,6 +10,13 @@ const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
   display: 'swap',
+  // Preload + restrict the weight axis to the four weights actually used
+  // in the design system. Inter ships with a variable-font default; pinning
+  // weights here lets next/font emit a single woff2 with only the slices we
+  // render, knocking ~40 KB off the critical-path font fetch.
+  preload: true,
+  weight: ['400', '500', '600', '700'],
+  adjustFontFallback: 'Arial',
 });
 
 // Layered fallback — see notes in app/blog/[slug]/page.js. Without this,
@@ -147,8 +154,30 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" className={inter.variable}>
       <head>
+        {/* LCP — preload the mobile brand mark so the browser pulls it in
+            parallel with CSS instead of waiting for the parser to reach the
+            <img> in the Header. The PNG is 33 KB and the LCP element on
+            mobile (the desktop wordmark is text and renders inline). */}
+        <link
+          rel="preload"
+          as="image"
+          href="/images/profirmo-logo.png"
+          type="image/png"
+          fetchPriority="high"
+        />
+
         {/* Cheap perf hints — open TLS to the third-party origins we know
-            we'll hit so the browser doesn't pay DNS+TLS RTT on first use. */}
+            we'll hit so the browser doesn't pay DNS+TLS RTT on first use.
+            S3 is preconnect (full TLS warm-up) because EVERY page renders
+            at least one image from there (profile photos, firm logos,
+            blog cover images). The others are dns-prefetch only because
+            they're used for cosmetic avatars / placeholders that load
+            after LCP. */}
+        <link
+          rel="preconnect"
+          href="https://profirmomain.s3.ap-south-1.amazonaws.com"
+          crossOrigin="anonymous"
+        />
         <link rel="preconnect" href="https://www.googletagmanager.com" />
         <link rel="preconnect" href="https://www.google-analytics.com" />
         <link rel="dns-prefetch" href="https://i.pravatar.cc" />
@@ -164,20 +193,23 @@ export default function RootLayout({ children }) {
         />
       </head>
       <body className="font-sans">
-        {/* Google Analytics (gtag.js) — loaded after page becomes interactive
-            so it never blocks the initial render. */}
+        {/* Google Analytics (gtag.js) — `lazyOnload` defers until the
+            browser is idle, off the critical render path. PageSpeed flags
+            `afterInteractive` GA bundles as render-blocking third-party
+            requests on slow connections; this strategy is the standard
+            mitigation. The dataLayer is initialised inline so any
+            gtag('event', ...) calls before the script loads are buffered. */}
+        <Script id="gtag-bootstrap" strategy="beforeInteractive">
+          {`window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            window.gtag = gtag;
+            gtag('js', new Date());
+            gtag('config', '${GA_MEASUREMENT_ID}');`}
+        </Script>
         <Script
           src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
-          strategy="afterInteractive"
+          strategy="lazyOnload"
         />
-        <Script id="gtag-init" strategy="afterInteractive">
-          {`
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            gtag('js', new Date());
-            gtag('config', '${GA_MEASUREMENT_ID}');
-          `}
-        </Script>
         <LanguageProvider>
           <AuthProvider>{children}</AuthProvider>
         </LanguageProvider>

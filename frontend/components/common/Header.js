@@ -213,8 +213,25 @@ export default function Header() {
   const { isAuthenticated, loading: authLoading, logout } = useAuth();
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 8);
-    onScroll();
+    // rAF-throttle the scroll handler so we don't read window.scrollY
+    // (a layout-thrashing property) on every wheel/touchmove event.
+    // Without this, PageSpeed Insights flags the "Forced reflow" audit
+    // because React was re-rendering the header chrome on every scroll.
+    let ticking = false;
+    let lastScrolled = window.scrollY > 8;
+    setScrolled(lastScrolled);
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(() => {
+        const next = window.scrollY > 8;
+        if (next !== lastScrolled) {
+          lastScrolled = next;
+          setScrolled(next);
+        }
+        ticking = false;
+      });
+    };
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);

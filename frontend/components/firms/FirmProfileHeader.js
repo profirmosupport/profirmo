@@ -77,6 +77,7 @@ export default function FirmProfileHeader({ firm }) {
             name={firmName}
             size="xl"
             className="rounded-2xl"
+            priority
           />
           <div>
             <div className="flex flex-wrap items-center gap-2">
