@@ -188,7 +188,10 @@
       "Bash(kill -TERM 16483)",
       "Bash(curl -s -o /dev/null -w \"/contact -> %{http_code}\\\\n\" http://localhost:3000/contact)",
       "Bash(curl -s -o /dev/null -w \"/        -> %{http_code}\\\\n\" http://localhost:3000/)",
-      "Bash(curl -s \"http://localhost:3000/contact\")"
+      "Bash(curl -s \"http://localhost:3000/contact\")",
+      "Bash(python3 -c \"import json, sys; d=json.load\\(sys.stdin\\); print\\('--- deps ---'\\); [print\\(f'  {k:30} {v}'\\) for k,v in sorted\\(d.get\\('dependencies',{}\\).items\\(\\)\\)]\")",
+      "Bash(xargs -I{} kill -TERM {})",
+      "Bash(curl -s -o /dev/null -w \"/services/gst-consultation -> %{http_code}\\\\n\" http://localhost:3000/services/gst-consultation)"
     ],
     "additionalDirectories": [
       "/Users/vishalchauhan/code/profirmo/frontend/app/services",

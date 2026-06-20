@@ -14,6 +14,12 @@ module.exports = {
   // Requires `critters` to be installed in devDependencies.
   experimental: {
     optimizeCss: true,
+    // Barrel-import optimisation. Turns `import { Menu, X } from
+    // 'lucide-react'` into deep `import` calls so unused icons are
+    // tree-shaken instead of shipped. Cuts ~30-80 KB off icon-heavy
+    // pages and reduces "Minimise main-thread work" + "Reduce unused
+    // JavaScript" PSI findings. Add libraries here as they're added.
+    optimizePackageImports: ['lucide-react'],
   },
 
   // Long cache headers for static assets in /public/. Render's default for
