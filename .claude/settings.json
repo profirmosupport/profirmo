@@ -182,7 +182,13 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}  /api/professionals?limit=1\\\\n\" \"https://proapi.profirmo.com/api/professionals?limit=1\")",
       "Bash(curl -s -o /dev/null -w \"%{http_code}  /api/blog/posts?limit=1\\\\n\" \"https://proapi.profirmo.com/api/blog/posts?limit=1\")",
       "Bash(curl -s -X POST -H \"Content-Type: application/json\" -H \"Origin: https://profirmo.com\" -d '{\"fullName\":\"Cutover Smoke\",\"phone\":\"+919999999998\",\"email\":\"cutover@example.com\",\"message\":\"end-to-end cutover smoke test\",\"source\":\"cutover-smoke\"}' https://proapi.profirmo.com/api/leads)",
-      "Bash(NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_API_URL=https://proapi.profirmo.com npm run build)"
+      "Bash(NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_API_URL=https://proapi.profirmo.com npm run build)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/contact)",
+      "Bash(curl -s http://localhost:3000/contact)",
+      "Bash(kill -TERM 16483)",
+      "Bash(curl -s -o /dev/null -w \"/contact -> %{http_code}\\\\n\" http://localhost:3000/contact)",
+      "Bash(curl -s -o /dev/null -w \"/        -> %{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(curl -s \"http://localhost:3000/contact\")"
     ],
     "additionalDirectories": [
       "/Users/vishalchauhan/code/profirmo/frontend/app/services",
