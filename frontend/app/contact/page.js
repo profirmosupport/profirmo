@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Mail, Phone, MapPin, CheckCircle2, Clock, Loader2, AlertCircle } from 'lucide-react';
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
+import LeadGenFloater from '@/components/common/LeadGenFloater';
 import Card from '@/components/common/Card';
 import Input from '@/components/common/Input';
 import Button from '@/components/common/Button';
@@ -271,6 +272,7 @@ export default function ContactPage() {
         </section>
       </main>
       <Footer />
+      <LeadGenFloater source="contact-page" />
     </div>
   );
 }

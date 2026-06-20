@@ -1,5 +1,6 @@
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
+import LeadGenFloater from '@/components/common/LeadGenFloater';
 import HeroSection from '@/components/home/HeroSection';
 import SearchSection from '@/components/home/SearchSection';
 import StatsSection from '@/components/home/StatsSection';
@@ -32,6 +33,7 @@ export default function HomePage() {
         <CTASection />
       </main>
       <Footer />
+      <LeadGenFloater source="home" />
     </div>
   );
 }

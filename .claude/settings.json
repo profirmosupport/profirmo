@@ -125,7 +125,19 @@
       "Bash(nc -zv -w 3 b2bportaldb.cwdkqifvjovy.ap-south-1.rds.amazonaws.com 3306)",
       "WebFetch(domain:lawrato.com)",
       "Bash(python3)",
-      "Bash(/bin/bash)"
+      "Bash(/bin/bash)",
+      "WebSearch",
+      "Bash(mkdir -p /Users/vishalchauhan/code/profirmo/frontend/app/services/'[slug]')",
+      "Bash(curl -s \"http://localhost:3000/services/divorce-and-family-consultation\")",
+      "Bash(curl -s \"http://localhost:3000/\")",
+      "Bash(curl -i -X POST http://localhost:5001/api/leads -H \"Content-Type: application/json\" -d '{\"fullName\":\"Smoke Test User\",\"phone\":\"+919999999991\",\"email\":\"smoke@example.com\",\"message\":\"Testing the floater lead-capture wire-up\",\"source\":\"smoke-test-floater\"}')",
+      "Bash(curl -s -o /dev/null -w \"/api/health -> %{http_code}\\\\n\" http://localhost:5001/api/health)",
+      "Bash(curl -s -X POST http://localhost:5001/api/leads -H \"Content-Type: application/json\" -d '{\"fullName\":\"Smoke Test User\",\"phone\":\"+919999999991\",\"email\":\"smoke@example.com\",\"message\":\"Testing the floater lead-capture wire-up\",\"source\":\"smoke-test-floater\"}')",
+      "Bash(curl -s -o /dev/null -w \"frontend :3000 -> %{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(curl -s -o /dev/null -w \"backend  :5001 -> %{http_code}\\\\n\" http://localhost:5001/api/health)"
+    ],
+    "additionalDirectories": [
+      "/Users/vishalchauhan/code/profirmo/frontend/app/services"
     ]
   }
 }

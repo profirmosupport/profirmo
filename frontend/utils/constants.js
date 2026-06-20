@@ -48,11 +48,37 @@ export const SITE = {
     'Pro Firmo lets you explain your case to AI first, then instantly matches you with the most suitable verified lawyer, advocate, tax expert or professional firm.',
 };
 
+// Header nav. Items can be flat links OR dropdowns:
+//   { label, href }                         -> single link
+//   { label, key, dropdown: [{ label, href, description? }] }  -> dropdown
+// "Firms" moved to the footer Explore section per product spec.
 export const NAV_LINKS = [
   { label: 'Professionals', href: '/professionals' },
-  { label: 'Firms', href: '/firms' },
+  {
+    label: 'Knowledge',
+    key: 'knowledge',
+    dropdown: [
+      { label: 'All services', href: '/services', description: 'Browse every consultation service we offer.' },
+      { label: 'Blog', href: '/blog', description: 'Plain-English explainers on Indian law.' },
+      { label: 'How it works', href: '/how-it-works', description: 'AI matching, then a verified professional.' },
+      { label: 'Property Dispute Consultation', href: '/services/property-dispute-consultation' },
+      { label: 'GST Notice Consultation', href: '/services/gst-notice-consultation' },
+      { label: 'Income Tax Filing Help', href: '/services/income-tax-filing-help' },
+      { label: 'Divorce & Family Consultation', href: '/services/divorce-and-family-consultation' },
+      { label: 'Legal Notice Drafting', href: '/services/legal-notice-drafting' },
+      { label: 'Cheque Bounce Matter', href: '/services/cheque-bounce-matter' },
+      { label: 'Startup Legal Consultation', href: '/services/startup-legal-consultation' },
+      { label: 'Company Registration', href: '/services/company-registration' },
+      { label: 'Trademark Consultation', href: '/services/trademark-consultation' },
+      { label: 'Consumer Complaint Consultation', href: '/services/consumer-complaint-consultation' },
+      { label: 'Employment & Salary Dispute', href: '/services/employment-and-salary-dispute' },
+      { label: 'Rental Agreement Drafting', href: '/services/rental-agreement-drafting' },
+      { label: 'Business Contract Review', href: '/services/business-contract-review' },
+      { label: 'NRI Property Legal Help', href: '/services/nri-property-legal-help' },
+      { label: 'Tax Notice Help', href: '/services/tax-notice-help' },
+    ],
+  },
   { label: 'E-Courts India', href: '/ecourts' },
-  { label: 'Blog', href: '/blog' },
   { label: 'Pricing', href: '/pricing' },
   { label: 'Contact', href: '/contact' },
 ];

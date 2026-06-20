@@ -3,6 +3,7 @@
 import { Check, Clock, Users, Briefcase, Building2, ArrowRight } from 'lucide-react';
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
+import LeadGenFloater from '@/components/common/LeadGenFloater';
 import Card from '@/components/common/Card';
 import Badge from '@/components/common/Badge';
 import Button from '@/components/common/Button';
@@ -207,6 +208,7 @@ export default function PricingPage() {
         </section>
       </main>
       <Footer />
+      <LeadGenFloater source="pricing-page" />
     </div>
   );
 }

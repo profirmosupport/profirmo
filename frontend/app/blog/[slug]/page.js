@@ -9,6 +9,7 @@ import { notFound } from 'next/navigation';
 import { Calendar, Clock, ArrowLeft, Tag, User2 } from 'lucide-react';
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
+import LeadGenFloater from '@/components/common/LeadGenFloater';
 import ShareButtons from '@/components/blog/ShareButtons';
 import { ssrGetPost } from '@/services/blogService';
 
@@ -256,6 +257,7 @@ export default async function BlogPostPage({ params }) {
         </section>
       </main>
       <Footer />
+      <LeadGenFloater source={`blog-${post.slug}`} />
       <script
         type="application/ld+json"
         // eslint-disable-next-line react/no-danger

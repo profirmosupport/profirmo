@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
+import LeadGenFloater from '@/components/common/LeadGenFloater';
 import Card from '@/components/common/Card';
 import { useLanguage } from '@/components/LanguageProvider';
 
@@ -157,6 +158,7 @@ export default function AboutPage() {
         </section>
       </main>
       <Footer />
+      <LeadGenFloater source="about-page" />
     </div>
   );
 }

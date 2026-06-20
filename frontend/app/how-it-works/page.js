@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
+import LeadGenFloater from '@/components/common/LeadGenFloater';
 import Button from '@/components/common/Button';
 import { useLanguage } from '@/components/LanguageProvider';
 
@@ -180,6 +181,7 @@ export default function HowItWorksPage() {
         </section>
       </main>
       <Footer />
+      <LeadGenFloater source="how-it-works" />
     </div>
   );
 }

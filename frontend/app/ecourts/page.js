@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
+import LeadGenFloater from '@/components/common/LeadGenFloater';
 import Card from '@/components/common/Card';
 import Button from '@/components/common/Button';
 import { useRouter } from 'next/navigation';
@@ -739,6 +740,7 @@ export default function ECourtsPage() {
         </section>
       </main>
       <Footer />
+      <LeadGenFloater source="ecourts" />
     </div>
   );
 }

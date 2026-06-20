@@ -12,6 +12,7 @@ import {
   UserPlus,
   LayoutDashboard,
   LogOut,
+  ChevronDown,
 } from 'lucide-react';
 import { NAV_LINKS } from '@/utils/constants';
 import { useLanguage } from '@/components/LanguageProvider';
@@ -31,6 +32,11 @@ const NAV_KEYS = {
   '/how-it-works': 'nav.howItWorks',
   '/pricing': 'nav.pricing',
   '/contact': 'nav.contact',
+  '/services': 'nav.knowledge',
+};
+
+const NAV_LABEL_KEYS = {
+  Knowledge: 'nav.knowledge',
 };
 
 function LangSwitch({ lang, setLang, className = '' }) {
@@ -59,6 +65,142 @@ function LangSwitch({ lang, setLang, className = '' }) {
           {label}
         </button>
       ))}
+    </div>
+  );
+}
+
+// Desktop hover-and-click dropdown for the Knowledge menu. The first three
+// items in the data file are "feature" links (All services, Blog, How it
+// works) shown in a top panel; the rest render as a 2-column service grid
+// below. Closes on outside-click and on Escape.
+function KnowledgeDropdown({ label, items, pathname }) {
+  const [open, setOpen] = useState(false);
+  // First 3 items render as featured cards (All services / Blog / How it
+  // works); the remaining items fill a 2-column service grid below.
+  const featured = items.slice(0, 3);
+  const services = items.slice(3);
+
+  // Close on Escape.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  // Close when the route changes (parent passes pathname).
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  const anyActive = items.some((i) => pathname === i.href);
+
+  return (
+    <div
+      className="relative"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="true"
+        className={`group relative inline-flex items-center gap-1 rounded-lg px-3.5 py-2 text-sm font-medium transition ${
+          anyActive
+            ? 'text-amber-700'
+            : 'text-slate-600 hover:text-teal-700'
+        }`}
+      >
+        {label}
+        <ChevronDown
+          size={14}
+          className={`transition-transform ${open ? 'rotate-180' : ''}`}
+        />
+        <span
+          className={`absolute inset-x-3.5 -bottom-0.5 h-0.5 rounded-full bg-gradient-to-r from-amber-500 to-teal-500 transition-all duration-300 ${
+            anyActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          }`}
+        />
+      </button>
+
+      {open && (
+        <div className="absolute left-1/2 top-full z-50 mt-1 w-[640px] -translate-x-1/2 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+          {/* Featured row */}
+          <ul className="grid grid-cols-3 gap-2 border-b border-slate-100 pb-3">
+            {featured.map((it) => (
+              <li key={it.href}>
+                <Link
+                  href={it.href}
+                  className="flex flex-col rounded-lg px-3 py-2 transition hover:bg-amber-50"
+                  onClick={() => setOpen(false)}
+                >
+                  <span className="text-sm font-semibold text-slate-900">
+                    {it.label}
+                  </span>
+                  {it.description ? (
+                    <span className="mt-0.5 text-[11px] leading-snug text-slate-500">
+                      {it.description}
+                    </span>
+                  ) : null}
+                </Link>
+              </li>
+            ))}
+          </ul>
+          {/* Service grid */}
+          <ul className="mt-3 grid grid-cols-2 gap-1.5">
+            {services.map((it) => (
+              <li key={it.href}>
+                <Link
+                  href={it.href}
+                  className="block rounded-lg px-3 py-2 text-sm text-slate-700 transition hover:bg-teal-50 hover:text-teal-700"
+                  onClick={() => setOpen(false)}
+                >
+                  {it.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Mobile inline-expand panel for Knowledge. Renders the same items as the
+// desktop dropdown but stacked, with a chevron toggle.
+function MobileKnowledgeGroup({ label, items }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-teal-50 hover:text-teal-700"
+        aria-expanded={open}
+      >
+        {label}
+        <ChevronDown
+          size={14}
+          className={`transition-transform ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {open && (
+        <ul className="mb-2 ml-2 mt-1 space-y-0.5 border-l border-slate-200 pl-2">
+          {items.map((it) => (
+            <li key={it.href}>
+              <Link
+                href={it.href}
+                className="block rounded-lg px-3 py-2 text-[13px] text-slate-600 transition hover:bg-amber-50 hover:text-amber-700"
+              >
+                {it.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -94,6 +236,16 @@ export default function Header() {
 
         <nav className="hidden items-center gap-1 lg:flex">
           {NAV_LINKS.map((link) => {
+            if (link.dropdown) {
+              return (
+                <KnowledgeDropdown
+                  key={link.key || link.label}
+                  label={t(NAV_LABEL_KEYS[link.label] || link.label)}
+                  items={link.dropdown}
+                  pathname={pathname}
+                />
+              );
+            }
             const active = pathname === link.href;
             return (
               <Link
@@ -191,15 +343,26 @@ export default function Header() {
         }`}
       >
         <nav className="mx-auto flex max-w-7xl flex-col gap-1 px-4 py-4 sm:px-6">
-          {NAV_LINKS.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className="rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-teal-50 hover:text-teal-700"
-            >
-              {t(NAV_KEYS[link.href] || link.label)}
-            </Link>
-          ))}
+          {NAV_LINKS.map((link) => {
+            if (link.dropdown) {
+              return (
+                <MobileKnowledgeGroup
+                  key={link.key || link.label}
+                  label={t(NAV_LABEL_KEYS[link.label] || link.label)}
+                  items={link.dropdown}
+                />
+              );
+            }
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-teal-50 hover:text-teal-700"
+              >
+                {t(NAV_KEYS[link.href] || link.label)}
+              </Link>
+            );
+          })}
           {/* Signed-in users get explicit Dashboard + Logout buttons.
               For signed-out visitors the login/signup CTAs live on the
               mobile header bar above, not in this slide-down panel. */}

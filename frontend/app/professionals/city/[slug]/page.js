@@ -13,6 +13,7 @@
 import { notFound } from 'next/navigation';
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
+import LeadGenFloater from '@/components/common/LeadGenFloater';
 import { API_BASE_URL } from '@/utils/constants';
 import CityProfessionalsList from './CityProfessionalsList';
 
@@ -165,6 +166,7 @@ export default async function CityLandingPage({ params }) {
         />
       </main>
       <Footer />
+      <LeadGenFloater source={`city-${slug}`} />
     </div>
   );
 }
