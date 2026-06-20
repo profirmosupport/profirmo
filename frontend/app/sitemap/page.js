@@ -12,7 +12,8 @@ import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
 import { SERVICE_LANDINGS } from '@/data/serviceLandings';
 
-const PRODUCTION_API_URL = 'https://profirmo.onrender.com';
+// EC2 + nginx + LE at proapi.profirmo.com (was profirmo.onrender.com).
+const PRODUCTION_API_URL = 'https://proapi.profirmo.com';
 
 function resolveApiBaseUrl() {
   if (process.env.API_BACKEND_URL) return process.env.API_BACKEND_URL;

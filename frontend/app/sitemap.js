@@ -6,7 +6,8 @@
 // blog posts, and featured cities surface in the next crawl without
 // any rebuild.
 
-const PRODUCTION_API_URL = 'https://profirmo.onrender.com';
+// EC2 + nginx + LE at proapi.profirmo.com (was profirmo.onrender.com).
+const PRODUCTION_API_URL = 'https://proapi.profirmo.com';
 
 function resolveApiBaseUrl() {
   if (process.env.API_BACKEND_URL) return process.env.API_BACKEND_URL;

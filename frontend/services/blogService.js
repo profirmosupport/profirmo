@@ -60,7 +60,9 @@ function ssrApiBase() {
   if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
   if (process.env.API_BASE_URL) return process.env.API_BASE_URL;
   if (process.env.NODE_ENV === 'production') {
-    return 'https://profirmo.onrender.com';
+    // EC2 + nginx + LE at proapi.profirmo.com
+    // (was profirmo.onrender.com until 2026-06-20).
+    return 'https://proapi.profirmo.com';
   }
   return 'http://localhost:5000';
 }

@@ -125,7 +125,8 @@ const CLUSTERS = [
 
 const ICONS = { HomeIcon, Heart, Briefcase, ShoppingBag, Receipt, FileText, Rocket, Globe2, Coins };
 
-const PRODUCTION_API_URL = 'https://profirmo.onrender.com';
+// EC2 + nginx + LE at proapi.profirmo.com (was profirmo.onrender.com).
+const PRODUCTION_API_URL = 'https://proapi.profirmo.com';
 
 function apiBase() {
   if (process.env.API_BACKEND_URL) return process.env.API_BACKEND_URL;

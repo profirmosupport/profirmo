@@ -16,7 +16,8 @@ import Footer from '@/components/common/Footer';
 import LeadGenFloater from '@/components/common/LeadGenFloater';
 import { API_BASE_URL } from '@/utils/constants';
 
-const PRODUCTION_API_URL = 'https://profirmo.onrender.com';
+// EC2 + nginx + LE at proapi.profirmo.com (was profirmo.onrender.com).
+const PRODUCTION_API_URL = 'https://proapi.profirmo.com';
 const BRAND = 'Profirmo';
 
 // Strategy §7.1 — only generate when we have at least N verified pros for the

@@ -22,7 +22,8 @@ const BRAND = 'Profirmo';
 // Used when neither `API_BACKEND_URL` nor `NEXT_PUBLIC_API_URL` is wired in
 // the deployment environment, so SSR fetches don't accidentally hit the
 // localhost fallback baked into the production bundle.
-const PRODUCTION_API_URL = 'https://profirmo.onrender.com';
+// EC2 + nginx + LE at proapi.profirmo.com (was profirmo.onrender.com).
+const PRODUCTION_API_URL = 'https://proapi.profirmo.com';
 
 function resolveApiBaseUrl() {
   // Server-side env var has priority — set this on Vercel

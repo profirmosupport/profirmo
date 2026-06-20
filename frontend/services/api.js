@@ -7,7 +7,9 @@ import { API_BASE_URL as CONFIGURED_API_BASE_URL } from '@/utils/constants';
 // send API requests to the hosted backend. Everywhere else (local dev,
 // previews) use the configured NEXT_PUBLIC_API_URL or the localhost default.
 const PRODUCTION_HOSTS = ['profirmo.com', 'www.profirmo.com'];
-const PRODUCTION_API_URL = 'https://profirmo.onrender.com';
+// Production API host — EC2 + nginx + Let's Encrypt at proapi.profirmo.com
+// (replaced the Render service https://profirmo.onrender.com on 2026-06-20).
+const PRODUCTION_API_URL = 'https://proapi.profirmo.com';
 
 export function getApiBaseUrl() {
   if (

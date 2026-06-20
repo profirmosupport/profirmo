@@ -39,7 +39,7 @@
       "@react-native-community/datetimepicker"
     ],
     "extra": {
-      "apiBaseUrl": "https://profirmo.onrender.com"
+      "apiBaseUrl": "https://proapi.profirmo.com"
     }
   }
 }
