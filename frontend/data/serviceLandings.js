@@ -5,7 +5,11 @@
 //
 // Each entry must include slug, title, subtitle, problem, howWeHelp,
 // documents, process, faq, ctaText, categoryHint. Optional fields:
-// keywords (SEO), accent (visual tint).
+// keywords (SEO), accent (visual tint),
+// accessOnly (boolean — when true, the page renders compliance-safe
+// "information & access to verified independent professionals" framing
+// instead of advertising the service; required for advocate-tier
+// categories per BCI Rule 36 / P.N. Vignesh (Madras HC, July 2024)).
 
 import {
   Home,
@@ -42,23 +46,205 @@ export const TOP_CITIES = [
 
 export const SERVICE_LANDINGS = [
   // -------------------------------------------------------------------------
+  // CATEGORY PILLAR PAGES (Phase B — strategy §4). Each has a `pillarSlug`
+  // that pulls in the long-form authority content from data/pillarPages.js.
+  // -------------------------------------------------------------------------
+  {
+    slug: 'gst-consultation',
+    pillarSlug: 'gst-consultation',
+    title: 'GST Consultation in India: The Complete 2026 Guide',
+    subtitle:
+      'Everything Indian businesses need to know about GST — registration, returns, audits, notices, refunds — explained plainly, with a checklist for each step.',
+    icon: 'Receipt',
+    accent: 'teal',
+    keywords:
+      'GST consultation India, GST registration, GST returns, GSTR-1, GSTR-3B, GSTR-9, GST notice, GST audit, GST refund, input tax credit',
+    problem:
+      "GST is the single largest indirect-tax system India has ever run, and seven years on it is still changing every Budget. Indian businesses face a moving target: rate changes, return formats, ITC matching rules, and notices that arrive months after the relevant period. Getting GST right is not optional — but staying current on every change is unrealistic without a system or a consultant.",
+    howWeHelp: [
+      'Educational coverage of GST registration thresholds and procedure.',
+      'Plain-English explainer of the return calendar (GSTR-1, 3B, 9) and the QRMP scheme.',
+      'A field guide to the most common notice sections — §61, §73, §74, §65, §67.',
+      'Notes on Input Tax Credit eligibility under §16 post the 2024 amendments.',
+      'Access to verified GST consultants via Pro Firmo for execution.',
+    ],
+    documents: [
+      'GST registration certificate (if registered)',
+      'Last 12 months of GSTR-1 and GSTR-3B',
+      'Books of accounts — sales register, purchase register',
+      'E-invoice / e-way bill data',
+      'Any notice received from the GST officer',
+      'PAN, Aadhaar of authorised signatory',
+    ],
+    process: [
+      'Tell the AI assistant your GST situation in plain English.',
+      'Get matched to a verified GST consultant for your industry.',
+      'Strategy call — registration, filings, notices, or refund.',
+      'Consultant handles end-to-end, with you in the loop on every filing.',
+      'Optional annual retainer for ongoing compliance.',
+    ],
+    faq: [
+      ['Do I need to register for GST?', 'Yes if your turnover crosses ₹40L (goods) or ₹20L (services) — thresholds halve in special-category states. Inter-state supply, e-commerce sale, or reverse-charge supply trigger registration regardless of turnover.'],
+      ['How does the QRMP scheme work?', 'Quarterly Return Monthly Payment — for taxpayers with turnover ≤ ₹5 crore. Pay GST monthly via challan or fixed-sum, file GSTR-1 quarterly. Reduces filing burden for SMEs.'],
+      ['Can I claim ITC if my supplier hasn\'t filed GSTR-1?', 'No — ITC matching to your GSTR-2B is required. If a supplier doesn\'t report your invoice, you cannot claim the credit until they do.'],
+      ['What\'s the deadline to claim ITC?', '30 November of the next financial year, or the date of filing the annual return, whichever is earlier (§16(4)).'],
+    ],
+    ctaText: 'Get GST consultation help',
+    categoryHint: 'tax-gst',
+  },
+  // -------------------------------------------------------------------------
+  {
+    slug: 'income-tax-itr',
+    pillarSlug: 'income-tax-itr',
+    title: 'Income Tax & ITR Filing in India: The 2026 Complete Guide',
+    subtitle:
+      'From picking the right ITR form to handling a 143(1) intimation — everything a salaried earner, freelancer, business owner or NRI needs to know about Indian income tax.',
+    icon: 'FileText',
+    accent: 'indigo',
+    keywords:
+      'income tax India, ITR filing, ITR-1 ITR-2 ITR-3 ITR-4, AIS TIS Form 26AS, new tax regime, NRI tax return, 143(1), 148 notice',
+    problem:
+      'Indian income-tax compliance has compressed: AIS, TIS, faceless assessment, and a unified portal mean the system has more visibility into your finances than ever, and the consequences of getting filings wrong are faster. Most people get notices not for evasion but for mismatch — TDS that wasn\'t reconciled, interest income that wasn\'t reported, capital gains the broker missed in the AIS feed.',
+    howWeHelp: [
+      'Coverage of every ITR form and which one fits your income mix.',
+      'Old vs new regime calculator logic explained.',
+      'AIS / TIS / 26AS reconciliation walk-through.',
+      'Plain-English notice guide: 143(1), 142(1), 143(2), 148, 245.',
+      'Access to verified CAs via Pro Firmo for filing and notice response.',
+    ],
+    documents: [
+      'PAN, Aadhaar, bank account number',
+      'Form 16 (salaried) or audited books (business)',
+      'Form 26AS, AIS, TIS for the assessment year',
+      'Capital-gains statements from brokers',
+      'Investment proofs for 80C / 80D / etc.',
+      'Any prior tax notices or correspondence',
+    ],
+    process: [
+      'Tell AI your income mix — salary, capital gains, rental, freelance, etc.',
+      'Form picker + regime picker recommend the right path.',
+      'Match to a CA — verified, with experience in your bracket.',
+      'CA files the ITR; refund or demand resolved on the portal.',
+      '12-month post-filing notice support included on most plans.',
+    ],
+    faq: [
+      ['Old or new tax regime?', 'New regime wins below ~₹15L gross with low 80C/HRA. Old regime wins when deductions stack up (e.g., metro renter with ₹3L HRA + ₹1.5L 80C + ₹50K NPS + ₹50K 80D).'],
+      ['Where do I look for income mismatch?', 'AIS first, then TIS, then 26AS. AIS is masterfile; TIS is the cleaned summary; 26AS is the TDS-only view that 143(1) reconciles against.'],
+      ['What if I miss the ITR deadline?', 'File a belated return till 31 December of the AY with a late fee (₹5,000 above ₹5L income, ₹1,000 below). Updated return possible till 24 months later under ITR-U with additional tax.'],
+      ['How long does a refund take?', 'Most refunds clear within 30-45 days of e-verification. Beyond 60 days, interest under §244A @ 6% p.a. accrues.'],
+    ],
+    ctaText: 'Get ITR help',
+    categoryHint: 'tax-income',
+  },
+  // -------------------------------------------------------------------------
+  {
+    slug: 'company-registration-and-roc',
+    pillarSlug: 'company-registration-and-roc',
+    title: 'Company Registration & ROC Compliance: The Founder\'s Guide',
+    subtitle:
+      'Pvt Ltd, LLP, OPC, Section 8 — incorporation done end-to-end, plus the annual ROC compliance calendar most founders only learn about after the first penalty.',
+    icon: 'Building2',
+    accent: 'teal',
+    keywords:
+      'company registration India, Pvt Ltd incorporation, LLP, OPC, SPICe+, ROC annual return MGT-7, AOC-4, DPT-3, DIR-3 KYC',
+    problem:
+      'SPICe+ has made incorporation simpler than ever — but ROC compliance after Day 1 catches almost every founder out. Annual filings, board meetings, director KYC, deposit returns, the disqualification trap. The first late-filing penalty usually arrives at month 18, by which point three forms are overdue and the bill is ₹20-30K.',
+    howWeHelp: [
+      'Structure-choice walk-through (Pvt Ltd vs LLP vs OPC vs Section 8).',
+      'End-to-end SPICe+ checklist — DSC, DIN, name reservation, MOA/AOA.',
+      'The full first-year compliance calendar with statutory deadlines.',
+      'Penalty schedule under §403 so founders see the cost of missing.',
+      'Access to verified CS / CA firms via Pro Firmo for incorporation + ongoing ROC retainers.',
+    ],
+    documents: [
+      'PAN, Aadhaar, address proof of all directors',
+      'Photographs of all directors',
+      'Office address proof (latest utility bill within 2 months)',
+      'NOC from property owner (if rented)',
+      'Top 2 proposed company name choices',
+      'Proposed objects of business',
+    ],
+    process: [
+      'AI walks you through structure choice based on your plan.',
+      'Match to a CS firm — flat fee, no surprises.',
+      'Documents collected via a secure portal.',
+      'SPICe+ Part A + Part B filed; name approval typically in 2-3 days.',
+      'Certificate of Incorporation + PAN + TAN + bank account.',
+      'Optional ROC retainer for the annual calendar.',
+    ],
+    faq: [
+      ['Pvt Ltd or LLP for a startup?', 'Pvt Ltd if external funding is even a possibility. LLP works for bootstrapped service firms but investors won\'t fund it without conversion.'],
+      ['What if I miss MGT-7 / AOC-4?', 'Late fees compound at ₹100/day per form, no upper cap. Three consecutive years\' default disqualifies all directors under §164(2).'],
+      ['Do I need an auditor from day one?', 'Yes — first auditor appointment under §139 within 30 days of incorporation (Form ADT-1).'],
+      ['Can a foreign / NRI director incorporate?', 'Yes — at least one director must be Indian-resident; the rest can be foreign nationals or NRIs.'],
+    ],
+    ctaText: 'Get incorporation help',
+    categoryHint: 'corporate-incorporation',
+  },
+  // -------------------------------------------------------------------------
+  {
+    slug: 'startup-compliance',
+    pillarSlug: 'startup-compliance',
+    title: 'Startup Compliance in India 2026: Founders, Funding, ESOPs, DPIIT',
+    subtitle:
+      'The legal and financial scaffolding a high-growth Indian startup needs from day one — founders agreement, ESOPs, DPIIT, FEMA reporting, angel-tax exemption.',
+    icon: 'Rocket',
+    accent: 'indigo',
+    keywords:
+      'startup compliance India, DPIIT recognition, 80-IAC, angel tax §56(2)(viib), FEMA FC-GPR, ESOP scheme, founders agreement, vesting',
+    problem:
+      "A startup's legal stack grows in layers. Year-one is incorporation + IP. The seed round adds an SHA, a vesting schedule, FC-GPR. Series A adds CCPS, a maintained cap table, ESOP top-ups. Most founders learn this in the middle of a fundraise — diligence surfaces every gap, and the deal slows down while you back-fill.",
+    howWeHelp: [
+      'A founders\' agreement template walk-through (vesting, ROFR, IP, IP assignment).',
+      'DPIIT recognition + 80-IAC + angel-tax exemption explained.',
+      'Term-sheet decoder — preference, liquidation, anti-dilution, ROFR.',
+      'ESOP scheme drafting + grant-letter mechanics.',
+      'FEMA FC-GPR + RBI FIRMS reporting timeline.',
+      'Access to verified startup-specialist lawyers and CSs via Pro Firmo.',
+    ],
+    documents: [
+      'Incorporation documents (CoI, MoA, AoA, PAN, TAN)',
+      'Current cap table — fully diluted',
+      'Founder + early-employee contracts with IP-assignment clauses',
+      'Any term sheets or LOI received',
+      'Customer + vendor contracts where IP changes hands',
+      'Bank statements for the last 12 months',
+    ],
+    process: [
+      'AI asks where you are — pre-incorp, post-seed, mid-fundraise, scaling.',
+      'Match to a startup-specialist consultant.',
+      'Strategy call covering structure, IP, equity, tax.',
+      'Drafting and review starts; data room organised in parallel.',
+      'Ongoing retainer for companies with regular deal flow.',
+    ],
+    faq: [
+      ['What is DPIIT recognition and why does it matter?', 'Government recognition of "innovative" startups (<10 years old, <₹100Cr turnover). Unlocks 80-IAC tax exemption and angel-tax exemption under §56(2)(viib). Application is administrative; turnaround 2-5 days.'],
+      ['How does the 80-IAC exemption work?', '100% income-tax deduction on profits for any 3 consecutive years out of the first 10. Requires Inter-Ministerial Board approval; turnaround 3-6 months.'],
+      ['What\'s the deadline to file FC-GPR?', '30 days from receipt of foreign investment, on the RBI FIRMS portal. Routinely missed by founders; compounding penalties apply.'],
+      ['What ESOP pool size is normal?', '8-12% post-seed; investors typically require top-up to 12-15% pre-Series A. Pool dilution comes from existing shareholders pro-rata unless specifically allocated.'],
+    ],
+    ctaText: 'Get startup compliance help',
+    categoryHint: 'corporate-startup',
+  },
+  // -------------------------------------------------------------------------
   {
     slug: 'property-dispute-consultation',
-    title: 'Property Dispute Consultation',
+    title: 'Property Disputes in India: Your Options',
     subtitle:
-      'Title disputes, partition, encroachment, builder issues — get a verified property lawyer to read the papers and tell you where you stand.',
+      'Title disputes, partition, encroachment, builder issues — understand the legal landscape and connect with a verified independent professional via Pro Firmo.',
     icon: 'Home',
     accent: 'amber',
+    accessOnly: true,
     keywords:
-      'property dispute lawyer, partition suit, title dispute India, real estate litigation, RERA complaint',
+      'property dispute India, partition suit, title dispute, RERA complaint, builder delay options',
     problem:
       'Property disputes in India are messy because they sit at the intersection of revenue records, registered deeds, succession, possession, and family relationships. People come to us mid-fight — the will is contested, the builder hasn\'t handed over possession, a sibling has occupied the family plot, the society is sitting on the share certificate. The longer you wait, the more expensive (and slower) it gets.',
     howWeHelp: [
-      'Document review by a verified civil/property lawyer in your jurisdiction.',
-      'A plain-English read on whether you have a clean title and an enforceable claim.',
-      'Strategy: civil suit, criminal complaint (cheating, trespass), RERA, consumer forum, or settlement.',
-      'Drafting partition / settlement / family-arrangement deeds where parties want a clean exit.',
-      'Liaison with sub-registrar, society, builder, and bank where loans are involved.',
+      'Educational overview of the procedural options available under Indian property law.',
+      'A plain-English explainer on what makes a title clean and a claim enforceable.',
+      'Decision guide: civil suit, RERA, consumer forum, or settlement — what each route involves.',
+      'Document checklists for partition / settlement / family-arrangement deeds.',
+      'Access to verified independent professionals via Pro Firmo, who can advise on your specific facts.',
     ],
     documents: [
       'Sale deed / gift deed / will / partition deed (whichever applies)',
@@ -81,7 +267,7 @@ export const SERVICE_LANDINGS = [
       ['Is a registered will enough to claim ancestral property?', 'A registered will is strong but not absolute — ancestral property has different rules under Hindu succession law than self-acquired property. We\'ll walk you through which applies.'],
       ['Do I need to go to court?', 'Not always. A well-drafted family-arrangement or settlement deed can close most family property disputes without litigation.'],
     ],
-    ctaText: 'Discuss my property dispute',
+    ctaText: 'Connect with a verified professional',
     categoryHint: 'civil-property',
   },
   // -------------------------------------------------------------------------
@@ -174,22 +360,22 @@ export const SERVICE_LANDINGS = [
   // -------------------------------------------------------------------------
   {
     slug: 'divorce-and-family-consultation',
-    title: 'Divorce & Family Consultation',
+    title: 'Divorce & Family Matters in India: Information & Options',
     subtitle:
-      'Mutual consent or contested, custody, maintenance, domestic violence — a family lawyer walks you through your real options.',
+      'Mutual consent or contested, custody, maintenance, domestic violence — learn the procedural landscape and connect with a verified independent professional via Pro Firmo.',
     icon: 'Heart',
     accent: 'rose',
+    accessOnly: true,
     keywords:
-      'divorce lawyer India, mutual consent divorce, contested divorce, alimony, child custody, domestic violence',
+      'mutual consent divorce India, contested divorce, alimony, child custody, BNS Section 85 86, domestic violence',
     problem:
       'Family-law cases are uniquely heavy — they\'re about money, children, dignity, and decades of history at once. People come to us at very different stages: thinking about leaving, mid-mediation, served with a §85 BNS complaint, denied custody, owed maintenance for years. The right first conversation saves months later.',
     howWeHelp: [
-      'Honest first read: do you have grounds, what kind of divorce makes sense, what to expect financially.',
-      'Mutual-consent divorce drafting + filing (the fastest, cheapest exit when both sides are aligned).',
-      'Contested-divorce strategy and pleadings in your jurisdiction.',
-      'Maintenance applications (BNSS §144, HMA §24/25, DV Act §20).',
-      'Child custody — interim and permanent — and visitation arrangements.',
-      'Defence in 85/86 BNS (the new 498A) cases.',
+      'Educational overview of grounds for divorce, custody, and maintenance under Indian personal-law statutes.',
+      'Plain-English process map for mutual-consent and contested divorce.',
+      'Reference notes on Section 144 BNSS, HMA §24/25, DV Act §20, and BNS Sections 85/86.',
+      'Document checklists for filings.',
+      'Access to verified independent professionals via Pro Firmo, who can advise on your specific situation.',
     ],
     documents: [
       'Marriage certificate',
@@ -212,19 +398,20 @@ export const SERVICE_LANDINGS = [
       ['Can I get custody as a father?', 'Yes — the welfare of the child is the only test, not the parent\'s gender. Courts increasingly grant joint or shared custody where both parents are fit.'],
       ['Is anticipatory bail possible in a 498A / BNS 85 case?', 'Yes — and post the Arnesh Kumar guidelines, courts grant it in the first hearing for most non-violent allegations.'],
     ],
-    ctaText: 'Talk to a family lawyer',
+    ctaText: 'Connect with a verified professional',
     categoryHint: 'family',
   },
   // -------------------------------------------------------------------------
   {
     slug: 'legal-notice-drafting',
-    title: 'Legal Notice Drafting',
+    title: 'Legal Notices in India: What They Are and Your Options',
     subtitle:
-      'Money recovery, breach of contract, cheque bounce, harassment — a properly drafted legal notice often closes the matter without going to court.',
+      'Money recovery, breach of contract, cheque bounce, harassment — learn what a legal notice does and connect with a verified independent professional via Pro Firmo to have one drafted.',
     icon: 'Mail',
     accent: 'amber',
+    accessOnly: true,
     keywords:
-      'legal notice drafting, cease and desist, recovery notice, demand notice, advocate notice India',
+      'legal notice India, cease and desist, recovery notice, demand notice, response to legal notice',
     problem:
       'A well-drafted legal notice does three things: it states the breach precisely, it cites the right law, and it gives a clear deadline. Most one-page "notices" people send themselves do none of those — and end up weakening their court case later. A lawyer-drafted notice signals you\'re serious, anchors your facts on record, and very often gets the other side to settle.',
     howWeHelp: [
@@ -256,19 +443,20 @@ export const SERVICE_LANDINGS = [
       ['What happens if the other side ignores my notice?', 'You proceed with filing the suit / complaint. The notice plus its non-reply is evidence of bad faith.'],
       ['Can a legal notice be sent by email?', 'Yes — courts have accepted notices served by email + registered post. We send both to be safe.'],
     ],
-    ctaText: 'Get a legal notice drafted',
+    ctaText: 'Connect with a verified professional',
     categoryHint: 'civil-notice',
   },
   // -------------------------------------------------------------------------
   {
     slug: 'cheque-bounce-matter',
-    title: 'Cheque Bounce Matter',
+    title: 'Cheque Bounce Under Section 138 NI Act: How It Works',
     subtitle:
-      'Section 138 NI Act case — whether you\'re the payee or the accused, the timeline is tight. Get a lawyer on day one.',
+      'Whether you are the payee or the accused, the procedural timeline under Section 138 is tight. Learn the process and connect with a verified independent professional via Pro Firmo.',
     icon: 'AlertCircle',
     accent: 'rose',
+    accessOnly: true,
     keywords:
-      'cheque bounce case, Section 138 NI Act, dishonour of cheque, summary trial, NI Act amendment',
+      'Section 138 NI Act, dishonour of cheque, cheque bounce timeline, summary trial procedure India',
     problem:
       'A cheque bounce case is one of the most common criminal complaints in India and one of the most time-bound. The payee has to send a notice within 30 days of dishonour, the accused has 15 days to pay, and the complaint must be filed within a month after that. Miss any step and the case is gone. People mess this up because the timeline is unforgiving and Form-A registered post tracking has its own quirks.',
     howWeHelp: [
@@ -299,7 +487,7 @@ export const SERVICE_LANDINGS = [
       ['Is the cheque-bounce case civil or criminal?', 'It\'s a criminal complaint, but the remedy is largely monetary and trials are summary (faster than regular criminal cases).'],
       ['What if the cheque was post-dated?', 'Doesn\'t matter — post-dated cheques are valid; the cause of action starts from the date of dishonour.'],
     ],
-    ctaText: 'Discuss my cheque bounce case',
+    ctaText: 'Connect with a verified professional',
     categoryHint: 'banking',
   },
   // -------------------------------------------------------------------------
@@ -437,13 +625,14 @@ export const SERVICE_LANDINGS = [
   // -------------------------------------------------------------------------
   {
     slug: 'consumer-complaint-consultation',
-    title: 'Consumer Complaint Consultation',
+    title: 'Consumer Complaints Under the 2019 Act: Your Rights',
     subtitle:
-      'Defective product, refund denied, e-commerce dispute, builder delay — the Consumer Protection Act, 2019 gives you fast remedies. Use them.',
+      'Defective product, refund denied, e-commerce dispute, builder delay — learn the procedural options under the Consumer Protection Act, 2019 and connect with a verified independent professional via Pro Firmo.',
     icon: 'ShoppingBag',
     accent: 'teal',
+    accessOnly: true,
     keywords:
-      'consumer complaint India, Consumer Protection Act 2019, CCPA, district consumer forum, e-commerce refund',
+      'Consumer Protection Act 2019, CCPA, district consumer commission, e-commerce refund India',
     problem:
       'The Consumer Protection Act, 2019 quietly changed the game — district commissions can hear claims up to ₹50 lakh, state commissions up to ₹2 crore, the National Commission above that. E-commerce defaults and product-liability are now squarely covered. Most complaints succeed if drafted properly; many fail because the complaint is filed in the wrong forum.',
     howWeHelp: [
@@ -474,19 +663,20 @@ export const SERVICE_LANDINGS = [
       ['Can I file against an e-commerce platform?', 'Yes — the 2019 Act and the E-Commerce Rules make platforms directly liable for product-listing defaults.'],
       ['What if I bought the product abroad?', 'Indian forums cover transactions where the cause of action arose in India or the seller is resident in India.'],
     ],
-    ctaText: 'File my consumer complaint',
+    ctaText: 'Connect with a verified professional',
     categoryHint: 'consumer',
   },
   // -------------------------------------------------------------------------
   {
     slug: 'employment-and-salary-dispute',
-    title: 'Employment & Salary Dispute',
+    title: 'Employment & Salary Disputes in India: Your Options',
     subtitle:
-      'Unpaid salary, wrongful termination, gratuity, F&F not settled, non-compete enforcement — labour lawyers who fight for both sides.',
+      'Unpaid salary, wrongful termination, gratuity, F&F not settled, non-compete enforcement — understand the statutory remedies and connect with a verified independent professional via Pro Firmo.',
     icon: 'Briefcase',
     accent: 'rose',
+    accessOnly: true,
     keywords:
-      'salary dispute India, wrongful termination, full and final settlement, gratuity, non-compete',
+      'salary dispute India, wrongful termination remedies, Payment of Gratuity Act, full and final settlement, Indian Labour Codes',
     problem:
       'Salary disputes are one of the most common — and most fixable — legal problems in India. The Industrial Disputes Act, the Payment of Wages Act, the new Labour Codes, the Gratuity Act and state Shops & Establishments laws each open a different door. People come to us when their F&F is stuck, gratuity is denied, or they\'ve been "asked to resign". Many of these settle once a properly-worded notice goes out.',
     howWeHelp: [
@@ -518,7 +708,7 @@ export const SERVICE_LANDINGS = [
       ['Is my non-compete enforceable?', 'Post-employment non-competes are largely void under §27 Indian Contract Act, except trade-secret protection. We can defend you in most enforcement attempts.'],
       ['How do I claim gratuity if HR refuses?', 'Form-I to the employer, then Form-N to the Controlling Authority under the Gratuity Act. Recovery is usually within 60–90 days.'],
     ],
-    ctaText: 'Talk to a labour lawyer',
+    ctaText: 'Connect with a verified professional',
     categoryHint: 'employment',
   },
   // -------------------------------------------------------------------------
@@ -609,13 +799,14 @@ export const SERVICE_LANDINGS = [
   // -------------------------------------------------------------------------
   {
     slug: 'nri-property-legal-help',
-    title: 'NRI Property Legal Help',
+    title: 'NRI Property in India: FEMA, TDS, Repatriation & PoA',
     subtitle:
-      'Buying, selling, gifting, inheriting Indian property as an NRI — FEMA, TDS, repatriation, PoA, and the documentation that holds up at the registrar.',
+      'Buying, selling, gifting, inheriting Indian property as an NRI — learn the FEMA, TDS, repatriation, and Power-of-Attorney rules, and connect with a verified independent professional via Pro Firmo.',
     icon: 'Globe2',
     accent: 'teal',
+    accessOnly: true,
     keywords:
-      'NRI property India, FEMA real estate, NRI TDS sale, repatriation, Power of Attorney NRI',
+      'NRI property India, FEMA real estate, NRI TDS Section 195, repatriation, Power of Attorney consulate attestation',
     problem:
       'NRI property transactions sit at the intersection of FEMA, Income Tax (TDS), the Registration Act, and family-property succession. Add a builder who\'s used to dealing with residents, and a sub-registrar who doesn\'t see many foreign passports, and a routine purchase becomes a 6-month detour. Done right with a proper PoA + a competent local lawyer, the same transaction is uneventful.',
     howWeHelp: [
@@ -647,7 +838,7 @@ export const SERVICE_LANDINGS = [
       ['How much can I repatriate from a property sale?', 'USD 1 million per financial year out of NRO balances, after tax. NRE balance is fully repatriable.'],
       ['Does my PoA work in India?', 'Only if it\'s attested by the Indian consulate / embassy in your country of residence AND adjudicated/registered in the state where the property is.'],
     ],
-    ctaText: 'Get NRI property help',
+    ctaText: 'Connect with a verified professional',
     categoryHint: 'nri-property',
   },
   // -------------------------------------------------------------------------

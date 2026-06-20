@@ -88,6 +88,20 @@ function ChipSection({ icon, title, items }) {
   );
 }
 
+// Whether a profile should be marked noindex per the BCI Rule 36 / P.N.
+// Vignesh framework. Lawyers + Legal Consultants default to noindex; CAs,
+// tax consultants, CS, and other non-advocate professions stay indexable.
+function isAdvocateProfile(p) {
+  if (!p) return false;
+  const t = String(p.professionalType || '').toLowerCase();
+  if (t.includes('lawyer') || t.includes('advocate') || t.includes('legal')) {
+    return true;
+  }
+  // Lawyer-specific record present → treat as advocate even if type is set
+  // to something generic.
+  return !!(p.lawyer && p.lawyer.barRegistrationNumber);
+}
+
 export default function ProfessionalProfilePage() {
   const { t } = useLanguage();
   const { id } = useParams();
@@ -97,6 +111,22 @@ export default function ProfessionalProfilePage() {
   const [similar, setSimilar] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Inject <meta name="robots" content="noindex,nofollow"> into <head>
+  // when the loaded profile is an advocate. Cleans up on unmount so the
+  // tag doesn't leak into the next page after client-side nav.
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    if (!isAdvocateProfile(professional)) return undefined;
+    const meta = document.createElement('meta');
+    meta.name = 'robots';
+    meta.content = 'noindex,nofollow';
+    meta.setAttribute('data-pf-advocate-noindex', '1');
+    document.head.appendChild(meta);
+    return () => {
+      if (meta.parentNode) meta.parentNode.removeChild(meta);
+    };
+  }, [professional]);
 
   useEffect(() => {
     if (!id) return;

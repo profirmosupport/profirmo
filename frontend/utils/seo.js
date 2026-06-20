@@ -77,32 +77,35 @@ export function buildProfessionalJsonLd(p) {
     };
   }
 
-  // Aggregate rating — Google's rich-results gate requires both ratingValue
-  // and reviewCount, and reviewCount >= 1.
-  const ratingValue = Number(p.rating);
-  const reviewCount = Number(p.reviewsCount);
-  if (ratingValue > 0 && reviewCount > 0) {
-    ld.aggregateRating = {
-      '@type': 'AggregateRating',
-      ratingValue: ratingValue.toFixed(1),
-      reviewCount,
-      bestRating: '5',
-      worstRating: '1',
-    };
-  }
+  // Per BCI Rule 36 / P.N. Vignesh (Madras HC, July 2024), publicly grading
+  // and pricing individual advocates is the exact pattern the court flagged.
+  // We therefore SKIP aggregateRating + makesOffer for lawyers entirely;
+  // CAs, tax consultants, and other non-advocate professions still emit
+  // them so legitimate rich results work for those listings.
+  if (!isLawyer) {
+    const ratingValue = Number(p.rating);
+    const reviewCount = Number(p.reviewsCount);
+    if (ratingValue > 0 && reviewCount > 0) {
+      ld.aggregateRating = {
+        '@type': 'AggregateRating',
+        ratingValue: ratingValue.toFixed(1),
+        reviewCount,
+        bestRating: '5',
+        worstRating: '1',
+      };
+    }
 
-  // Consultation as a Service offering — lets AI assistants surface the
-  // "they offer paid consultations starting at ₹X" line in answers.
-  const fee = Number(p.consultationFee);
-  if (fee > 0) {
-    ld.makesOffer = {
-      '@type': 'Offer',
-      name: 'Professional consultation',
-      priceCurrency: 'INR',
-      price: fee,
-      availability: 'https://schema.org/InStock',
-      url,
-    };
+    const fee = Number(p.consultationFee);
+    if (fee > 0) {
+      ld.makesOffer = {
+        '@type': 'Offer',
+        name: 'Professional consultation',
+        priceCurrency: 'INR',
+        price: fee,
+        availability: 'https://schema.org/InStock',
+        url,
+      };
+    }
   }
 
   // Strip undefined values so the rendered JSON stays tidy.

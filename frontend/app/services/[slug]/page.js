@@ -21,6 +21,7 @@ import {
   TOP_CITIES,
   ICONS,
 } from '@/data/serviceLandings';
+import { PILLAR_PAGES } from '@/data/pillarPages';
 
 const SITE_URL = 'https://profirmo.com';
 
@@ -34,11 +35,26 @@ export async function generateMetadata({ params }) {
   const s = SERVICE_LANDINGS.find((x) => x.slug === slug);
   if (!s) return { title: 'Service · Pro Firmo' };
   const url = `${SITE_URL}/services/${s.slug}`;
+  // hreflang — for pillars that have a Hindi translation, point Google at
+  // the parallel /hi/services/<slug> page so Indian Hindi searchers see the
+  // Hindi version in SERPs.
+  const HI_PILLARS = new Set(['gst-consultation']);
+  const hasHindi = HI_PILLARS.has(s.slug);
+  const languages = hasHindi
+    ? {
+        'en-IN': `/services/${s.slug}`,
+        'hi-IN': `/hi/services/${s.slug}`,
+        'x-default': `/services/${s.slug}`,
+      }
+    : undefined;
   return {
     title: `${s.title} · Pro Firmo`,
     description: s.subtitle,
     keywords: s.keywords,
-    alternates: { canonical: `/services/${s.slug}` },
+    alternates: {
+      canonical: `/services/${s.slug}`,
+      ...(languages ? { languages } : {}),
+    },
     openGraph: {
       title: `${s.title} · Pro Firmo`,
       description: s.subtitle,
@@ -68,6 +84,11 @@ export default async function ServiceLandingPage({ params }) {
 
   const Icon = ICONS[s.icon];
   const accent = ACCENT[s.accent] || ACCENT.amber;
+  // Advocate-tier categories run in "information & access" mode per BCI Rule
+  // 36 / P.N. Vignesh — flagged via the accessOnly bit on the data entry.
+  const accessOnly = !!s.accessOnly;
+  // Category pillars get long-form authority sections rendered below the FAQ.
+  const pillar = s.pillarSlug ? PILLAR_PAGES[s.pillarSlug] : null;
 
   // FAQ JSON-LD — Google / AI search love this for service pages.
   const faqJsonLd = {
@@ -120,16 +141,35 @@ export default async function ServiceLandingPage({ params }) {
                 className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-5 py-3 text-sm font-semibold text-slate-900 shadow-lg shadow-amber-500/30 transition hover:bg-amber-400"
               >
                 <Sparkles size={16} />
-                Discuss with AI first
+                {accessOnly ? 'Describe your matter to AI' : 'Discuss with AI first'}
               </Link>
-              <Link
-                href="/professionals"
-                className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/5 px-5 py-3 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/10"
-              >
-                <Users size={16} />
-                Browse professionals
-              </Link>
+              {accessOnly ? (
+                <Link
+                  href="/consult"
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/5 px-5 py-3 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/10"
+                >
+                  <Users size={16} />
+                  Request access to a verified professional
+                </Link>
+              ) : (
+                <Link
+                  href="/professionals"
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/5 px-5 py-3 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/10"
+                >
+                  <Users size={16} />
+                  Browse professionals
+                </Link>
+              )}
             </div>
+            {accessOnly && (
+              <p className="mt-3 max-w-3xl text-[11px] leading-relaxed text-amber-200/80">
+                This page is informational. Pro Firmo does not advertise,
+                recommend or endorse any specific advocate. We facilitate
+                access to verified, independent professionals; engagement,
+                fees and outcomes are between you and the professional you
+                choose.
+              </p>
+            )}
           </div>
         </section>
 
@@ -146,7 +186,7 @@ export default async function ServiceLandingPage({ params }) {
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <h2 className="text-sm font-semibold uppercase tracking-widest text-slate-500">
-                How Pro Firmo helps
+                {accessOnly ? 'How Pro Firmo helps you understand and access' : 'How Pro Firmo helps'}
               </h2>
               <ul className="mt-3 space-y-3">
                 {s.howWeHelp.map((h, i) => (
@@ -231,7 +271,7 @@ export default async function ServiceLandingPage({ params }) {
                 />
               </Link>
               <Link
-                href="/professionals"
+                href={accessOnly ? '/consult' : '/professionals'}
                 className="group flex items-center justify-between gap-3 rounded-2xl border border-teal-200 bg-teal-50 p-5 transition hover:border-teal-400 hover:bg-teal-100"
               >
                 <div>
@@ -239,10 +279,14 @@ export default async function ServiceLandingPage({ params }) {
                     Step 2
                   </p>
                   <p className="mt-1 text-base font-semibold text-slate-900">
-                    Browse verified professionals
+                    {accessOnly
+                      ? 'Request access to a verified professional'
+                      : 'Browse verified professionals'}
                   </p>
                   <p className="mt-1 text-xs text-slate-600">
-                    Filter by city, rating, experience.
+                    {accessOnly
+                      ? 'We connect you with an independent, verified professional. You choose.'
+                      : 'Filter by city, rating, experience.'}
                   </p>
                 </div>
                 <Users
@@ -279,13 +323,67 @@ export default async function ServiceLandingPage({ params }) {
           </dl>
         </section>
 
+        {/* Pillar deep-dive — only present on category pillar pages. */}
+        {pillar ? (
+          <section className="mx-auto max-w-3xl px-4 pb-14 sm:px-6 lg:px-8">
+            <div className="mb-6 flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-amber-800">
+                Deep dive
+              </span>
+              <h2 className="text-base font-semibold uppercase tracking-widest text-slate-700">
+                The complete guide
+              </h2>
+            </div>
+            {pillar.intro ? (
+              <p className="mb-8 text-sm leading-relaxed text-slate-700">
+                {pillar.intro}
+              </p>
+            ) : null}
+            <div className="space-y-8">
+              {pillar.sections.map((sec) => (
+                <article key={sec.heading}>
+                  <h3 className="text-base font-semibold text-slate-900">
+                    {sec.heading}
+                  </h3>
+                  <div className="mt-3 space-y-3 text-sm leading-relaxed text-slate-700">
+                    {sec.body.map((para, i) => (
+                      <p key={i}>{para}</p>
+                    ))}
+                  </div>
+                </article>
+              ))}
+            </div>
+            {Array.isArray(pillar.related) && pillar.related.length > 0 ? (
+              <div className="mt-10 rounded-2xl border border-slate-200 bg-white p-5">
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+                  Related
+                </p>
+                <ul className="mt-3 grid grid-cols-1 gap-2 text-sm text-amber-700 sm:grid-cols-3">
+                  {pillar.related.map((r) => (
+                    <li key={r.href}>
+                      <Link
+                        href={r.href}
+                        className="hover:underline underline-offset-2"
+                      >
+                        {r.label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
         {/* City-wise internal links */}
         <section className="bg-slate-100/60 py-12">
           <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
             <div className="mb-4 flex items-center gap-2">
               <MapPin size={16} className="text-slate-600" />
               <h2 className="text-sm font-semibold uppercase tracking-widest text-slate-700">
-                Find professionals near you
+                {accessOnly
+                  ? 'Access verified professionals by city'
+                  : 'Find professionals near you'}
               </h2>
             </div>
             <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">

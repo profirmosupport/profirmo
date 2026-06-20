@@ -110,6 +110,19 @@ const COLUMNS = [
       // because translations live in the language pack; we'll fall
       // back to the literal text when no key is provided.
       { label: 'Join our team', href: '/join-team' },
+      { label: 'For professionals', href: '/for-professionals' },
+    ],
+  },
+  {
+    // Free tools — link magnets per strategy §9; zero compliance
+    // exposure. Plain `label` so we don't need new i18n entries for
+    // every new tool we ship.
+    headingKey: 'footer.colTools',
+    links: [
+      { label: 'GST Calculator', href: '/tools/gst-calculator' },
+      { label: 'Knowledge Hub', href: '/services' },
+      { label: 'Resources', href: '/resources' },
+      { label: 'Blog', href: '/blog' },
     ],
   },
 ];
