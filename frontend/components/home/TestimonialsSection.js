@@ -3,11 +3,11 @@
 import {
   Star,
   Quote,
-  Play,
-  Video,
-  Mic,
   MessageSquareQuote,
   Heart,
+  Lightbulb,
+  Sparkles,
+  TrendingUp,
 } from 'lucide-react';
 import { useLanguage } from '@/components/LanguageProvider';
 
@@ -61,23 +61,46 @@ const TESTIMONIALS = [
   },
 ];
 
-// Two video / audio reviews + one Facebook page card in the third slot.
-const MEDIA_REVIEWS = [
+// Two fun-fact cards sit alongside the Facebook page widget in the 3-up
+// row at the top of the testimonials section. Snackable, India-specific
+// stats that earn a second look and reinforce platform positioning.
+const FUN_FACTS = [
   {
-    img: 8,
-    name: 'Priyanka Rao',
-    outcomeKey: 'testimonials.media1Outcome',
-    typeKey: 'testimonials.media1Type',
-    icon: Video,
+    icon: Lightbulb,
+    accent: 'amber',
+    tag: 'Fun fact',
+    stat: '60%',
+    headline: 'of grey divorces in India are filed by women',
+    body:
+      'Indian family courts now report 30–40% more over-50 divorces than a decade ago — and women lead the filings, a quiet shift driven by financial independence and an empty nest.',
+    source: 'Family-Law Series · 2026',
   },
   {
-    img: 24,
-    name: 'Imran Sheikh',
-    outcomeKey: 'testimonials.media2Outcome',
-    typeKey: 'testimonials.media2Type',
-    icon: Mic,
+    icon: Sparkles,
+    accent: 'teal',
+    tag: 'Did you know?',
+    stat: '1.4M+',
+    headline: 'advocates enrolled in India, only ~4% specialise in tax',
+    body:
+      'India has one of the largest bars in the world, but tax-and-GST specialists are a tiny slice. Pro Firmo concentrates on this scarce supply so finding the right professional takes minutes, not days.',
+    source: 'BCI roll · 2026',
   },
 ];
+
+const FACT_ACCENT = {
+  amber: {
+    band: 'from-amber-100 via-amber-50 to-white',
+    tile: 'bg-amber-500 text-white',
+    pill: 'bg-amber-100 text-amber-800',
+    stat: 'text-amber-700',
+  },
+  teal: {
+    band: 'from-teal-100 via-teal-50 to-white',
+    tile: 'bg-teal-500 text-white',
+    pill: 'bg-teal-100 text-teal-800',
+    stat: 'text-teal-700',
+  },
+};
 
 function Stars() {
   return (
@@ -160,43 +183,52 @@ export default function TestimonialsSection() {
         </div>
       </div>
 
-      {/* Video / audio reviews + Facebook page widget in the 3rd slot. */}
+      {/* Fun-fact cards + Facebook page widget in the 3-up row. */}
       <div className="mx-auto mt-14 max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid gap-6 sm:grid-cols-3">
           <FacebookPageCard />
-          {MEDIA_REVIEWS.map(({ img, name, outcomeKey, typeKey, icon: Icon }) => (
-            <div
-              key={name}
-              className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card transition-all duration-300 hover:-translate-y-1 hover:border-teal-300 hover:shadow-glow-cyan"
-            >
-              <div className="relative h-44 overflow-hidden bg-gradient-to-br from-amber-500 to-amber-600">
-                <img
-                  src={`https://i.pravatar.cc/400?img=${img}`}
-                  alt={t('testimonials.reviewAlt', { name })}
-                  loading="lazy"
-                  className="h-full w-full object-cover opacity-90 transition group-hover:scale-105"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-900/50 to-transparent" />
-                <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-slate-700 backdrop-blur">
-                  <Icon className="h-3.5 w-3.5 text-amber-600" />
-                  {t(typeKey)}
-                </span>
-                <button
-                  type="button"
-                  aria-label={t('testimonials.playReview', { name })}
-                  className="absolute inset-0 grid place-items-center"
-                >
-                  <span className="grid h-14 w-14 place-items-center rounded-full bg-gradient-to-br from-amber-600 to-amber-500 text-white shadow-glow transition group-hover:scale-110">
-                    <Play className="h-6 w-6 translate-x-0.5 fill-white" />
+          {FUN_FACTS.map((f) => {
+            const a = FACT_ACCENT[f.accent] || FACT_ACCENT.amber;
+            const Icon = f.icon;
+            return (
+              <div
+                key={f.headline}
+                className={`group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br ${a.band} shadow-card transition-all duration-300 hover:-translate-y-1 hover:border-teal-300 hover:shadow-glow-cyan`}
+              >
+                <div className="flex items-center justify-between px-5 pt-5">
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-widest ${a.pill}`}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {f.tag}
                   </span>
-                </button>
+                  <span
+                    className={`grid h-9 w-9 place-items-center rounded-xl shadow-sm ${a.tile}`}
+                  >
+                    <TrendingUp className="h-4 w-4" />
+                  </span>
+                </div>
+                <div className="px-5 pb-5 pt-4">
+                  <p
+                    className={`text-4xl font-extrabold leading-none tracking-tight sm:text-5xl ${a.stat}`}
+                  >
+                    {f.stat}
+                  </p>
+                  <p className="mt-3 text-sm font-semibold leading-snug text-slate-900">
+                    {f.headline}
+                  </p>
+                  <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                    {f.body}
+                  </p>
+                </div>
+                <div className="mt-auto border-t border-white/60 bg-white/60 px-5 py-2.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+                    {f.source}
+                  </p>
+                </div>
               </div>
-              <div className="p-4">
-                <p className="text-sm font-semibold text-slate-900">{name}</p>
-                <p className="mt-1 text-xs text-slate-600">{t(outcomeKey)}</p>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

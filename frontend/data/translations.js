@@ -231,11 +231,11 @@ export const translations = {
     'featuredFirms.viewFirm': 'View firm',
 
     // --- Dashboard preview section ---
-    'dashboardPreview.eyebrow': 'Client dashboard',
-    'dashboardPreview.headingLead': 'Everything you need in one',
-    'dashboardPreview.headingHighlight': 'intelligent dashboard',
+    'dashboardPreview.eyebrow': 'Professional dashboard',
+    'dashboardPreview.headingLead': 'Run your entire practice from',
+    'dashboardPreview.headingHighlight': 'one clean workspace',
     'dashboardPreview.subtext':
-      'Track cases, manage bookings and review AI-summarised consultations — all in a single, polished workspace.',
+      'Cases, clients, availability, bookings, firm members and payouts — every part of your day-to-day, designed for verified legal and tax professionals.',
     'dashboardPreview.navOverview': 'Overview',
     'dashboardPreview.navCases': 'My cases',
     'dashboardPreview.navBookings': 'Bookings',
@@ -533,11 +533,11 @@ export const translations = {
     'featuredFirms.viewFirm': 'फर्म देखें',
 
     // --- Dashboard preview section ---
-    'dashboardPreview.eyebrow': 'ग्राहक डैशबोर्ड',
-    'dashboardPreview.headingLead': 'जो कुछ आपको चाहिए, सब एक',
-    'dashboardPreview.headingHighlight': 'बुद्धिमान डैशबोर्ड में',
+    'dashboardPreview.eyebrow': 'प्रोफेशनल डैशबोर्ड',
+    'dashboardPreview.headingLead': 'अपनी पूरी प्रैक्टिस चलाएँ',
+    'dashboardPreview.headingHighlight': 'एक साफ़ वर्कस्पेस से',
     'dashboardPreview.subtext':
-      'मामले ट्रैक करें, बुकिंग प्रबंधित करें और एआई-सारांशित परामर्श देखें — सब एक ही परिष्कृत वर्कस्पेस में।',
+      'मामले, ग्राहक, उपलब्धता, बुकिंग, फ़र्म सदस्य और भुगतान — आपकी रोज़मर्रा का हर हिस्सा, वेरिफ़ाइड लीगल और टैक्स पेशेवरों के लिए डिज़ाइन किया गया।',
     'dashboardPreview.navOverview': 'अवलोकन',
     'dashboardPreview.navCases': 'मेरे मामले',
     'dashboardPreview.navBookings': 'बुकिंग',

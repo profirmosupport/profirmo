@@ -13,7 +13,8 @@ import { useLanguage } from '@/components/LanguageProvider';
 const STATS = [
   {
     icon: ShieldCheck,
-    value: '2,400+',
+    // Verified-professional count. Bump this as live supply grows.
+    value: '240+',
     labelKey: 'stats.verifiedConsultants',
     trendKey: 'stats.verifiedTrend',
     // mini-bar heights (0–1)
