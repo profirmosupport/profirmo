@@ -209,7 +209,10 @@ const SETTINGS = {
   // The `storage_driver` key flips the entire upload pipeline between
   // local disk and AWS S3 at runtime (no restart required). The S3
   // sub-keys configure the SDK client. `aws_secret_access_key` is
-  // marked `encrypted: true` so it is stored as AES-GCM ciphertext.
+  // stored as plaintext + masked from the admin GET response by the
+  // `secret: true` flag; encryption at rest is intentionally OFF here
+  // because it was tied to JWT_SECRET and silently broke whenever the
+  // signing secret was rotated.
   storage_driver: {
     label: 'Storage driver',
     description:
@@ -244,12 +247,11 @@ const SETTINGS = {
   aws_secret_access_key: {
     label: 'AWS Secret Access Key',
     description:
-      'Secret half of the IAM access key. Stored encrypted (AES-256-GCM) using a key derived from JWT_SECRET. Re-enter to rotate.',
+      'Secret half of the IAM access key. Stored as plaintext in admin_settings; the admin GET response masks the value via `secret: true` so it never leaves the server in cleartext. Re-enter to rotate.',
     defaultGetter: () => process.env.AWS_SECRET_ACCESS_KEY || '',
     type: 'string',
     group: 'Storage / AWS S3',
     secret: true,
-    encrypted: true,
     coerce: stringCoerce,
     format: stringCoerce,
   },
