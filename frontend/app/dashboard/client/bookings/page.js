@@ -16,7 +16,9 @@ import EmptyState from '@/components/common/EmptyState';
 import ConnectChips from '@/components/booking/ConnectChips';
 import bookingService from '@/services/bookingService';
 import { ROLES } from '@/utils/constants';
-import { formatDate, formatTime, formatCurrency } from '@/utils/formatters';
+import { formatDate, formatCurrency } from '@/utils/formatters';
+import { formatSlotLabel } from '@/utils/availability';
+import InstantBadge, { isInstantBooking } from '@/components/booking/InstantBadge';
 
 const STATUS_VARIANT = {
   pending: 'amber',
@@ -121,7 +123,9 @@ export default function ClientBookingsPage() {
               <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Professional</th>
-                  <th className="px-4 py-3 font-semibold">Type</th>
+                  {/* "Type" column merged into "When" — the instant /
+                      scheduled badge now sits inline above the date/time
+                      so the table is one column narrower. */}
                   <th className="px-4 py-3 font-semibold">When</th>
                   <th className="px-4 py-3 font-semibold">Duration</th>
                   <th className="px-4 py-3 font-semibold">Cost</th>
@@ -153,17 +157,30 @@ export default function ClientBookingsPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-slate-600 capitalize">
-                      {b.type || '—'}
-                    </td>
                     <td className="px-4 py-3 text-slate-600">
-                      {b.type === 'instant'
-                        ? 'Now'
-                        : b.date
-                          ? `${formatDate(b.date)}${
-                              b.time ? `, ${formatTime(b.time)}` : ''
-                            }`
-                          : '—'}
+                      <div className="flex flex-col items-start gap-1">
+                        {b.type ? (
+                          <div className="flex flex-wrap items-center gap-1">
+                            <Badge
+                              variant={
+                                b.type === 'instant' ? 'green' : 'blue'
+                              }
+                            >
+                              {b.type === 'instant' ? 'Instant' : 'Scheduled'}
+                            </Badge>
+                            {isInstantBooking(b) && <InstantBadge />}
+                          </div>
+                        ) : null}
+                        <span className="text-sm text-slate-700">
+                          {b.type === 'instant'
+                            ? 'Now'
+                            : b.date
+                              ? `${formatDate(b.date)}${
+                                  b.time ? `, ${formatSlotLabel(b.time)}` : ''
+                                }`
+                              : '—'}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-slate-600">
                       {b.duration ? `${b.duration} min` : '—'}

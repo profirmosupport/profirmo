@@ -193,6 +193,13 @@ export const BOOKING_TYPES = {
   SCHEDULED: 'scheduled',
 };
 
+// Instant bookings interrupt a professional mid-flow and require them to
+// drop whatever they're doing — so they're priced at 2x the per-minute
+// rate the pro set for scheduled bookings. Surfaced on the booking page
+// (toggle copy + estimated-cost line + right-side ConsultationSummary)
+// so the client sees the multiplier before confirming.
+export const INSTANT_BOOKING_MULTIPLIER = 2;
+
 export const FIRM_TYPES = ['Legal Firm', 'Tax Firm'];
 
 export const USER_TYPES = ['individual', 'business'];

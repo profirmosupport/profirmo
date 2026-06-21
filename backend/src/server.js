@@ -119,6 +119,10 @@ const SYNC_ORDER = [
   db.Employee,
   db.EmployeeCommission,
   db.EmployeePayout,
+  // Professional dashboard calendar reminders — soft links (no FKs) to
+  // bookings + cases, so order vs. those tables doesn't matter, but it
+  // does need to exist for the calendar widget to load.
+  db.ProfessionalReminder,
 ];
 
 // Boot the Profirmo HTTP server.

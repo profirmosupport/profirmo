@@ -31,6 +31,7 @@ const SupportTicket = require('./SupportTicket');
 // --- Phase-6 jobs / notifications models -----------------------------------
 const Job = require('./Job');
 const Notification = require('./Notification');
+const ProfessionalReminder = require('./ProfessionalReminder');
 
 // --- Phase-2 profile / firm models ----------------------------------------
 const Address = require('./Address');
@@ -447,4 +448,5 @@ module.exports = {
   Employee,
   EmployeeCommission,
   EmployeePayout,
+  ProfessionalReminder,
 };

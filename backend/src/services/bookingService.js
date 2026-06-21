@@ -8,6 +8,7 @@ const {
 const { Op } = require('sequelize');
 const { paginate } = require('./professionalService');
 const notificationService = require('./notificationService');
+const { effectiveRateFor } = require('../config/booking');
 
 // Attach `consultationId` to a list of bookings via a single bulk lookup.
 const attachConsultations = async (bookings) => {
@@ -150,7 +151,14 @@ const create = async (data = {}, actor = null) => {
     'A client';
 
   const duration = Number(data.duration) || 0;
-  const estimatedCost = duration * (pro.rate || 0);
+  const bookingType = data.type || 'scheduled';
+  // Instant bookings cost the client (and earn the pro) 2× the base rate.
+  // See backend/src/config/booking.js for the multiplier constant — kept
+  // in sync with frontend/utils/constants.js so the displayed cost on the
+  // booking page exactly equals the Razorpay order amount and the
+  // estimatedCost we store on the row.
+  const effectiveRate = effectiveRateFor(pro.rate, bookingType);
+  const estimatedCost = duration * effectiveRate;
 
   const booking = await Booking.create({
     clientId: resolvedClientId,
@@ -158,7 +166,7 @@ const create = async (data = {}, actor = null) => {
     date: data.date || '',
     time: data.time || '',
     duration,
-    type: data.type || 'scheduled',
+    type: bookingType,
     estimatedCost,
     status: data.status || 'pending',
   });

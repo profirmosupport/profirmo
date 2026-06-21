@@ -84,7 +84,9 @@ const listMine = asyncHandler(async (req, res) => {
   const bookings = bookingIds.length
     ? await Booking.findAll({
         where: { id: { [Op.in]: bookingIds } },
-        attributes: ['id', 'date', 'time', 'duration'],
+        // `type` is consumed by the payments table (Kind column shows
+        // Instant/Scheduled) and the Detail column's InstantBadge.
+        attributes: ['id', 'date', 'time', 'duration', 'type'],
         raw: true,
       })
     : [];

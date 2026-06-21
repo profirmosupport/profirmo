@@ -16,6 +16,10 @@ import Badge from '@/components/common/Badge';
 import EmptyState from '@/components/common/EmptyState';
 import { formatINR } from '@/services/paymentService';
 import { formatDate } from '@/utils/formatters';
+import { formatSlotLabel } from '@/utils/availability';
+// InstantBadge removed from this table — the Kind column already shows an
+// Instant/Scheduled pill under the "Booking" chip, so a second 2× chip in
+// the Detail column was just visual noise.
 
 const STATUS_VARIANT = {
   created: 'amber',
@@ -109,21 +113,46 @@ export default function PaymentHistoryTable({
                         {formatDate(p.capturedAt || p.createdAt)}
                       </td>
                       <td className="px-4 py-3">
-                        <Badge variant={isSubscription ? 'violet' : 'amber'}>
-                          {isSubscription ? 'Subscription' : 'Booking'}
-                        </Badge>
+                        <div className="flex flex-col items-start gap-1">
+                          <Badge variant={isSubscription ? 'violet' : 'amber'}>
+                            {isSubscription ? 'Subscription' : 'Booking'}
+                          </Badge>
+                          {/* For booking rows, surface whether it was
+                              instant (2× rate) or scheduled. Sits under
+                              the Booking/Subscription pill so the column
+                              stays one width. */}
+                          {!isSubscription && p.booking && p.booking.type && (
+                            <Badge
+                              variant={
+                                p.booking.type === 'instant' ? 'green' : 'blue'
+                              }
+                            >
+                              {p.booking.type === 'instant'
+                                ? 'Instant'
+                                : 'Scheduled'}
+                            </Badge>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-slate-700">
                         {p.counterpartyName || '—'}
                       </td>
                       <td className="px-4 py-3 text-slate-600">
-                        {isSubscription
-                          ? p.subscriptionLabel || 'Subscription charge'
-                          : p.booking
-                            ? `${p.booking.date || ''}${
-                                p.booking.time ? ` ${p.booking.time}` : ''
-                              } · ${p.booking.duration || 0} min`
-                            : '—'}
+                        {isSubscription ? (
+                          p.subscriptionLabel || 'Subscription charge'
+                        ) : p.booking ? (
+                          <span>
+                            {p.booking.date ? formatDate(p.booking.date) : ''}
+                            {p.booking.time
+                              ? ` ${formatSlotLabel(p.booking.time)}`
+                              : ''}
+                            {p.booking.duration
+                              ? ` · ${p.booking.duration} min`
+                              : ''}
+                          </span>
+                        ) : (
+                          '—'
+                        )}
                       </td>
                       <td className="px-4 py-3 font-semibold text-slate-800">
                         {formatINR(p.amount)}

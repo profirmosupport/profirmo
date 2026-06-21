@@ -3,11 +3,12 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Menu, X, Wallet } from 'lucide-react';
+import { Menu, X, Wallet, BellPlus } from 'lucide-react';
 import Sidebar from '@/components/dashboard/Sidebar';
 import BrandLogo from '@/components/common/BrandLogo';
 import ProfileDropdown from '@/components/common/ProfileDropdown';
 import NotificationBell from '@/components/common/NotificationBell';
+import AddReminderModal from '@/components/dashboard/AddReminderModal';
 import { useLanguage } from '@/components/LanguageProvider';
 import { useAuth } from '@/hooks/useAuth';
 import { ROLES } from '@/utils/constants';
@@ -22,12 +23,16 @@ export default function DashboardLayout({ children, role, title, subtitle }) {
   const { t } = useLanguage();
   const { loading, isAuthenticated, user } = useAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  // Wallet quick-link is only relevant to professionals (both standalone +
-  // firm-attached). Other roles keep the existing two-item header.
-  const showWalletShortcut =
+  const [reminderOpen, setReminderOpen] = useState(false);
+  // Wallet quick-link + Add reminder shortcut are only relevant to
+  // professionals (both standalone + firm-attached). Other roles keep
+  // the existing two-item header.
+  const isProfessional =
     user &&
     (user.role === ROLES.PROFESSIONAL ||
       user.role === ROLES.FIRM_PROFESSIONAL);
+  const showWalletShortcut = isProfessional;
+  const showReminderShortcut = isProfessional;
 
   // Route guard — once auth has resolved, bounce guests to the login page.
   useEffect(() => {
@@ -126,6 +131,17 @@ export default function DashboardLayout({ children, role, title, subtitle }) {
             </div>
 
             <div className="flex items-center gap-2 sm:gap-3">
+              {showReminderShortcut && (
+                <button
+                  type="button"
+                  onClick={() => setReminderOpen(true)}
+                  className="inline-flex h-10 items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 text-sm font-medium text-amber-700 transition hover:border-amber-300 hover:bg-amber-100"
+                  title="Add a reminder"
+                >
+                  <BellPlus className="h-4 w-4" />
+                  <span className="hidden sm:inline">Add reminder</span>
+                </button>
+              )}
               {showWalletShortcut && (
                 <Link
                   href="/dashboard/professional/wallet"
@@ -144,6 +160,13 @@ export default function DashboardLayout({ children, role, title, subtitle }) {
 
         <main className="px-4 py-6 sm:px-6 lg:px-8">{children}</main>
       </div>
+
+      {showReminderShortcut && (
+        <AddReminderModal
+          open={reminderOpen}
+          onClose={() => setReminderOpen(false)}
+        />
+      )}
     </div>
   );
 }

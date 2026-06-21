@@ -58,6 +58,18 @@ async function resolveProfessional(professionalId) {
         bio: detail.bio || null,
         professionalType: detail.professionalType || null,
         consultationFee: detail.consultationFee || null,
+        // Public-profile fields surfaced on the client's booking-detail card
+        // so the "professional card on top" mirrors the marketplace listing
+        // — saves a second roundtrip to /api/professionals/:id.
+        city: (user && user.city) || null,
+        rating: detail.rating != null ? Number(detail.rating) : null,
+        reviewsCount:
+          detail.reviewsCount != null ? Number(detail.reviewsCount) : null,
+        yearsOfExperience:
+          detail.yearsOfExperience != null
+            ? Number(detail.yearsOfExperience)
+            : null,
+        verified: detail.verificationStatus === 'verified',
       };
     }
   }
@@ -150,9 +162,25 @@ async function getBookingDetail(bookingId, user) {
     consultationByPro,
     proClientReview,
   ] = await Promise.all([
+    // Prefer the most recent paid/refunded payment so the booking
+    // summary "Amount paid" line reflects the actual money exchanged.
+    // If no such payment exists yet, fall back to the latest created/
+    // failed attempt so the Pay-again banner on the client side can
+    // surface the amount due. The frontend treats `payment.status`
+    // explicitly, so emitting a pending row here is safe.
     Payment.findOne({
-      where: { bookingId, status: { [Op.in]: ['paid', 'refunded'] } },
-      order: [['createdAt', 'DESC']],
+      where: { bookingId },
+      order: [
+        // Sort: paid > refunded > failed > created. FIELD() returns 0
+        // for unmatched values; lower wins with ASC. Then by recency.
+        [
+          Payment.sequelize.literal(
+            "FIELD(status, 'paid', 'refunded', 'failed', 'created')"
+          ),
+          'ASC',
+        ],
+        ['createdAt', 'DESC'],
+      ],
     }),
     BookingNote.findAll({
       where: { bookingId },

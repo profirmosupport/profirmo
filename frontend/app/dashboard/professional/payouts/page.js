@@ -174,6 +174,20 @@ export default function ProfessionalPayoutsPage() {
                 <p className="mt-1 text-2xl font-bold text-slate-900">
                   {formatINR(available)}
                 </p>
+                {/* Confirms that the running balance already reflects the
+                    2× instant pricing wherever it applied — same number
+                    that lands in the bank. */}
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Totals include the 2× instant-booking surcharge where
+                  applicable. Net of platform fee. See{' '}
+                  <a
+                    href="/dashboard/professional/payments"
+                    className="font-semibold text-amber-700 hover:underline"
+                  >
+                    Payment history
+                  </a>{' '}
+                  for the per-booking breakdown.
+                </p>
               </div>
             </div>
             <form onSubmit={handleSubmit} className="mt-5 space-y-3">
