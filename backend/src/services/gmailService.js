@@ -10,7 +10,12 @@
 // the rationale — JWT-bound encryption silently broke on rotation).
 
 const adminSettings = require('./adminSettingsService');
-const { GmailConnection, Case, User } = require('../models');
+const {
+  GmailConnection,
+  GmailMessageLink,
+  Case,
+  User,
+} = require('../models');
 const { Op } = require('sequelize');
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -363,12 +368,152 @@ async function getMine(userId) {
   };
 }
 
+// --- Per-case fetch + pinning ----------------------------------------
+
+/**
+ * Fetch every client email associated with one case. Used as the
+ * sender-email match filter for per-case Gmail listing.
+ */
+async function caseClientEmails(caseId) {
+  const c = await Case.findOne({ where: { id: caseId }, raw: true });
+  if (!c) return { caseRow: null, emails: [], clientUserIds: [] };
+
+  const clientIds = [];
+  if (c.clientId) clientIds.push(c.clientId);
+  if (Array.isArray(c.clientIds)) {
+    for (const id of c.clientIds) if (id && !clientIds.includes(id)) clientIds.push(id);
+  }
+  if (clientIds.length === 0) return { caseRow: c, emails: [], clientUserIds: [] };
+  const users = await User.findAll({
+    where: { id: { [Op.in]: clientIds } },
+    attributes: ['id', 'email', 'name'],
+    raw: true,
+  });
+  const emails = users
+    .map((u) => String(u.email || '').toLowerCase())
+    .filter(Boolean);
+  return { caseRow: c, emails, users, clientUserIds: clientIds };
+}
+
+/**
+ * Pull recent Gmail messages relevant to one case.
+ *
+ *   1. Filter by sender email = any client email on the case.
+ *   2. Apply manual pins: if a message has a pin elsewhere (other
+ *      case), exclude it from this case's results. If it's pinned to
+ *      THIS case, force-include even if the sender no longer matches
+ *      (rare — handles cases where a client switched email address
+ *      after the message was pinned).
+ *
+ * Returns: { connectedEmail, messages: [{ ...message, pinnedHere, pinnedElsewhere }] }
+ */
+async function listMessagesForCase(userId, caseId, { max = 30 } = {}) {
+  const connection = await GmailConnection.findOne({ where: { userId } });
+  if (!connection) {
+    return { connectedEmail: null, messages: [], connected: false };
+  }
+  if (!String(connection.scope || '').includes('gmail.readonly')) {
+    return {
+      connectedEmail: connection.email,
+      messages: [],
+      connected: true,
+      scopeMissing: true,
+    };
+  }
+
+  const { caseRow, emails: caseEmails } = await caseClientEmails(caseId);
+  if (!caseRow) throw { statusCode: 404, message: 'Case not found' };
+
+  // No client emails on the case → nothing to match against, but we
+  // still surface any messages pinned to this case manually.
+  const pinned = await GmailMessageLink.findAll({
+    where: { userId, caseId },
+    raw: true,
+  });
+  const pinnedHere = new Set(pinned.map((p) => p.messageId));
+
+  // All pins this user has (any case) — to detect "pinned elsewhere".
+  const allPins = await GmailMessageLink.findAll({
+    where: { userId },
+    attributes: ['messageId', 'caseId'],
+    raw: true,
+  });
+  const pinByMessage = new Map(allPins.map((p) => [p.messageId, p.caseId]));
+
+  // Fetch most-recent messages — broader pull, then filter locally.
+  const recent = await listRecentMessages(connection, max);
+
+  const emailSet = new Set(caseEmails);
+  const filtered = recent.filter((m) => {
+    const fromEmail = String(m.fromEmail || '').toLowerCase();
+    const senderMatchesCase = emailSet.has(fromEmail);
+    const pinnedElsewhere =
+      pinByMessage.has(m.id) && pinByMessage.get(m.id) !== caseId;
+    if (pinnedHere.has(m.id)) return true; // force-include pinned-here
+    if (pinnedElsewhere) return false; // hide if pinned to another case
+    return senderMatchesCase;
+  });
+
+  return {
+    connectedEmail: connection.email,
+    connected: true,
+    caseClientEmails: caseEmails,
+    messages: filtered.map((m) => ({
+      ...m,
+      pinnedHere: pinnedHere.has(m.id),
+      pinnedElsewhere:
+        pinByMessage.has(m.id) && pinByMessage.get(m.id) !== caseId,
+      pinnedCaseId: pinByMessage.get(m.id) || null,
+    })),
+  };
+}
+
+/**
+ * Pin a Gmail message to one case for this user. Replaces any prior
+ * pin on the same (user, message). Returns the persisted link row.
+ */
+async function pinMessageToCase(userId, messageId, caseId) {
+  if (!messageId || !caseId) {
+    throw { statusCode: 422, message: 'messageId + caseId required' };
+  }
+  // Validate the user has access to the target case — reuses the
+  // same check the case detail page does.
+  const c = await Case.findOne({ where: { id: caseId }, raw: true });
+  if (!c) throw { statusCode: 404, message: 'Case not found' };
+
+  const existing = await GmailMessageLink.findOne({
+    where: { userId, messageId },
+  });
+  if (existing) {
+    await existing.update({ caseId, pinnedByUserId: userId });
+    return existing.get({ plain: true });
+  }
+  const row = await GmailMessageLink.create({
+    userId,
+    messageId,
+    caseId,
+    pinnedByUserId: userId,
+  });
+  return row.get({ plain: true });
+}
+
+/** Drop a manual pin so default sender-match rules apply again. */
+async function unpinMessage(userId, messageId) {
+  const row = await GmailMessageLink.findOne({ where: { userId, messageId } });
+  if (!row) return { unpinned: false };
+  await row.destroy();
+  return { unpinned: true };
+}
+
 module.exports = {
   buildAuthUrl,
   exchangeCode,
   mintAccessToken,
   listRecentMessages,
   autoLinkRecentMessages,
+  listMessagesForCase,
+  pinMessageToCase,
+  unpinMessage,
   disconnect,
   getMine,
 };

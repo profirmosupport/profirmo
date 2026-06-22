@@ -35,6 +35,7 @@ const ProfessionalReminder = require('./ProfessionalReminder');
 const CaseTask = require('./CaseTask');
 const AuditEvent = require('./AuditEvent');
 const GmailConnection = require('./GmailConnection');
+const GmailMessageLink = require('./GmailMessageLink');
 
 // --- Phase-2 profile / firm models ----------------------------------------
 const Address = require('./Address');
@@ -455,4 +456,5 @@ module.exports = {
   CaseTask,
   AuditEvent,
   GmailConnection,
+  GmailMessageLink,
 };

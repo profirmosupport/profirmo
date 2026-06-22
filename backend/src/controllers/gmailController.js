@@ -156,6 +156,40 @@ const disconnect = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'Gmail disconnected', out);
 });
 
+// Per-case Gmail listing — sender-email match against the case's
+// clients + manual pin overrides for multi-case clients.
+const listMessagesForCase = asyncHandler(async (req, res) => {
+  const out = await gmailService.listMessagesForCase(
+    req.user.id,
+    req.params.caseId
+  );
+  return successResponse(res, 200, 'Gmail messages for case', out);
+});
+
+const pinMessage = asyncHandler(async (req, res) => {
+  const row = await gmailService.pinMessageToCase(
+    req.user.id,
+    req.params.messageId,
+    (req.body && req.body.caseId) || null
+  );
+  auditService.recordCreate({
+    req,
+    entityType: 'gmail_pin',
+    entityId: row.id,
+    after: { messageId: row.messageId, caseId: row.caseId },
+    summary: `Gmail message ${row.messageId} pinned to case ${row.caseId}`,
+  });
+  return successResponse(res, 200, 'Message pinned', row);
+});
+
+const unpinMessage = asyncHandler(async (req, res) => {
+  const out = await gmailService.unpinMessage(
+    req.user.id,
+    req.params.messageId
+  );
+  return successResponse(res, 200, 'Message unpinned', out);
+});
+
 // Google Calendar — pulls events for the dashboard calendar widget.
 // Reuses the same Google account connection so no extra Connect click.
 const listCalendarEvents = asyncHandler(async (req, res) => {
@@ -174,4 +208,7 @@ module.exports = {
   sync,
   disconnect,
   listCalendarEvents,
+  listMessagesForCase,
+  pinMessage,
+  unpinMessage,
 };

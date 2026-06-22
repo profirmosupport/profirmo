@@ -38,6 +38,7 @@ import CaseAttachmentLink from '@/components/cases/CaseAttachmentLink';
 import CaseAttachmentList from '@/components/cases/CaseAttachmentList';
 import CaseAuditTrail from '@/components/cases/CaseAuditTrail';
 import CaseStageTracker from '@/components/cases/CaseStageTracker';
+import CaseGmailMessages from '@/components/cases/CaseGmailMessages';
 import caseService from '@/services/caseService';
 import { getLawFirm } from '@/services/profileService';
 import { syncCaseFromEcourts } from '@/services/ecourtsService';
@@ -965,6 +966,11 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
           carry an optional status / due date / priority that the
           dashboard calendar reads. */}
       <CaseAuditTrail caseId={caseId} />
+
+      {/* Inbound Gmail messages matched to this case. Renders nothing
+          when Gmail isn't connected — the dashboard-level
+          GmailIntegrationCard handles the connect / re-grant UX. */}
+      <CaseGmailMessages caseId={caseId} />
 
       {/* Updates — full-width timeline */}
       <Card>

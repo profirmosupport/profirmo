@@ -130,6 +130,9 @@ const SYNC_ORDER = [
   db.AuditEvent,
   // Per-user Gmail OAuth grants.
   db.GmailConnection,
+  // Manual pins from a Gmail message to a specific case (multi-case
+  // clients disambiguation).
+  db.GmailMessageLink,
 ];
 
 // Boot the Profirmo HTTP server.

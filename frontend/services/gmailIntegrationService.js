@@ -67,3 +67,27 @@ export async function listCalendarEvents({ from, to } = {}) {
   });
   return unwrap(res) || { events: [] };
 }
+
+// --- Per-case Gmail ---------------------------------------------------
+
+export async function listMessagesForCase(caseId) {
+  const res = await get(
+    `/api/integrations/gmail/case/${encodeURIComponent(caseId)}/messages`
+  );
+  return unwrap(res) || { messages: [], connected: false };
+}
+
+export async function pinMessage(messageId, caseId) {
+  const res = await post(
+    `/api/integrations/gmail/messages/${encodeURIComponent(messageId)}/pin`,
+    { caseId }
+  );
+  return unwrap(res);
+}
+
+export async function unpinMessage(messageId) {
+  const res = await del(
+    `/api/integrations/gmail/messages/${encodeURIComponent(messageId)}/pin`
+  );
+  return unwrap(res);
+}
