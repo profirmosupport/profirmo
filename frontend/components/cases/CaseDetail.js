@@ -437,6 +437,11 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
 
   return (
     <div className="space-y-6">
+      {/* Stage tracker — top of the page. The shared lifecycle (intake
+          → … → closed) is the first thing a pro should see when they
+          open a case. Drives the Kanban board on /cases too. */}
+      <CaseStageTracker caseRow={data} onUpdated={loadCase} />
+
       {/* Header */}
       <Card>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -960,13 +965,6 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
           carry an optional status / due date / priority that the
           dashboard calendar reads. */}
       <CaseAuditTrail caseId={caseId} />
-
-      {/* Stage tracker — shows the case's pipeline + current step in
-          the lifecycle (e.g. civil_suit → evidence_plaintiff). Reads
-          pipelines from /api/cases/pipelines, persists changes via
-          PATCH /api/cases/:id/stage. Sits above Updates because stage
-          is a fast-glance summary; Updates is the chronological log. */}
-      <CaseStageTracker caseRow={data} onUpdated={loadCase} />
 
       {/* Updates — full-width timeline */}
       <Card>

@@ -241,7 +241,8 @@
       "Bash(curl -s -o /dev/null -w \"Health %{http_code}\\\\n\" http://localhost:5001/api/health)",
       "Bash(curl -s -o /dev/null -w 'Callback \\(localhost in state\\) → %{redirect_url}\\\\n' 'http://localhost:5001/api/integrations/gmail/callback?error=test&state=__TRACKED_VAR__')",
       "Bash(node -e 'console.log\\(Buffer.from\\(JSON.stringify\\({u:\"x\",n:\"y\",o:\"https://profirmo.com\"}\\)\\).toString\\(\"base64url\"\\)\\)')",
-      "Bash(curl -s -o /dev/null -w 'Callback \\(prod in state\\)  → %{redirect_url}\\\\n' 'http://localhost:5001/api/integrations/gmail/callback?error=test&state=__TRACKED_VAR__')"
+      "Bash(curl -s -o /dev/null -w 'Callback \\(prod in state\\)  → %{redirect_url}\\\\n' 'http://localhost:5001/api/integrations/gmail/callback?error=test&state=__TRACKED_VAR__')",
+      "Bash(grep -n \"overflow-x-auto rounded-xl border border-slate-200 bg-white\\\\|</table>\\\\|</div>\\\\s*$\" /Users/vishalchauhan/code/profirmo/frontend/app/dashboard/professional/cases/page.js)"
     ],
     "additionalDirectories": [
       "/Users/vishalchauhan/code/profirmo/frontend/app/services",

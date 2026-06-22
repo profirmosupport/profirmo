@@ -35,6 +35,30 @@ const STATUS_LABEL = {
   closed: 'Closed',
 };
 
+// Local mirror of backend/src/config/caseStages.js so the table /
+// Kanban don't need an extra API round-trip to render labels. Keep in
+// sync if the canonical list changes — there's also /api/cases/stages
+// for the case-detail stepper which fetches dynamically.
+const STAGE_ORDER = [
+  'intake',
+  'preparation',
+  'filed',
+  'awaiting_response',
+  'hearing',
+  'closing',
+  'closed',
+];
+
+const STAGE_LABEL = {
+  intake: 'Intake',
+  preparation: 'Preparation',
+  filed: 'Filed',
+  awaiting_response: 'Awaiting Response',
+  hearing: 'Hearing',
+  closing: 'Closing',
+  closed: 'Closed',
+};
+
 function ListSkeleton() {
   return (
     <div className="space-y-3">
@@ -55,6 +79,9 @@ export default function ProfessionalCasesPage() {
   const [error, setError] = useState('');
   const [addOpen, setAddOpen] = useState(false);
   const [firmIdForCreate, setFirmIdForCreate] = useState(null);
+  // View mode — 'table' (default, dense scannable) or 'kanban'
+  // (columns grouped by stage, drag-and-glance for pipeline reviews).
+  const [viewMode, setViewMode] = useState('table');
   // Plan quota snapshot — drives the QuotaBanner + button-disable below.
   const [usage, setUsage] = useState(null);
 
@@ -166,6 +193,34 @@ export default function ProfessionalCasesPage() {
                 : `${cases.length} case${cases.length === 1 ? '' : 's'}`}
             </p>
             <div className="flex items-center gap-2">
+              {/* View mode toggle — Table (default, dense) vs Kanban
+                  (columns by stage). Sticky in component state only;
+                  not persisted yet — easy to upgrade to a localStorage
+                  pref later. */}
+              <div className="inline-flex overflow-hidden rounded-lg border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('table')}
+                  className={`px-3 py-1.5 text-xs font-medium transition ${
+                    viewMode === 'table'
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  Table
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('kanban')}
+                  className={`px-3 py-1.5 text-xs font-medium transition ${
+                    viewMode === 'kanban'
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  Kanban
+                </button>
+              </div>
               <Button
                 variant="outline"
                 size="sm"
@@ -211,13 +266,18 @@ export default function ProfessionalCasesPage() {
               </Button>
             }
           />
+        ) : viewMode === 'kanban' ? (
+          <CasesKanban cases={cases} />
         ) : (
           <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Title</th>
-                  <th className="px-4 py-3 font-semibold">Category</th>
+                  {/* Category column dropped — replaced by Stage so
+                      the table communicates *where the case is*
+                      instead of *what type of work it is*. */}
+                  <th className="px-4 py-3 font-semibold">Stage</th>
                   <th className="px-4 py-3 font-semibold">Client</th>
                   <th className="px-4 py-3 font-semibold">Priority</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
@@ -256,8 +316,14 @@ export default function ProfessionalCasesPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {c.category || '—'}
+                    <td className="px-4 py-3">
+                      {c.stage ? (
+                        <Badge variant="violet">
+                          {STAGE_LABEL[c.stage] || c.stage}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-slate-400">— Not set —</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-slate-600">
                       {c.client ? (
@@ -330,5 +396,82 @@ export default function ProfessionalCasesPage() {
         }}
       />
     </DashboardLayout>
+  );
+}
+
+/**
+ * CasesKanban — horizontal-scroll board with one column per canonical
+ * stage. Cases without a stage drop into an "Unassigned" column at the
+ * front so they're not lost. Read-only for v1 — no drag-and-drop yet;
+ * the user updates stage from the case detail page.
+ */
+function CasesKanban({ cases }) {
+  const columns = [{ key: 'unassigned', label: 'Unassigned' }];
+  for (const k of STAGE_ORDER) {
+    columns.push({ key: k, label: STAGE_LABEL[k] });
+  }
+
+  const byStage = new Map();
+  for (const c of cases) {
+    const key = c.stage && STAGE_LABEL[c.stage] ? c.stage : 'unassigned';
+    if (!byStage.has(key)) byStage.set(key, []);
+    byStage.get(key).push(c);
+  }
+
+  return (
+    <div className="flex gap-3 overflow-x-auto pb-3">
+      {columns.map((col) => {
+        const items = byStage.get(col.key) || [];
+        return (
+          <div
+            key={col.key}
+            className="flex w-72 shrink-0 flex-col rounded-xl border border-slate-200 bg-slate-50"
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                {col.label}
+              </span>
+              <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-medium text-slate-500">
+                {items.length}
+              </span>
+            </div>
+            <div className="flex-1 space-y-2 overflow-y-auto p-2">
+              {items.length === 0 ? (
+                <p className="px-1 py-4 text-center text-[11px] text-slate-400">
+                  No cases here
+                </p>
+              ) : (
+                items.map((c) => (
+                  <a
+                    key={c.id}
+                    href={`/dashboard/professional/cases/${c.id}`}
+                    className="block rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-sm transition hover:border-amber-300 hover:shadow"
+                  >
+                    <p className="line-clamp-2 font-medium text-slate-800">
+                      {c.title || 'Untitled case'}
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      {c.client && c.client.name
+                        ? c.client.name
+                        : c.clientId || '—'}
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-1">
+                      <Badge variant={PRIORITY_VARIANT[c.priority] || 'gray'}>
+                        {c.priority || 'medium'}
+                      </Badge>
+                      {c.nextHearingDate && (
+                        <span className="text-[10px] text-slate-500">
+                          Hearing {formatDate(c.nextHearingDate)}
+                        </span>
+                      )}
+                    </div>
+                  </a>
+                ))
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }

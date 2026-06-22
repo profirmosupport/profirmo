@@ -698,29 +698,16 @@ const setStage = async (id, payload = {}, actor = null) => {
   const found = await Case.findByPk(id);
   if (!found) return null;
 
-  // When stageType changes (or is set for the first time), default
-  // stage to the first step of the new pipeline. When only `stage`
-  // changes, reuse the existing pipeline.
-  const requestedType = payload.stageType !== undefined
-    ? payload.stageType
-    : found.stageType;
-  const requestedStage = payload.stage !== undefined
-    ? payload.stage
-    : found.stage;
-  const { stageType, stage } = caseStages.normalize(requestedType, requestedStage);
-  if (payload.stageType && !stageType) {
-    throw {
-      statusCode: 422,
-      message: `Unknown pipeline: ${payload.stageType}`,
-    };
-  }
+  // Common-stages model — just `stage`. stageType is preserved on the
+  // row for backward-compat with any rows written under the old
+  // per-pipeline scheme but is no longer driven by callers.
+  const stage = caseStages.normalize(payload.stage);
 
-  const prevStageType = found.stageType;
   const prevStage = found.stage;
-  await found.update({ stageType, stage, stageUpdatedAt: new Date() });
+  await found.update({ stage, stageUpdatedAt: new Date() });
 
-  const fromLabel = caseStages.labelFor(prevStageType, prevStage);
-  const toLabel = caseStages.labelFor(stageType, stage);
+  const fromLabel = caseStages.labelFor(prevStage);
+  const toLabel = caseStages.labelFor(stage);
   await writeLog(
     id,
     actor,
@@ -730,10 +717,7 @@ const setStage = async (id, payload = {}, actor = null) => {
       : toLabel
         ? `Stage set to ${toLabel}`
         : 'Stage cleared',
-    {
-      from: { stageType: prevStageType, stage: prevStage },
-      to: { stageType, stage },
-    }
+    { from: { stage: prevStage }, to: { stage } }
   );
 
   return decorate(found.get({ plain: true }));

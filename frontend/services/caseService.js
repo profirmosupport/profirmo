@@ -36,20 +36,16 @@ export async function update(id, data) {
   return unwrap(res);
 }
 
-/** List available stage pipelines (civil_suit, criminal, writ, etc.). */
-export async function listStagePipelines() {
-  const res = await get(`${BASE}/pipelines`);
+/** Canonical case-stage list — same across every case type. */
+export async function listStages() {
+  const res = await get(`${BASE}/stages`);
   const data = unwrap(res);
   return Array.isArray(data) ? data : [];
 }
 
-/**
- * Update the case's stage / pipeline. Either field may be sent
- * independently — setting only `stageType` resets `stage` to the
- * first step of that pipeline server-side.
- */
-export async function setStage(id, { stageType, stage } = {}) {
-  const res = await patch(`${BASE}/${id}/stage`, { stageType, stage });
+/** Update the case's stage (intake → preparation → … → closed). */
+export async function setStage(id, { stage } = {}) {
+  const res = await patch(`${BASE}/${id}/stage`, { stage });
   return unwrap(res);
 }
 
@@ -186,7 +182,7 @@ export default {
   create,
   update,
   setStage,
-  listStagePipelines,
+  listStages,
   remove,
   getByClient,
   getByProfessional,

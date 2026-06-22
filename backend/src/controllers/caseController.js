@@ -232,12 +232,13 @@ const updateCaseStage = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'Case stage updated', updated);
 });
 
-// GET /api/cases/pipelines — public-ish list of stage pipelines so the
-// UI can render the picker. Source: backend/seeds/compliance-rules.json.
-const listStagePipelines = asyncHandler(async (req, res) => {
+// GET /api/cases/stages — canonical case-stage list. Common to every
+// case type now (litigation, tax, advisory) — operators wanted a
+// single shared lifecycle, not per-pipeline splits.
+const listStages = asyncHandler(async (req, res) => {
   // eslint-disable-next-line global-require
   const caseStages = require('../config/caseStages');
-  return successResponse(res, 200, 'Stage pipelines', caseStages.listPipelines());
+  return successResponse(res, 200, 'Case stages', caseStages.listStages());
 });
 
 // DELETE /api/cases/:id
@@ -474,7 +475,7 @@ module.exports = {
   createCase,
   updateCase,
   updateCaseStage,
-  listStagePipelines,
+  listStages,
   deleteCase,
   getCasesByClient,
   getCasesByProfessional,

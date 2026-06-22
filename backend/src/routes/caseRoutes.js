@@ -23,11 +23,10 @@ router.get(
   caseController.getCasesByProfessional
 );
 
-// Stage pipelines (civil_suit / criminal_complaint / writ_petition /
-// matrimonial / tax_appeal_cit_a / gst_appeal). Source of truth lives
-// in backend/seeds/compliance-rules.json — exposed read-only here for
-// the case-detail stage picker.
-router.get('/pipelines', caseController.listStagePipelines);
+// Common case stages — one shared lifecycle across litigation + tax +
+// advisory matters. Drives both the case-detail stepper and the
+// Kanban board on /dashboard/professional/cases.
+router.get('/stages', caseController.listStages);
 
 router.post(
   '/',
