@@ -36,7 +36,6 @@ import AddCaseModal from '@/components/cases/AddCaseModal';
 import { resolveFileUrl } from '@/services/fileService';
 import CaseAttachmentLink from '@/components/cases/CaseAttachmentLink';
 import CaseAttachmentList from '@/components/cases/CaseAttachmentList';
-import CaseAuditTrail from '@/components/cases/CaseAuditTrail';
 import CaseStageTracker from '@/components/cases/CaseStageTracker';
 import CaseGmailMessages from '@/components/cases/CaseGmailMessages';
 import caseService from '@/services/caseService';
@@ -1081,11 +1080,6 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
           so it stays out of the way until you explicitly scroll to it.
           Clients can only delete their own cases when no professional has
           been assigned yet (server-enforced as well). */}
-
-      {/* Audit trail — last item before the destructive Danger zone
-          so the change history is reviewable in one place when the
-          pro is about to delete the case. */}
-      <CaseAuditTrail caseId={caseId} />
 
       {(() => {
         const assignees = Array.isArray(data && data.professionalIds)

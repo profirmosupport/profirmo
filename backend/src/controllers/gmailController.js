@@ -10,7 +10,6 @@ const asyncHandler = require('../utils/asyncHandler');
 const { successResponse } = require('../utils/responseHandler');
 const gmailService = require('../services/gmailService');
 const googleCalendarService = require('../services/googleCalendarService');
-const auditService = require('../services/auditService');
 
 // Pull the frontend origin from Origin / Referer so the callback can
 // bounce back to whichever site (localhost vs profirmo.com) started
@@ -115,13 +114,6 @@ const callback = asyncHandler(async (req, res) => {
   }
   try {
     const conn = await gmailService.exchangeCode(code, state);
-    auditService.recordCreate({
-      req,
-      entityType: 'gmail_connection',
-      entityId: conn.id,
-      after: { userId: conn.userId, email: conn.email },
-      summary: `Connected Gmail account ${conn.email}`,
-    });
     return res.redirect(
       `${frontendBase}/dashboard/professional?gmail=connected&email=${encodeURIComponent(conn.email)}`
     );
@@ -144,15 +136,6 @@ const sync = asyncHandler(async (req, res) => {
 
 const disconnect = asyncHandler(async (req, res) => {
   const out = await gmailService.disconnect(req.user.id);
-  if (out.disconnected) {
-    auditService.recordDelete({
-      req,
-      entityType: 'gmail_connection',
-      entityId: req.user.id,
-      before: { userId: req.user.id },
-      summary: 'Disconnected Gmail account',
-    });
-  }
   return successResponse(res, 200, 'Gmail disconnected', out);
 });
 
@@ -172,13 +155,6 @@ const pinMessage = asyncHandler(async (req, res) => {
     req.params.messageId,
     (req.body && req.body.caseId) || null
   );
-  auditService.recordCreate({
-    req,
-    entityType: 'gmail_pin',
-    entityId: row.id,
-    after: { messageId: row.messageId, caseId: row.caseId },
-    summary: `Gmail message ${row.messageId} pinned to case ${row.caseId}`,
-  });
   return successResponse(res, 200, 'Message pinned', row);
 });
 

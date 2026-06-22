@@ -29,7 +29,6 @@ const {
   perCaseRouter: caseTaskPerCaseRouter,
   flatRouter: caseTaskFlatRouter,
 } = require('./routes/caseTaskRoutes');
-const auditRoutes = require('./routes/auditRoutes');
 const userPreferenceRoutes = require('./routes/userPreferenceRoutes');
 const complianceRoutes = require('./routes/complianceRoutes');
 const integrationsRoutes = require('./routes/integrationsRoutes');
@@ -180,7 +179,6 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/reminders', reminderRoutes);
 app.use('/api/cases/:caseId/tasks', caseTaskPerCaseRouter);
 app.use('/api/case-tasks', caseTaskFlatRouter);
-app.use('/api/audit', auditRoutes);
 app.use('/api/user-prefs', userPreferenceRoutes);
 app.use('/api/compliance', complianceRoutes);
 app.use('/api/integrations', integrationsRoutes);

@@ -12,12 +12,9 @@
 //   * No req.user → 401 (defensive — caller should authenticate first).
 //   * Admin role → pass.
 //   * Action present in the user's role matrix → pass.
-//   * Otherwise → 403 with the action name in the message + an audit
-//     row recording the denied attempt (helpful for "who tried to
-//     delete a case last week?" investigations).
+//   * Otherwise → 403 with the action name in the message.
 
 const permissionService = require('../services/permissionService');
-const auditService = require('../services/auditService');
 
 function requirePermission(action) {
   if (!action) {
@@ -34,17 +31,6 @@ function requirePermission(action) {
       }
       const allowed = await permissionService.userCan(req.user, action);
       if (allowed) return next();
-
-      // Record the denial — small audit row so we have a trail of
-      // attempted privilege escalations. Fire-and-forget per the
-      // auditService failure model.
-      auditService.record({
-        req,
-        entityType: 'permission',
-        entityId: action,
-        action: 'access_denied',
-        summary: `Denied: ${req.method} ${req.originalUrl} (action=${action})`,
-      });
 
       return res.status(403).json({
         success: false,

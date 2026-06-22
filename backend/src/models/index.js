@@ -33,7 +33,6 @@ const Job = require('./Job');
 const Notification = require('./Notification');
 const ProfessionalReminder = require('./ProfessionalReminder');
 const CaseTask = require('./CaseTask');
-const AuditEvent = require('./AuditEvent');
 const GmailConnection = require('./GmailConnection');
 const GmailMessageLink = require('./GmailMessageLink');
 const UserPreference = require('./UserPreference');
@@ -457,7 +456,6 @@ module.exports = {
   EmployeePayout,
   ProfessionalReminder,
   CaseTask,
-  AuditEvent,
   GmailConnection,
   GmailMessageLink,
   UserPreference,

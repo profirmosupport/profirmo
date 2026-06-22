@@ -126,8 +126,6 @@ const SYNC_ORDER = [
   // Case-scoped tasks. Soft link to Case + User (assignee). Must come
   // after Case + User in this list — both already declared above.
   db.CaseTask,
-  // Append-only audit log. No FKs — must survive entity deletion.
-  db.AuditEvent,
   // Per-user Gmail OAuth grants.
   db.GmailConnection,
   // Manual pins from a Gmail message to a specific case (multi-case

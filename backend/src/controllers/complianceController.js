@@ -6,7 +6,6 @@
 const asyncHandler = require('../utils/asyncHandler');
 const { successResponse } = require('../utils/responseHandler');
 const compliance = require('../services/complianceObligationService');
-const auditService = require('../services/auditService');
 const { ProfessionalDetail } = require('../models');
 
 async function myProfessionalId(userId) {
@@ -28,19 +27,11 @@ const getProfile = asyncHandler(async (req, res) => {
 const putProfile = asyncHandler(async (req, res) => {
   const proId = await myProfessionalId(req.user.id);
   if (!proId) throw { statusCode: 403, message: 'Only professionals can edit compliance profiles.' };
-  const before = await compliance.getProfile(proId, req.params.clientUserId);
   const profile = await compliance.upsertProfile(
     proId,
     req.params.clientUserId,
     req.body || {}
   );
-  auditService.recordUpdate({
-    req,
-    entityType: 'compliance_profile',
-    entityId: profile.id,
-    before: before || {},
-    after: profile,
-  });
   return successResponse(res, 200, 'Compliance profile saved', profile);
 });
 

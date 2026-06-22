@@ -2,7 +2,6 @@ const bookingService = require('../services/bookingService');
 const bookingDetailService = require('../services/bookingDetailService');
 const caseService = require('../services/caseService');
 const gates = require('../services/subscriptionGateService');
-const auditService = require('../services/auditService');
 const { Case, ProfessionalClient } = require('../models');
 const asyncHandler = require('../utils/asyncHandler');
 const {
@@ -36,13 +35,6 @@ const getBooking = asyncHandler(async (req, res) => {
 // POST /api/bookings
 const createBooking = asyncHandler(async (req, res) => {
   const booking = await bookingService.create(req.body, req.user);
-  auditService.recordCreate({
-    req,
-    entityType: 'booking',
-    entityId: booking.id,
-    after: booking,
-    summary: `Booking ${booking.id} created`,
-  });
   return successResponse(res, 201, 'Booking created', booking);
 });
 
@@ -60,20 +52,11 @@ const getMyAssignedBookings = asyncHandler(async (req, res) => {
 
 // PATCH /api/bookings/:id/status
 const updateBookingStatus = asyncHandler(async (req, res) => {
-  const before = await bookingService.getById(req.params.id);
   const booking = await bookingService.updateStatus(
     req.params.id,
     req.body.status
   );
   if (!booking) throw notFound(req.params.id);
-  auditService.recordUpdate({
-    req,
-    entityType: 'booking',
-    entityId: req.params.id,
-    before: { status: before ? before.status : null },
-    after: { status: booking.status },
-    summary: `Booking ${req.params.id} status → ${booking.status}`,
-  });
   return successResponse(res, 200, 'Booking status updated', booking);
 });
 

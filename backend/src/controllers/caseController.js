@@ -1,7 +1,6 @@
 const caseService = require('../services/caseService');
 const storageService = require('../services/storageService');
 const gates = require('../services/subscriptionGateService');
-const auditService = require('../services/auditService');
 const permissionService = require('../services/permissionService');
 const { ACTIONS: PERM } = require('../config/permissions');
 const asyncHandler = require('../utils/asyncHandler');
@@ -76,13 +75,6 @@ const createCase = asyncHandler(async (req, res) => {
     throw err;
   }
   const created = await caseService.create(req.body, req.user);
-  auditService.recordCreate({
-    req,
-    entityType: 'case',
-    entityId: created.id,
-    after: created,
-    summary: `Case "${created.title || created.id}" created`,
-  });
   return successResponse(res, 201, 'Case created', created);
 });
 
@@ -127,17 +119,8 @@ const updateCase = asyncHandler(async (req, res) => {
       throw err;
     }
   }
-  // Snapshot before mutating so the audit log can record the diff.
-  const before = await caseService.getById(req.params.id);
   const updated = await caseService.update(req.params.id, req.body, req.user);
   if (!updated) throw notFound(req.params.id);
-  auditService.recordUpdate({
-    req,
-    entityType: 'case',
-    entityId: req.params.id,
-    before: before || {},
-    after: updated,
-  });
   return successResponse(res, 200, 'Case updated', updated);
 });
 
@@ -221,14 +204,6 @@ const updateCaseStage = asyncHandler(async (req, res) => {
     req.user
   );
   if (!updated) throw notFound(req.params.id);
-  auditService.recordUpdate({
-    req,
-    entityType: 'case',
-    entityId: req.params.id,
-    before: { stageType: before.stageType, stage: before.stage },
-    after: { stageType: updated.stageType, stage: updated.stage },
-    summary: `Case stage → ${updated.stageType || 'none'}/${updated.stage || 'none'}`,
-  });
   return successResponse(res, 200, 'Case stage updated', updated);
 });
 
@@ -271,13 +246,6 @@ const deleteCase = asyncHandler(async (req, res) => {
     // restricts case.delete to partners + admins.
     const canDelete = await permissionService.userCan(req.user, PERM.CASE_DELETE);
     if (!canDelete) {
-      auditService.record({
-        req,
-        entityType: 'case',
-        entityId: req.params.id,
-        action: 'access_denied',
-        summary: 'Attempted to delete a case without case.delete permission',
-      });
       throw {
         statusCode: 403,
         message: 'Only partners can delete cases. Ask a partner to do it.',
@@ -286,13 +254,6 @@ const deleteCase = asyncHandler(async (req, res) => {
   }
   const removed = await caseService.remove(req.params.id);
   if (!removed) throw notFound(req.params.id);
-  auditService.recordDelete({
-    req,
-    entityType: 'case',
-    entityId: req.params.id,
-    before: existing,
-    summary: `Case "${existing.title || req.params.id}" deleted`,
-  });
   return successResponse(res, 200, 'Case deleted', removed);
 });
 
