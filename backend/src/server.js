@@ -128,6 +128,8 @@ const SYNC_ORDER = [
   db.CaseTask,
   // Append-only audit log. No FKs — must survive entity deletion.
   db.AuditEvent,
+  // Per-user Gmail OAuth grants.
+  db.GmailConnection,
 ];
 
 // Boot the Profirmo HTTP server.

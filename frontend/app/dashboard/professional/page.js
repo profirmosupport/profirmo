@@ -8,6 +8,7 @@ import CurrentPlanCard from '@/components/dashboard/CurrentPlanCard';
 import AvailabilityManager from '@/components/dashboard/AvailabilityManager';
 import OnlineBookingToggle from '@/components/dashboard/OnlineBookingToggle';
 import DashboardCalendar from '@/components/dashboard/DashboardCalendar';
+import GmailIntegrationCard from '@/components/dashboard/GmailIntegrationCard';
 import Card from '@/components/common/Card';
 import { useLanguage } from '@/components/LanguageProvider';
 import { useAuth } from '@/hooks/useAuth';
@@ -158,6 +159,10 @@ export default function ProfessionalDashboardPage() {
 
         {/* Pause / resume online bookings */}
         <OnlineBookingToggle compact />
+
+        {/* Gmail integration — connect / sync / disconnect. Inbound
+            mail auto-matches to a case by sender email (v1). */}
+        <GmailIntegrationCard />
 
         {/* Availability */}
         <AvailabilityManager

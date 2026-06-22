@@ -306,6 +306,45 @@ const SETTINGS = {
     },
     format: stringCoerce,
   },
+
+  // --- Integrations / Gmail OAuth --------------------------------------
+  // Server-side credentials for the Gmail OAuth flow. Mirrors the AWS
+  // model: secret values are stored as plaintext and only the admin GET
+  // response masks them (`secret: true`). NO encryption-at-rest — see
+  // the AWS comment above for why.
+  gmail_oauth_client_id: {
+    label: 'Gmail OAuth Client ID',
+    description:
+      'OAuth 2.0 Client ID for the GCP project that backs the Gmail integration. Visible in the Google Cloud Console under APIs & Services → Credentials.',
+    defaultGetter: () => process.env.GMAIL_OAUTH_CLIENT_ID || '',
+    type: 'string',
+    group: 'Integrations / Gmail',
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  gmail_oauth_client_secret: {
+    label: 'Gmail OAuth Client Secret',
+    description:
+      'Matching client secret. Stored as plaintext; the admin GET response masks the value via `secret: true`. Re-enter to rotate.',
+    defaultGetter: () => process.env.GMAIL_OAUTH_CLIENT_SECRET || '',
+    type: 'string',
+    group: 'Integrations / Gmail',
+    secret: true,
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  gmail_redirect_uri: {
+    label: 'Gmail OAuth Redirect URI',
+    description:
+      'Where Google sends the user back after consent. Must exactly match the redirect URI registered in the GCP OAuth client. Example: https://proapi.profirmo.com/api/integrations/gmail/callback',
+    defaultGetter: () =>
+      process.env.GMAIL_REDIRECT_URI ||
+      'http://localhost:5001/api/integrations/gmail/callback',
+    type: 'string',
+    group: 'Integrations / Gmail',
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
 };
 
 const KNOWN_KEYS = Object.keys(SETTINGS);
