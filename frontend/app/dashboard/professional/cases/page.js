@@ -440,22 +440,56 @@ export default function ProfessionalCasesPage() {
   );
 }
 
-// Per-stage column tinting — matches the spirit of the case detail
-// stepper colours. Unassigned + closing/closed get muted tones; live
-// work-in-progress stages get accent colour so the eye is drawn to
-// the busiest part of the pipeline.
+// Per-stage column styling. Each stage gets a bold solid colour header
+// with white text so the board reads as a coloured pipeline at a
+// glance. Body keeps a faintly tinted background so the column
+// boundaries stay obvious without distracting from the cards.
+//
+// Palette ordering follows the natural funnel — neutral slate for
+// unassigned, cool blue/violet/indigo through the working stages,
+// warm orange for "waiting", teal/emerald for the closing arc. Avoid
+// red anywhere here (reserved for destructive actions elsewhere).
 const STAGE_COLUMN = {
-  unassigned: { head: 'bg-slate-100 text-slate-600', dot: 'bg-slate-400' },
-  intake: { head: 'bg-blue-100 text-blue-800', dot: 'bg-blue-500' },
-  preparation: { head: 'bg-amber-100 text-amber-800', dot: 'bg-amber-500' },
-  filed: { head: 'bg-purple-100 text-purple-800', dot: 'bg-purple-500' },
-  awaiting_response: {
-    head: 'bg-orange-100 text-orange-800',
-    dot: 'bg-orange-500',
+  unassigned: {
+    head: 'bg-slate-500',
+    body: 'bg-slate-50',
+    icon: '○',
   },
-  hearing: { head: 'bg-indigo-100 text-indigo-800', dot: 'bg-indigo-500' },
-  closing: { head: 'bg-teal-100 text-teal-800', dot: 'bg-teal-500' },
-  closed: { head: 'bg-emerald-100 text-emerald-800', dot: 'bg-emerald-500' },
+  intake: {
+    head: 'bg-gradient-to-r from-sky-500 to-sky-600',
+    body: 'bg-sky-50/50',
+    icon: '✦',
+  },
+  preparation: {
+    head: 'bg-gradient-to-r from-amber-500 to-amber-600',
+    body: 'bg-amber-50/40',
+    icon: '✎',
+  },
+  filed: {
+    head: 'bg-gradient-to-r from-purple-500 to-purple-600',
+    body: 'bg-purple-50/40',
+    icon: '📤',
+  },
+  awaiting_response: {
+    head: 'bg-gradient-to-r from-orange-500 to-orange-600',
+    body: 'bg-orange-50/40',
+    icon: '⏳',
+  },
+  hearing: {
+    head: 'bg-gradient-to-r from-indigo-500 to-indigo-700',
+    body: 'bg-indigo-50/40',
+    icon: '⚖',
+  },
+  closing: {
+    head: 'bg-gradient-to-r from-teal-500 to-teal-600',
+    body: 'bg-teal-50/40',
+    icon: '✓',
+  },
+  closed: {
+    head: 'bg-gradient-to-r from-emerald-600 to-emerald-700',
+    body: 'bg-emerald-50/40',
+    icon: '🔒',
+  },
 };
 
 /**
@@ -537,24 +571,31 @@ function CasesKanban({ cases, onMoveCase }) {
               if (dropTarget === col.key) setDropTarget(null);
             }}
             className={[
-              'flex w-80 shrink-0 flex-col overflow-hidden rounded-xl border bg-slate-50 transition',
+              'flex w-80 shrink-0 flex-col overflow-hidden rounded-xl border bg-white shadow-sm transition',
               isDropZone
                 ? 'border-indigo-400 ring-2 ring-indigo-200'
                 : 'border-slate-200',
             ].join(' ')}
           >
             <div
-              className={`sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 px-3 py-2 ${tint.head}`}
+              className={`sticky top-0 z-10 flex items-center justify-between px-4 py-3 text-white shadow-sm ${tint.head}`}
             >
-              <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide">
-                <span className={`h-2 w-2 rounded-full ${tint.dot}`} />
-                {col.label}
+              <span className="flex items-center gap-2">
+                <span
+                  className="flex h-6 w-6 items-center justify-center rounded-full bg-white/25 text-sm font-semibold leading-none"
+                  aria-hidden="true"
+                >
+                  {tint.icon}
+                </span>
+                <span className="text-sm font-bold tracking-tight">
+                  {col.label}
+                </span>
               </span>
-              <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-medium">
+              <span className="inline-flex h-6 min-w-[24px] items-center justify-center rounded-full bg-white/25 px-2 text-[11px] font-semibold tabular-nums">
                 {items.length}
               </span>
             </div>
-            <div className="flex-1 space-y-2 overflow-y-auto p-2">
+            <div className={`flex-1 space-y-2 overflow-y-auto p-2 ${tint.body}`}>
               {items.length === 0 ? (
                 <p
                   className={[
