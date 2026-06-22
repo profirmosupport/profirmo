@@ -38,6 +38,8 @@ const GmailMessageLink = require('./GmailMessageLink');
 const UserPreference = require('./UserPreference');
 const ClientComplianceProfile = require('./ClientComplianceProfile');
 const ComplianceObligation = require('./ComplianceObligation');
+const ClientDocument = require('./ClientDocument');
+const ClientDocumentAccess = require('./ClientDocumentAccess');
 
 // --- Phase-2 profile / firm models ----------------------------------------
 const Address = require('./Address');
@@ -461,4 +463,6 @@ module.exports = {
   UserPreference,
   ClientComplianceProfile,
   ComplianceObligation,
+  ClientDocument,
+  ClientDocumentAccess,
 };

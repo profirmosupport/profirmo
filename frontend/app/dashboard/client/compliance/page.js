@@ -16,6 +16,12 @@ import {
   AlertTriangle,
   FileText,
   Briefcase,
+  Upload,
+  ExternalLink,
+  Trash2,
+  ShieldCheck,
+  ShieldOff,
+  Clock,
 } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import Card from '@/components/common/Card';
@@ -27,6 +33,15 @@ import {
   listMyObligations,
   getRequirements,
 } from '@/services/complianceService';
+import {
+  listForClient as listMyDocuments,
+  uploadDocument,
+  getDocumentUrl,
+  deleteDocument,
+  listMyAccessAsClient,
+  decideAccess,
+} from '@/services/clientDocumentService';
+import { useAuth } from '@/hooks/useAuth';
 import { ROLES } from '@/utils/constants';
 import { formatDate } from '@/utils/formatters';
 
@@ -86,6 +101,7 @@ const CAT_LABEL = {
 };
 
 export default function ClientCompliancePage() {
+  const { user } = useAuth();
   const [form, setForm] = useState(EMPTY);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [requirements, setRequirements] = useState(null);
@@ -94,14 +110,19 @@ export default function ClientCompliancePage() {
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState(null);
   const [error, setError] = useState('');
+  const [myDocs, setMyDocs] = useState([]);
+  const [accessRows, setAccessRows] = useState([]);
+  const [uploadingKey, setUploadingKey] = useState(null);
+  const [accessBusyId, setAccessBusyId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const [profile, items] = await Promise.all([
+      const [profile, items, accessList] = await Promise.all([
         getMyProfile(),
         listMyObligations({ status: 'pending' }),
+        listMyAccessAsClient(),
       ]);
       if (profile) {
         setForm({
@@ -121,12 +142,22 @@ export default function ClientCompliancePage() {
         setProfileLoaded(false);
       }
       setObligations(Array.isArray(items) ? items : []);
+      setAccessRows(Array.isArray(accessList) ? accessList : []);
+      // Documents are loaded once we have the user id.
+      if (user && user.id) {
+        try {
+          const docs = await listMyDocuments(user.id);
+          setMyDocs(docs);
+        } catch {
+          /* ignore — docs panel will show empty */
+        }
+      }
     } catch (err) {
       setError(err.message || 'Could not load compliance details.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     load();
@@ -383,6 +414,68 @@ export default function ClientCompliancePage() {
           )}
         </Card>
 
+        {/* --- My documents ----------------------------------------- */}
+        {user && user.id && (
+          <MyDocumentsCard
+            clientUserId={user.id}
+            requirements={requirements}
+            docs={myDocs}
+            uploadingKey={uploadingKey}
+            onUpload={async (docKey, label, file) => {
+              if (!file) return;
+              setUploadingKey(docKey);
+              setError('');
+              try {
+                await uploadDocument(user.id, file, { docKey, label });
+                const fresh = await listMyDocuments(user.id);
+                setMyDocs(fresh);
+              } catch (err) {
+                setError(err.message || 'Upload failed.');
+              } finally {
+                setUploadingKey(null);
+              }
+            }}
+            onView={async (doc) => {
+              try {
+                const out = await getDocumentUrl(doc.id);
+                if (out && out.url)
+                  window.open(out.url, '_blank', 'noopener,noreferrer');
+              } catch (err) {
+                setError(err.message || 'Could not open.');
+              }
+            }}
+            onDelete={async (doc) => {
+              if (!window.confirm(`Delete "${doc.fileName || 'document'}"?`)) return;
+              try {
+                await deleteDocument(doc.id);
+                const fresh = await listMyDocuments(user.id);
+                setMyDocs(fresh);
+              } catch (err) {
+                setError(err.message || 'Delete failed.');
+              }
+            }}
+          />
+        )}
+
+        {/* --- Professional access (grant / deny / revoke) ---------- */}
+        <ProfessionalAccessCard
+          rows={accessRows}
+          busyId={accessBusyId}
+          onDecide={async (id, decision) => {
+            setAccessBusyId(id);
+            setError('');
+            try {
+              await decideAccess(id, decision);
+              const fresh = await listMyAccessAsClient();
+              setAccessRows(Array.isArray(fresh) ? fresh : []);
+            } catch (err) {
+              setError(err.message || 'Could not save decision.');
+            } finally {
+              setAccessBusyId(null);
+            }
+          }}
+        />
+
         {/* --- Documents + services catalog ------------------------- */}
         {requirements && (
           <Card>
@@ -430,6 +523,300 @@ export default function ClientCompliancePage() {
         )}
       </div>
     </DashboardLayout>
+  );
+}
+
+function fmtSize(bytes) {
+  if (!bytes && bytes !== 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function UploadButton({ docKey, label, disabled, isUploading, onFile }) {
+  return (
+    <label
+      className={[
+        'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition',
+        disabled
+          ? 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400'
+          : 'cursor-pointer border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100',
+      ].join(' ')}
+    >
+      <Upload size={12} />
+      {isUploading ? 'Uploading…' : 'Upload'}
+      <input
+        type="file"
+        className="hidden"
+        disabled={disabled}
+        accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
+        onChange={(e) => {
+          const f = e.target.files && e.target.files[0];
+          e.target.value = '';
+          if (f) onFile(docKey, label, f);
+        }}
+      />
+    </label>
+  );
+}
+
+/**
+ * MyDocumentsCard — client-side document upload + listing. Mirrors
+ * the catalog the pro sees on the manage page, but here the client
+ * is uploading directly. The client always sees all their docs
+ * regardless of who uploaded them.
+ */
+function MyDocumentsCard({
+  clientUserId,
+  requirements,
+  docs,
+  uploadingKey,
+  onUpload,
+  onView,
+  onDelete,
+}) {
+  const docsByKey = new Map();
+  for (const d of docs || []) {
+    if (!docsByKey.has(d.docKey)) docsByKey.set(d.docKey, []);
+    docsByKey.get(d.docKey).push(d);
+  }
+  const items = (requirements && requirements.documents) || [];
+  const byCat = new Map();
+  for (const d of items) {
+    const cat = d.category || 'other';
+    if (!byCat.has(cat)) byCat.set(cat, []);
+    byCat.get(cat).push(d);
+  }
+  const catOrder = ['kyc', 'registration', 'financial', 'compliance'];
+  return (
+    <Card>
+      <div className="flex items-center gap-2">
+        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-50 text-purple-600">
+          <Upload size={16} />
+        </span>
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900">
+            Your documents
+          </h3>
+          <p className="text-xs text-slate-500">
+            Upload to Profirmo's secure storage. Only you and the
+            professionals you grant access to can see these.
+          </p>
+        </div>
+      </div>
+
+      {!requirements ? (
+        <p className="mt-3 rounded-md border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-500">
+          Pick your entity type above so we can show the right document
+          checklist.
+        </p>
+      ) : (
+        <div className="mt-4 space-y-4">
+          {catOrder
+            .filter((c) => byCat.has(c))
+            .map((cat) => (
+              <div key={cat}>
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  {CAT_LABEL[cat] || cat}
+                </p>
+                <ul className="space-y-2">
+                  {byCat.get(cat).map((d) => {
+                    const uploaded = docsByKey.get(d.key) || [];
+                    return (
+                      <li
+                        key={d.key}
+                        className="rounded-lg border border-slate-200 bg-white p-2.5"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className={[
+                                  'inline-block h-2 w-2 shrink-0 rounded-full',
+                                  d.mandatory ? 'bg-red-500' : 'bg-slate-300',
+                                ].join(' ')}
+                              />
+                              <p className="text-sm font-medium text-slate-800">
+                                {d.label}
+                              </p>
+                              {uploaded.length > 0 && (
+                                <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                  {uploaded.length} uploaded
+                                </span>
+                              )}
+                            </div>
+                            {d.description && (
+                              <p className="mt-0.5 text-[11px] text-slate-500">
+                                {d.description}
+                              </p>
+                            )}
+                          </div>
+                          <UploadButton
+                            docKey={d.key}
+                            label={d.label}
+                            disabled={uploadingKey === d.key}
+                            isUploading={uploadingKey === d.key}
+                            onFile={onUpload}
+                          />
+                        </div>
+                        {uploaded.length > 0 && (
+                          <ul className="mt-2 space-y-1">
+                            {uploaded.map((u) => (
+                              <li
+                                key={u.id}
+                                className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-100 bg-slate-50 px-2 py-1.5 text-xs"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate font-medium text-slate-700">
+                                    {u.fileName || '(file)'}
+                                  </p>
+                                  <p className="text-[10px] text-slate-500">
+                                    {u.mimeType} · {fmtSize(u.size)}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => onView(u)}
+                                    className="rounded p-1 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+                                    title="Open"
+                                  >
+                                    <ExternalLink size={13} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => onDelete(u)}
+                                    className="rounded p-1 text-slate-500 hover:bg-red-50 hover:text-red-600"
+                                    title="Delete"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * ProfessionalAccessCard — list of all pros who've requested OR been
+ * granted access to the client's document store. Client can flip the
+ * status of any row to grant / deny / revoke.
+ */
+function ProfessionalAccessCard({ rows, busyId, onDecide }) {
+  if (!rows || rows.length === 0) {
+    return (
+      <Card>
+        <div className="flex items-center gap-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+            <ShieldCheck size={16} />
+          </span>
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900">
+              Professional access
+            </h3>
+            <p className="text-xs text-slate-500">
+              When a professional asks to see all your documents, the
+              request appears here for you to allow or deny.
+            </p>
+          </div>
+        </div>
+        <p className="mt-3 rounded-md border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-500">
+          No access requests yet.
+        </p>
+      </Card>
+    );
+  }
+  return (
+    <Card>
+      <div className="flex items-center gap-2">
+        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+          <ShieldCheck size={16} />
+        </span>
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900">
+            Professional access
+          </h3>
+          <p className="text-xs text-slate-500">
+            Allow or revoke each professional's access to your full
+            document set. (They always see what they themselves
+            uploaded.)
+          </p>
+        </div>
+      </div>
+      <ul className="mt-3 divide-y divide-slate-100">
+        {rows.map((r) => (
+          <li
+            key={r.id}
+            className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="font-mono text-[11px] text-slate-500">
+                {r.professionalId}
+              </p>
+              {r.requestNote && (
+                <p className="mt-0.5 text-xs text-slate-600">
+                  &ldquo;{r.requestNote}&rdquo;
+                </p>
+              )}
+              <p className="mt-0.5 text-[11px] text-slate-400">
+                Status:{' '}
+                <span className="font-semibold text-slate-700">
+                  {r.status}
+                </span>
+                {r.decidedAt &&
+                  ` · decided ${new Date(r.decidedAt).toLocaleString()}`}
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {r.status !== 'granted' && (
+                <button
+                  type="button"
+                  onClick={() => onDecide(r.id, 'granted')}
+                  disabled={busyId === r.id}
+                  className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100"
+                >
+                  <ShieldCheck size={12} />
+                  Allow
+                </button>
+              )}
+              {r.status === 'granted' && (
+                <button
+                  type="button"
+                  onClick={() => onDecide(r.id, 'revoked')}
+                  disabled={busyId === r.id}
+                  className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-700 hover:border-amber-300 hover:bg-amber-100"
+                >
+                  <Clock size={12} />
+                  Revoke
+                </button>
+              )}
+              {r.status !== 'denied' && r.status !== 'revoked' && (
+                <button
+                  type="button"
+                  onClick={() => onDecide(r.id, 'denied')}
+                  disabled={busyId === r.id}
+                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                >
+                  <ShieldOff size={12} />
+                  Deny
+                </button>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 

@@ -1,0 +1,287 @@
+// clientDocumentService — orchestrates uploads + visibility for the
+// per-client document store. Uses the shared storageService so files
+// land in the same S3 bucket as the rest of the platform.
+//
+// Visibility model:
+//   * client          — sees ALL their documents
+//   * uploaderUserId  — sees their own uploads
+//   * other pros      — see nothing unless ClientDocumentAccess
+//                       row for (client, professional) is 'granted'
+//
+// All operations resolve the caller's role via the resolveActor()
+// helper because a single user can be a client to one pro AND a pro
+// to other people simultaneously.
+
+const { Op } = require('sequelize');
+const fs = require('fs');
+const {
+  ClientDocument,
+  ClientDocumentAccess,
+  ProfessionalDetail,
+  ProfessionalClient,
+} = require('../models');
+const storageService = require('./storageService');
+
+async function resolveProId(userId) {
+  const detail = await ProfessionalDetail.findOne({
+    where: { userId },
+    attributes: ['id'],
+    raw: true,
+  });
+  return detail ? detail.id : null;
+}
+
+/**
+ * Check whether `actor` (signed-in user) can see the client's whole
+ * document set. Returns:
+ *   { isClient: true }  — they ARE the client
+ *   { isPro: true, professionalId, granted: bool }
+ *      — pro, with `granted` true when access is 'granted', false otherwise
+ *   null — no access path
+ */
+async function resolveActor(actorUserId, clientUserId) {
+  if (!actorUserId) return null;
+  if (actorUserId === clientUserId) return { isClient: true };
+  const proId = await resolveProId(actorUserId);
+  if (!proId) return null;
+  // Is the pro linked to this client at all? If not, they can't even
+  // request access.
+  const link = await ProfessionalClient.findOne({
+    where: { professionalId: proId, clientUserId },
+    raw: true,
+  });
+  if (!link) return null;
+  const access = await ClientDocumentAccess.findOne({
+    where: { professionalId: proId, clientUserId },
+    raw: true,
+  });
+  return {
+    isPro: true,
+    professionalId: proId,
+    granted: !!(access && access.status === 'granted'),
+    accessRow: access,
+  };
+}
+
+// --- Documents -------------------------------------------------------
+
+async function listForClient(actorUserId, clientUserId) {
+  const actor = await resolveActor(actorUserId, clientUserId);
+  if (!actor) {
+    throw { statusCode: 403, message: 'You do not have access to this client.' };
+  }
+  // Client sees everything; pro with granted access sees everything;
+  // pro without granted access sees only their own uploads.
+  const where = { clientUserId };
+  if (actor.isPro && !actor.granted) {
+    where.uploaderUserId = actorUserId;
+  }
+  const rows = await ClientDocument.findAll({
+    where,
+    order: [['createdAt', 'DESC']],
+    raw: true,
+  });
+  return rows;
+}
+
+async function uploadOne(actorUserId, clientUserId, file, meta = {}) {
+  const actor = await resolveActor(actorUserId, clientUserId);
+  if (!actor) {
+    throw { statusCode: 403, message: 'You do not have access to this client.' };
+  }
+  if (!file || !file.path) {
+    throw { statusCode: 422, message: 'No file received.' };
+  }
+  // Read the file from the temp path multer wrote it to; storageService
+  // accepts a buffer.
+  const buffer = fs.readFileSync(file.path);
+  // Push to storage — type 'document' lands under documents/ prefix on
+  // S3 (per storageService.TYPE_TO_PREFIX) which is already on the
+  // PRIVATE_PREFIXES list so reads go via presigned URLs.
+  const stored = await storageService.uploadFile({
+    buffer,
+    mimeType: file.mimetype,
+    originalName: file.originalname,
+    type: 'document',
+  });
+  // Best-effort cleanup of the multer temp file.
+  try {
+    fs.unlinkSync(file.path);
+  } catch {
+    /* swallow */
+  }
+  const row = await ClientDocument.create({
+    clientUserId,
+    uploaderUserId: actorUserId,
+    docKey: String(meta.docKey || 'other').slice(0, 60),
+    label: meta.label ? String(meta.label).slice(0, 200) : null,
+    storagePath: stored.storedPath || stored.path || stored.key || stored,
+    fileName: file.originalname || null,
+    mimeType: file.mimetype || null,
+    size: file.size || null,
+    notes: meta.notes ? String(meta.notes).slice(0, 5000) : null,
+  });
+  return row.get({ plain: true });
+}
+
+async function getDocumentUrl(actorUserId, docId) {
+  const doc = await ClientDocument.findOne({ where: { id: docId }, raw: true });
+  if (!doc) throw { statusCode: 404, message: 'Document not found.' };
+  const actor = await resolveActor(actorUserId, doc.clientUserId);
+  if (!actor) {
+    throw { statusCode: 403, message: 'You do not have access.' };
+  }
+  // Pros without granted access can only view their own uploads.
+  if (actor.isPro && !actor.granted && doc.uploaderUserId !== actorUserId) {
+    throw {
+      statusCode: 403,
+      message: 'Client has not shared this document with you yet.',
+    };
+  }
+  const url = await storageService.getFileUrl(doc.storagePath, {
+    expiryMinutes: 15,
+  });
+  return { url, doc };
+}
+
+async function deleteDocument(actorUserId, docId) {
+  const doc = await ClientDocument.findOne({ where: { id: docId } });
+  if (!doc) throw { statusCode: 404, message: 'Document not found.' };
+  const plain = doc.get({ plain: true });
+  const actor = await resolveActor(actorUserId, plain.clientUserId);
+  if (!actor) {
+    throw { statusCode: 403, message: 'You do not have access.' };
+  }
+  // Only the uploader or the client themselves can delete a document.
+  const canDelete =
+    actor.isClient || (actor.isPro && plain.uploaderUserId === actorUserId);
+  if (!canDelete) {
+    throw {
+      statusCode: 403,
+      message: 'Only the uploader or the client can delete this document.',
+    };
+  }
+  // Best-effort file deletion — row removal is the source of truth.
+  try {
+    await storageService.deleteFile(plain.storagePath);
+  } catch {
+    /* swallow */
+  }
+  await doc.destroy();
+  return { id: docId };
+}
+
+// --- Access requests ------------------------------------------------
+
+async function requestAccess(proUserId, clientUserId, note) {
+  const actor = await resolveActor(proUserId, clientUserId);
+  if (!actor || !actor.isPro) {
+    throw {
+      statusCode: 403,
+      message: 'Only the linked professional can request document access.',
+    };
+  }
+  const existing = await ClientDocumentAccess.findOne({
+    where: { clientUserId, professionalId: actor.professionalId },
+  });
+  if (existing) {
+    // Already granted? Nothing to do.
+    if (existing.status === 'granted') return existing.get({ plain: true });
+    // Otherwise refresh the request — push back to 'pending'.
+    await existing.update({
+      status: 'pending',
+      requestedAt: new Date(),
+      decidedAt: null,
+      requestNote: note ? String(note).slice(0, 255) : null,
+      decisionNote: null,
+      professionalUserId: proUserId,
+    });
+    return existing.get({ plain: true });
+  }
+  const row = await ClientDocumentAccess.create({
+    clientUserId,
+    professionalId: actor.professionalId,
+    professionalUserId: proUserId,
+    status: 'pending',
+    requestedAt: new Date(),
+    requestNote: note ? String(note).slice(0, 255) : null,
+  });
+  return row.get({ plain: true });
+}
+
+async function decideAccess(clientUserIdActor, accessId, decision, note) {
+  const row = await ClientDocumentAccess.findByPk(accessId);
+  if (!row) throw { statusCode: 404, message: 'Access request not found.' };
+  if (row.clientUserId !== clientUserIdActor) {
+    throw {
+      statusCode: 403,
+      message: 'Only the client can grant / deny / revoke document access.',
+    };
+  }
+  if (!['granted', 'denied', 'revoked'].includes(decision)) {
+    throw {
+      statusCode: 422,
+      message: 'decision must be one of: granted, denied, revoked',
+    };
+  }
+  await row.update({
+    status: decision,
+    decidedAt: new Date(),
+    decisionNote: note ? String(note).slice(0, 255) : null,
+  });
+  return row.get({ plain: true });
+}
+
+/**
+ * Pro-side: status of my access requests across all my linked
+ * clients. Lets the manage page render "Pending / Granted / Denied"
+ * pills next to each client.
+ */
+async function listAccessForPro(proUserId) {
+  const proId = await resolveProId(proUserId);
+  if (!proId) return [];
+  return ClientDocumentAccess.findAll({
+    where: { professionalId: proId },
+    order: [['updatedAt', 'DESC']],
+    raw: true,
+  });
+}
+
+/**
+ * Client-side: list every access record scoped to me — drives the
+ * "pending requests" list + the "currently granted" list on the
+ * client compliance page.
+ */
+async function listAccessForClient(clientUserId) {
+  return ClientDocumentAccess.findAll({
+    where: { clientUserId },
+    order: [['updatedAt', 'DESC']],
+    raw: true,
+  });
+}
+
+/**
+ * Pro-specific access record between (this pro, this client). Used
+ * by the manage page to decide whether to show "Request access" vs
+ * "Request pending" vs "You have access".
+ */
+async function getProAccessForClient(proUserId, clientUserId) {
+  const proId = await resolveProId(proUserId);
+  if (!proId) return null;
+  return ClientDocumentAccess.findOne({
+    where: { professionalId: proId, clientUserId },
+    raw: true,
+  });
+}
+
+module.exports = {
+  listForClient,
+  uploadOne,
+  getDocumentUrl,
+  deleteDocument,
+  requestAccess,
+  decideAccess,
+  listAccessForPro,
+  listAccessForClient,
+  getProAccessForClient,
+};

@@ -137,6 +137,9 @@ const SYNC_ORDER = [
   // generator; obligations are the resulting per-period due-date rows.
   db.ClientComplianceProfile,
   db.ComplianceObligation,
+  // Per-client document store + the per-pro access permission rows.
+  db.ClientDocument,
+  db.ClientDocumentAccess,
 ];
 
 // Boot the Profirmo HTTP server.

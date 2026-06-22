@@ -28,6 +28,7 @@ import {
   generateForClient,
   getRequirements,
 } from '@/services/complianceService';
+import ClientDocumentsPanel from '@/components/clients/ClientDocumentsPanel';
 import { ROLES } from '@/utils/constants';
 
 const ENTITY_TYPES = [
@@ -412,6 +413,12 @@ export default function ProfessionalClientDetailPage({ params }) {
             </div>
           )}
         </Card>
+
+        {/* --- Client documents (upload + access) ------------------ */}
+        <ClientDocumentsPanel
+          clientUserId={clientId}
+          requirements={requirements}
+        />
 
         {/* --- Documents + services catalog ------------------------- */}
         {requirements && (
