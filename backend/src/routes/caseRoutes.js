@@ -23,6 +23,12 @@ router.get(
   caseController.getCasesByProfessional
 );
 
+// Stage pipelines (civil_suit / criminal_complaint / writ_petition /
+// matrimonial / tax_appeal_cit_a / gst_appeal). Source of truth lives
+// in backend/seeds/compliance-rules.json — exposed read-only here for
+// the case-detail stage picker.
+router.get('/pipelines', caseController.listStagePipelines);
+
 router.post(
   '/',
   // Accept either a single `clientId` or a multi-client `clientIds[]` array.
@@ -36,6 +42,7 @@ router.post(
 
 router.get('/:id', caseController.getCase);
 router.patch('/:id', caseController.updateCase);
+router.patch('/:id/stage', caseController.updateCaseStage);
 // Delete case — RBAC happens inside the controller because clients
 // have a self-serve carve-out (own unassigned case) that the firm
 // permission middleware can't model cleanly.

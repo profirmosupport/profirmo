@@ -209,6 +209,37 @@ const getCaseLog = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'Case log fetched', entries);
 });
 
+// PATCH /api/cases/:id/stage — set the case's pipeline + current step.
+// Body: { stageType?: 'civil_suit' | 'criminal_complaint' | ..., stage?: 'evidence_plaintiff' | ... }
+// Either field may be sent independently; an unknown pipeline 422s.
+const updateCaseStage = asyncHandler(async (req, res) => {
+  const before = await caseService.getById(req.params.id);
+  if (!before) throw notFound(req.params.id);
+  const updated = await caseService.setStage(
+    req.params.id,
+    req.body || {},
+    req.user
+  );
+  if (!updated) throw notFound(req.params.id);
+  auditService.recordUpdate({
+    req,
+    entityType: 'case',
+    entityId: req.params.id,
+    before: { stageType: before.stageType, stage: before.stage },
+    after: { stageType: updated.stageType, stage: updated.stage },
+    summary: `Case stage → ${updated.stageType || 'none'}/${updated.stage || 'none'}`,
+  });
+  return successResponse(res, 200, 'Case stage updated', updated);
+});
+
+// GET /api/cases/pipelines — public-ish list of stage pipelines so the
+// UI can render the picker. Source: backend/seeds/compliance-rules.json.
+const listStagePipelines = asyncHandler(async (req, res) => {
+  // eslint-disable-next-line global-require
+  const caseStages = require('../config/caseStages');
+  return successResponse(res, 200, 'Stage pipelines', caseStages.listPipelines());
+});
+
 // DELETE /api/cases/:id
 const deleteCase = asyncHandler(async (req, res) => {
   // Clients can delete only their own E-Courts-imported cases when no
@@ -442,6 +473,8 @@ module.exports = {
   getCase,
   createCase,
   updateCase,
+  updateCaseStage,
+  listStagePipelines,
   deleteCase,
   getCasesByClient,
   getCasesByProfessional,

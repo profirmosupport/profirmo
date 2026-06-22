@@ -37,6 +37,7 @@ import { resolveFileUrl } from '@/services/fileService';
 import CaseAttachmentLink from '@/components/cases/CaseAttachmentLink';
 import CaseAttachmentList from '@/components/cases/CaseAttachmentList';
 import CaseAuditTrail from '@/components/cases/CaseAuditTrail';
+import CaseStageTracker from '@/components/cases/CaseStageTracker';
 import caseService from '@/services/caseService';
 import { getLawFirm } from '@/services/profileService';
 import { syncCaseFromEcourts } from '@/services/ecourtsService';
@@ -959,6 +960,13 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
           carry an optional status / due date / priority that the
           dashboard calendar reads. */}
       <CaseAuditTrail caseId={caseId} />
+
+      {/* Stage tracker — shows the case's pipeline + current step in
+          the lifecycle (e.g. civil_suit → evidence_plaintiff). Reads
+          pipelines from /api/cases/pipelines, persists changes via
+          PATCH /api/cases/:id/stage. Sits above Updates because stage
+          is a fast-glance summary; Updates is the chronological log. */}
+      <CaseStageTracker caseRow={data} onUpdated={loadCase} />
 
       {/* Updates — full-width timeline */}
       <Card>

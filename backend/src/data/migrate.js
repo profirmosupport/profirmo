@@ -376,6 +376,25 @@ async function runMigrations() {
     }
   }
 
+  // 7c-bis. Case stage tracking — pipeline + step within pipeline,
+  // sourced from seeds/compliance-rules.json via config/caseStages.
+  const CASE_STAGE_COLUMNS = [
+    ['stageType', 'VARCHAR(40) NULL'],
+    ['stage', 'VARCHAR(60) NULL'],
+    ['stageUpdatedAt', 'DATETIME NULL'],
+  ];
+  for (const [col, type] of CASE_STAGE_COLUMNS) {
+    try {
+      await sequelize.query(
+        `ALTER TABLE \`cases\` ADD COLUMN IF NOT EXISTS \`${col}\` ${type}`
+      );
+    } catch (err) {
+      if (!/doesn'?t exist|Unknown table/i.test(err.message)) {
+        console.warn(`[Migrate] Could not add cases.${col}: ${err.message}`);
+      }
+    }
+  }
+
   // 7d-bis. CaseUpdate task fields — promotes an update into a task
   // surface (status / priority / dueDate / completedAt). NULLs preserve
   // the pure-narration shape. Drives the dashboard calendar pills.

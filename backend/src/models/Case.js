@@ -55,6 +55,17 @@ const Case = sequelize.define(
     courtName: { type: DataTypes.STRING, allowNull: true },
     opposingParty: { type: DataTypes.STRING, allowNull: true },
     nextHearingDate: { type: DataTypes.DATEONLY, allowNull: true },
+    // --- Stage tracking -----------------------------------------------
+    // stageType picks a pipeline (civil_suit, criminal_complaint,
+    // writ_petition, matrimonial, tax_appeal_cit_a, gst_appeal); stage
+    // is the current step within that pipeline. Both NULL on cases
+    // that pre-date the feature OR cases where the pro hasn't picked a
+    // pipeline yet (rendered as "no stage" in the UI). Source of truth
+    // for the value-domain is backend/seeds/compliance-rules.json
+    // loaded via config/caseStages.js.
+    stageType: { type: DataTypes.STRING(40), allowNull: true },
+    stage: { type: DataTypes.STRING(60), allowNull: true },
+    stageUpdatedAt: { type: DataTypes.DATE, allowNull: true },
     // Optional: when a firm creates the case it may not yet have a
     // professional assigned. assignedByUserId records who made the assignment.
     assignedByUserId: { type: DataTypes.STRING(64), allowNull: true },

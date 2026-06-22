@@ -686,6 +686,59 @@ const update = async (id, data = {}, actor = null) => {
   return decorate(found.get({ plain: true }));
 };
 
+/**
+ * Set a case's stage / pipeline. Validates against the pipelines
+ * defined in seeds/compliance-rules.json (via config/caseStages). Both
+ * stageType and stage may be patched independently; an unknown
+ * pipeline resets stage to null. Logs the change to case_log so it
+ * shows up in the case timeline alongside hearings + updates.
+ */
+const caseStages = require('../config/caseStages');
+const setStage = async (id, payload = {}, actor = null) => {
+  const found = await Case.findByPk(id);
+  if (!found) return null;
+
+  // When stageType changes (or is set for the first time), default
+  // stage to the first step of the new pipeline. When only `stage`
+  // changes, reuse the existing pipeline.
+  const requestedType = payload.stageType !== undefined
+    ? payload.stageType
+    : found.stageType;
+  const requestedStage = payload.stage !== undefined
+    ? payload.stage
+    : found.stage;
+  const { stageType, stage } = caseStages.normalize(requestedType, requestedStage);
+  if (payload.stageType && !stageType) {
+    throw {
+      statusCode: 422,
+      message: `Unknown pipeline: ${payload.stageType}`,
+    };
+  }
+
+  const prevStageType = found.stageType;
+  const prevStage = found.stage;
+  await found.update({ stageType, stage, stageUpdatedAt: new Date() });
+
+  const fromLabel = caseStages.labelFor(prevStageType, prevStage);
+  const toLabel = caseStages.labelFor(stageType, stage);
+  await writeLog(
+    id,
+    actor,
+    'stage_changed',
+    fromLabel
+      ? `Stage: ${fromLabel} → ${toLabel || '(cleared)'}`
+      : toLabel
+        ? `Stage set to ${toLabel}`
+        : 'Stage cleared',
+    {
+      from: { stageType: prevStageType, stage: prevStage },
+      to: { stageType, stage },
+    }
+  );
+
+  return decorate(found.get({ plain: true }));
+};
+
 /** Delete a case record (and its files). Returns the removed case or null. */
 const remove = async (id) => {
   const found = await Case.findByPk(id, { raw: true });
@@ -1263,6 +1316,7 @@ module.exports = {
   getById,
   create,
   update,
+  setStage,
   remove,
   getByClient,
   getByProfessional,
