@@ -200,30 +200,12 @@ export default function ProfessionalClientDetailPage({ params }) {
           </p>
         )}
 
-        {/* --- Basic client info -------------------------------------- */}
+        {/* --- Editable client basics -------------------------------- */}
         {client && (
-          <Card>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Client
-            </p>
-            <h2 className="mt-1 text-lg font-semibold text-slate-900">
-              {client.name || '—'}
-            </h2>
-            <div className="mt-2 grid grid-cols-1 gap-2 text-sm text-slate-600 sm:grid-cols-3">
-              <div>
-                <span className="text-xs uppercase text-slate-400">Email</span>
-                <p>{client.email || '—'}</p>
-              </div>
-              <div>
-                <span className="text-xs uppercase text-slate-400">Phone</span>
-                <p>{client.phone || '—'}</p>
-              </div>
-              <div>
-                <span className="text-xs uppercase text-slate-400">City</span>
-                <p>{client.city || '—'}</p>
-              </div>
-            </div>
-          </Card>
+          <ClientBasicsCard
+            client={client}
+            onSaved={(c) => setClient((prev) => ({ ...prev, ...c }))}
+          />
         )}
 
         {/* --- Compliance profile editor ----------------------------- */}
@@ -478,6 +460,114 @@ export default function ProfessionalClientDetailPage({ params }) {
         )}
       </div>
     </DashboardLayout>
+  );
+}
+
+/**
+ * ClientBasicsCard — name + email inline editor. Phone is read-only
+ * because phone is the canonical user identifier in our system and
+ * shouldn't be changed by a professional acting on the client's
+ * behalf.
+ */
+function ClientBasicsCard({ client, onSaved }) {
+  const [name, setName] = useState(client.name || '');
+  const [email, setEmail] = useState(client.email || '');
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState(null);
+  const [error, setError] = useState('');
+
+  // Sync when parent client prop changes (e.g. after refresh).
+  useEffect(() => {
+    setName(client.name || '');
+    setEmail(client.email || '');
+  }, [client.id, client.name, client.email]);
+
+  const dirty = name !== (client.name || '') || email !== (client.email || '');
+
+  async function handleSave() {
+    setSaving(true);
+    setError('');
+    try {
+      const updated = await clientService.update(client.id, {
+        name: name.trim(),
+        email: email.trim(),
+      });
+      onSaved(updated || { name: name.trim(), email: email.trim() });
+      setSavedAt(new Date());
+    } catch (err) {
+      setError(err.message || 'Save failed.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Client basics
+        </p>
+        {savedAt && (
+          <span className="text-[11px] text-emerald-700">
+            Saved {savedAt.toLocaleTimeString()}
+          </span>
+        )}
+      </div>
+
+      {error && (
+        <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+          {error}
+        </p>
+      )}
+
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-700">
+            Name
+          </label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-700">
+            Email
+          </label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-700">
+            Phone
+          </label>
+          <input
+            type="text"
+            value={client.phone || ''}
+            disabled
+            className="w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500"
+            title="Phone is the canonical identifier and can't be edited here. The client can update it from their own profile."
+          />
+        </div>
+      </div>
+      <div className="mt-3 flex items-center justify-end gap-2">
+        {client.city && (
+          <span className="text-xs text-slate-500">
+            City: <span className="text-slate-700">{client.city}</span>
+          </span>
+        )}
+        <Button size="sm" onClick={handleSave} disabled={!dirty || saving}>
+          <Save size={14} />
+          {saving ? 'Saving…' : 'Save changes'}
+        </Button>
+      </div>
+    </Card>
   );
 }
 

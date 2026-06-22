@@ -1,6 +1,6 @@
 'use client';
 
-import { Users, Receipt } from 'lucide-react';
+import { Users, Settings } from 'lucide-react';
 import Badge from '@/components/common/Badge';
 import EmptyState from '@/components/common/EmptyState';
 import { useLanguage } from '@/components/LanguageProvider';
@@ -90,11 +90,11 @@ export default function ClientTable({ clients }) {
                 <td className="px-4 py-3 text-right">
                   <a
                     href={`/dashboard/professional/clients/${encodeURIComponent(c.id)}`}
-                    className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-100"
-                    title="Open client profile + compliance editor"
+                    className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                    title="Edit client profile + compliance + documents"
                   >
-                    <Receipt size={12} />
-                    Compliance
+                    <Settings size={12} />
+                    Manage
                   </a>
                 </td>
               </tr>

@@ -257,12 +257,19 @@ const update = async (id, data = {}) => {
  */
 const searchByPhone = async (phone) => {
   const trimmed = String(phone || '').trim();
-  if (!trimmed) return { user: null };
+  if (!trimmed) return { user: null, existsAsNonClient: false, role: null };
+  // Match ANY user with this phone so the modal can distinguish three
+  // cases: (a) free phone → create, (b) client exists → link,
+  // (c) non-client (pro/admin) owns it → refuse with a clear message.
   const user = await User.findOne({
-    where: { mobileNumber: trimmed, role: 'client' },
+    where: { mobileNumber: trimmed },
     raw: true,
   });
-  return { user: user ? toClientView(user) : null };
+  if (!user) return { user: null, existsAsNonClient: false, role: null };
+  if (user.role === 'client') {
+    return { user: toClientView(user), existsAsNonClient: false, role: 'client' };
+  }
+  return { user: null, existsAsNonClient: true, role: user.role || 'unknown' };
 };
 
 /** Link an existing client-user to the calling professional. */
