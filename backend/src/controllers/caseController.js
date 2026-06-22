@@ -2,6 +2,8 @@ const caseService = require('../services/caseService');
 const storageService = require('../services/storageService');
 const gates = require('../services/subscriptionGateService');
 const auditService = require('../services/auditService');
+const permissionService = require('../services/permissionService');
+const { ACTIONS: PERM } = require('../config/permissions');
 const asyncHandler = require('../utils/asyncHandler');
 const {
   successResponse,
@@ -230,6 +232,23 @@ const deleteCase = asyncHandler(async (req, res) => {
         statusCode: 403,
         message:
           'A professional is already assigned to this case. Ask them to remove it, or contact support.',
+      };
+    }
+  } else {
+    // Professional path — gate by firm role. Placeholder matrix
+    // restricts case.delete to partners + admins.
+    const canDelete = await permissionService.userCan(req.user, PERM.CASE_DELETE);
+    if (!canDelete) {
+      auditService.record({
+        req,
+        entityType: 'case',
+        entityId: req.params.id,
+        action: 'access_denied',
+        summary: 'Attempted to delete a case without case.delete permission',
+      });
+      throw {
+        statusCode: 403,
+        message: 'Only partners can delete cases. Ask a partner to do it.',
       };
     }
   }

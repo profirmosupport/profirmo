@@ -2,6 +2,8 @@ const express = require('express');
 const caseController = require('../controllers/caseController');
 const { authenticate } = require('../middleware/authMiddleware');
 const { validateBody } = require('../middleware/validateRequest');
+const requirePermission = require('../middleware/requirePermission');
+const { ACTIONS } = require('../config/permissions');
 
 const router = express.Router();
 
@@ -34,6 +36,9 @@ router.post(
 
 router.get('/:id', caseController.getCase);
 router.patch('/:id', caseController.updateCase);
+// Delete case — RBAC happens inside the controller because clients
+// have a self-serve carve-out (own unassigned case) that the firm
+// permission middleware can't model cleanly.
 router.delete('/:id', caseController.deleteCase);
 
 // Notes + log.
