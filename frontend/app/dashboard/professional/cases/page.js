@@ -11,6 +11,7 @@ import AddCaseModal from '@/components/cases/AddCaseModal';
 import QuotaBanner from '@/components/common/QuotaBanner';
 import caseService from '@/services/caseService';
 import { getMyUsage } from '@/services/subscriptionService';
+import { getPref, setPref } from '@/services/userPreferenceService';
 import { useAuth } from '@/components/AuthProvider';
 import firmJoinService from '@/services/firmJoinService';
 import { ROLES } from '@/utils/constants';
@@ -73,8 +74,35 @@ export default function ProfessionalCasesPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [firmIdForCreate, setFirmIdForCreate] = useState(null);
   // View mode — 'table' (default, dense scannable) or 'kanban'
-  // (columns grouped by stage, drag-and-glance for pipeline reviews).
-  const [viewMode, setViewMode] = useState('table');
+  // (columns grouped by stage). Persisted to user_preferences server-
+  // side so it survives across sessions + devices.
+  const [viewMode, setViewModeState] = useState('table');
+
+  // Hydrate the persisted choice on mount. Best-effort — failures
+  // silently fall back to the 'table' default.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const v = await getPref('casesView');
+        if (!cancelled && (v === 'table' || v === 'kanban')) {
+          setViewModeState(v);
+        }
+      } catch {
+        // Pref not set yet → keep default. No need to surface.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Wrapper that persists the new choice in the background — UI
+  // updates immediately, save is fire-and-forget.
+  function setViewMode(next) {
+    setViewModeState(next);
+    setPref('casesView', next).catch(() => {});
+  }
   // Plan quota snapshot — drives the QuotaBanner + button-disable below.
   const [usage, setUsage] = useState(null);
 
@@ -266,7 +294,27 @@ export default function ProfessionalCasesPage() {
             }
           />
         ) : viewMode === 'kanban' ? (
-          <CasesKanban cases={cases} />
+          <CasesKanban
+            cases={cases}
+            onMoveCase={async (caseId, nextStage) => {
+              // Optimistic update — the card lands in the new column
+              // before the network call returns. On failure we revert
+              // and surface the error via the existing top-level
+              // setError so it lines up with other server failures.
+              const prev = cases;
+              setCases(
+                cases.map((c) =>
+                  c.id === caseId ? { ...c, stage: nextStage } : c
+                )
+              );
+              try {
+                await caseService.setStage(caseId, { stage: nextStage });
+              } catch (err) {
+                setError(err.message || 'Could not update stage.');
+                setCases(prev);
+              }
+            }}
+          />
         ) : (
           <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
             <table className="w-full min-w-[760px] text-left text-sm">
@@ -413,19 +461,17 @@ const STAGE_COLUMN = {
 /**
  * CasesKanban — horizontal-scroll board with one column per canonical
  * stage. Cases without a stage drop into an "Unassigned" column at
- * the front so they're not lost. Read-only for v1 — no drag-and-drop
- * yet; clicking a card opens the case detail where stage can be set.
+ * the front so they're not lost.
  *
- * Layout notes:
- *   * Outer wrapper has a fixed min-height (3 card rows) so columns
- *     stay visible even when empty — earlier version collapsed empty
- *     columns to a sliver, making the board look broken.
- *   * Column header is sticky on vertical scroll within a tall column,
- *     so the stage label is always visible.
- *   * Each card surfaces title, client, priority, hearing-date (if
- *     set) and a CNR pill for e-Courts-imported matters.
+ * Drag-and-drop uses the native HTML5 API (no extra deps). Dragging a
+ * card onto another column fires `onMoveCase(caseId, nextStage)`; the
+ * parent decides whether to optimistically update + persist. Dropping
+ * back on the same column is a no-op.
  */
-function CasesKanban({ cases }) {
+function CasesKanban({ cases, onMoveCase }) {
+  const [draggingId, setDraggingId] = useState(null);
+  const [dropTarget, setDropTarget] = useState(null);
+
   const columns = [{ key: 'unassigned', label: 'Unassigned' }];
   for (const k of STAGE_ORDER) {
     columns.push({ key: k, label: STAGE_LABEL[k] });
@@ -438,15 +484,64 @@ function CasesKanban({ cases }) {
     byStage.get(key).push(c);
   }
 
+  function handleDragStart(e, caseId) {
+    setDraggingId(caseId);
+    // Required for Firefox to actually start a drag.
+    e.dataTransfer.setData('text/plain', caseId);
+    e.dataTransfer.effectAllowed = 'move';
+  }
+
+  function handleDragEnd() {
+    setDraggingId(null);
+    setDropTarget(null);
+  }
+
+  function handleDragOver(e, columnKey) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dropTarget !== columnKey) setDropTarget(columnKey);
+  }
+
+  function handleDrop(e, columnKey) {
+    e.preventDefault();
+    const caseId = e.dataTransfer.getData('text/plain') || draggingId;
+    setDraggingId(null);
+    setDropTarget(null);
+    if (!caseId) return;
+    // Map our pseudo-column "unassigned" back to a null stage so the
+    // backend understands "clear the stage".
+    const nextStage = columnKey === 'unassigned' ? null : columnKey;
+    const c = cases.find((x) => x.id === caseId);
+    if (!c) return;
+    const currentStage = c.stage || null;
+    if (currentStage === nextStage) return;
+    if (typeof onMoveCase === 'function') {
+      onMoveCase(caseId, nextStage);
+    }
+  }
+
   return (
     <div className="flex min-h-[480px] gap-3 overflow-x-auto pb-3">
       {columns.map((col) => {
         const items = byStage.get(col.key) || [];
         const tint = STAGE_COLUMN[col.key] || STAGE_COLUMN.unassigned;
+        const isDropZone = dropTarget === col.key && draggingId;
         return (
           <div
             key={col.key}
-            className="flex w-80 shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+            onDragOver={(e) => handleDragOver(e, col.key)}
+            onDrop={(e) => handleDrop(e, col.key)}
+            onDragLeave={() => {
+              // Only clear when leaving the column entirely (not when
+              // dragging over a child card).
+              if (dropTarget === col.key) setDropTarget(null);
+            }}
+            className={[
+              'flex w-80 shrink-0 flex-col overflow-hidden rounded-xl border bg-slate-50 transition',
+              isDropZone
+                ? 'border-indigo-400 ring-2 ring-indigo-200'
+                : 'border-slate-200',
+            ].join(' ')}
           >
             <div
               className={`sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 px-3 py-2 ${tint.head}`}
@@ -461,8 +556,17 @@ function CasesKanban({ cases }) {
             </div>
             <div className="flex-1 space-y-2 overflow-y-auto p-2">
               {items.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-slate-200 bg-white/60 px-2 py-6 text-center text-[11px] text-slate-400">
-                  No cases in {col.label.toLowerCase()}
+                <p
+                  className={[
+                    'rounded-lg border border-dashed px-2 py-6 text-center text-[11px]',
+                    isDropZone
+                      ? 'border-indigo-300 bg-indigo-50/60 text-indigo-700'
+                      : 'border-slate-200 bg-white/60 text-slate-400',
+                  ].join(' ')}
+                >
+                  {isDropZone
+                    ? `Drop to move into ${col.label}`
+                    : `No cases in ${col.label.toLowerCase()}`}
                 </p>
               ) : (
                 items.map((c) => {
@@ -473,49 +577,72 @@ function CasesKanban({ cases }) {
                         ? [c.professional]
                         : [];
                   const isFirmCase = assignees.length >= 2;
+                  const isDragging = draggingId === c.id;
                   return (
-                    <a
+                    <div
                       key={c.id}
-                      href={`/dashboard/professional/cases/${c.id}`}
-                      className="block rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-sm transition hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-md"
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, c.id)}
+                      onDragEnd={handleDragEnd}
+                      className={[
+                        'group cursor-grab rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-sm transition active:cursor-grabbing',
+                        isDragging
+                          ? 'opacity-40'
+                          : 'hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-md',
+                      ].join(' ')}
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="line-clamp-2 flex-1 text-sm font-semibold text-slate-800">
-                          {c.title || 'Untitled case'}
+                      {/* The whole card is draggable; the title link
+                          opens the detail page when clicked without
+                          drag. Anchor inside a draggable parent works
+                          fine — clicks not preceded by a drag fire
+                          normally. */}
+                      <a
+                        href={`/dashboard/professional/cases/${c.id}`}
+                        className="block"
+                        onClick={(e) => {
+                          // If we just finished a drag the browser may
+                          // synthesize a click — swallow it.
+                          if (draggingId === c.id) e.preventDefault();
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="line-clamp-2 flex-1 text-sm font-semibold text-slate-800">
+                            {c.title || 'Untitled case'}
+                          </p>
+                          {isFirmCase && (
+                            <span
+                              title={`Firm case — ${assignees.length} assignees`}
+                              className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-violet-700"
+                            >
+                              Firm
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1.5 text-[11px] text-slate-500">
+                          {c.client && c.client.name
+                            ? c.client.name
+                            : c.clientId || '—'}
                         </p>
-                        {isFirmCase && (
-                          <span
-                            title={`Firm case — ${assignees.length} assignees`}
-                            className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-violet-700"
-                          >
-                            Firm
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-1.5 text-[11px] text-slate-500">
-                        {c.client && c.client.name
-                          ? c.client.name
-                          : c.clientId || '—'}
-                      </p>
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                        <Badge variant={PRIORITY_VARIANT[c.priority] || 'gray'}>
-                          {c.priority || 'medium'}
-                        </Badge>
-                        {c.cnr && (
-                          <span
-                            className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-800"
-                            title={`E-Courts CNR ${c.cnr}`}
-                          >
-                            CNR
-                          </span>
-                        )}
-                        {c.nextHearingDate && (
-                          <span className="text-[10px] text-slate-500">
-                            ⚖ {formatDate(c.nextHearingDate)}
-                          </span>
-                        )}
-                      </div>
-                    </a>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <Badge variant={PRIORITY_VARIANT[c.priority] || 'gray'}>
+                            {c.priority || 'medium'}
+                          </Badge>
+                          {c.cnr && (
+                            <span
+                              className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-800"
+                              title={`E-Courts CNR ${c.cnr}`}
+                            >
+                              CNR
+                            </span>
+                          )}
+                          {c.nextHearingDate && (
+                            <span className="text-[10px] text-slate-500">
+                              ⚖ {formatDate(c.nextHearingDate)}
+                            </span>
+                          )}
+                        </div>
+                      </a>
+                    </div>
                   );
                 })
               )}

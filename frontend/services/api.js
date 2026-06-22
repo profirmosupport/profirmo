@@ -246,6 +246,11 @@ export function patch(path, body, options = {}) {
   return apiRequest(path, { ...options, method: 'PATCH', body });
 }
 
+/** PUT convenience wrapper. */
+export function put(path, body, options = {}) {
+  return apiRequest(path, { ...options, method: 'PUT', body });
+}
+
 /** DELETE convenience wrapper. */
 export function del(path, options = {}) {
   return apiRequest(path, { ...options, method: 'DELETE' });
@@ -256,6 +261,7 @@ export default {
   get,
   post,
   patch,
+  put,
   del,
   API_BASE_URL,
   getApiBaseUrl,

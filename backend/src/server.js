@@ -133,6 +133,8 @@ const SYNC_ORDER = [
   // Manual pins from a Gmail message to a specific case (multi-case
   // clients disambiguation).
   db.GmailMessageLink,
+  // Per-user small UI preferences (kv store).
+  db.UserPreference,
 ];
 
 // Boot the Profirmo HTTP server.
