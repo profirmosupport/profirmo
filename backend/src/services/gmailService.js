@@ -46,16 +46,21 @@ async function getOAuthConfig() {
 
 /**
  * Build the Google consent URL. `state` carries the caller's user id
- * so the callback can match the grant to the right account; in prod
- * this should be signed (JWT) to stop CSRF; for v1 we use a random
- * nonce + state stored in admin_settings keyed by nonce.
+ * + the frontend origin (so the callback knows whether to bounce back
+ * to localhost or prod) + a nonce to stop replay. In prod this should
+ * be signed (JWT); v1 relies on the nonce + Google's HTTPS callback
+ * being unguessable.
  */
-async function buildAuthUrl(userId) {
+async function buildAuthUrl(userId, frontendOrigin = null) {
   const cfg = await getOAuthConfig();
-  // Encode the user id directly; we also stamp a random nonce so a
-  // stolen state from an old session can't be replayed forever.
   const nonce = require('crypto').randomBytes(12).toString('hex');
-  const state = Buffer.from(JSON.stringify({ u: userId, n: nonce })).toString('base64url');
+  // `o` (origin) lets the callback redirect back to whichever frontend
+  // started the flow — important because the same backend serves
+  // both localhost:3000 (dev) and profirmo.com (prod) via different
+  // redirect_uris registered in the OAuth client.
+  const payload = { u: userId, n: nonce };
+  if (frontendOrigin) payload.o = frontendOrigin;
+  const state = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const params = new URLSearchParams({
     client_id: cfg.clientId,
     redirect_uri: cfg.redirectUri,
@@ -82,9 +87,11 @@ async function buildAuthUrl(userId) {
 async function exchangeCode(code, state) {
   const cfg = await getOAuthConfig();
   let userId = null;
+  let origin = null;
   try {
     const parsed = JSON.parse(Buffer.from(state, 'base64url').toString());
     userId = parsed.u || null;
+    origin = parsed.o || null;
   } catch {
     throw { statusCode: 400, message: 'Invalid OAuth state parameter' };
   }
@@ -129,21 +136,27 @@ async function exchangeCode(code, state) {
 
   // Upsert by Profirmo user — one Gmail account per user for v1.
   const existing = await GmailConnection.findOne({ where: { userId } });
+  let row;
   if (existing) {
     await existing.update({
       email,
       refreshToken: tokenJson.refresh_token,
       scope: tokenJson.scope || SCOPES.join(' '),
     });
-    return existing.get({ plain: true });
+    row = existing;
+  } else {
+    row = await GmailConnection.create({
+      userId,
+      email,
+      refreshToken: tokenJson.refresh_token,
+      scope: tokenJson.scope || SCOPES.join(' '),
+    });
   }
-  const row = await GmailConnection.create({
-    userId,
-    email,
-    refreshToken: tokenJson.refresh_token,
-    scope: tokenJson.scope || SCOPES.join(' '),
-  });
-  return row.get({ plain: true });
+  // Attach the origin we stashed in state so the controller can
+  // redirect back to the right frontend without consulting env vars.
+  const plain = row.get({ plain: true });
+  plain._frontendOrigin = origin;
+  return plain;
 }
 
 /**

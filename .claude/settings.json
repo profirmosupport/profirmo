@@ -235,7 +235,13 @@
       "Bash(curl -s -o /dev/null -w \"Health %{http_code}\\\\nAudit no-auth %{http_code}\\\\nPayout no-auth %{http_code}\\\\n\" -K-)",
       "Bash(curl -s -o /dev/null -w \"Frontend dashboard %{http_code}\\\\nLogin page %{http_code}\\\\n\" http://localhost:3000/dashboard/professional http://localhost:3000/login)",
       "Bash(curl -s -o /dev/null -w \"Pro dash %{http_code}\\\\n\" http://localhost:3000/dashboard/professional)",
-      "Bash(curl -s -o /dev/null -w \"Gmail me endpoint %{http_code}\\\\n\" http://localhost:5001/api/integrations/gmail/me)"
+      "Bash(curl -s -o /dev/null -w \"Gmail me endpoint %{http_code}\\\\n\" http://localhost:5001/api/integrations/gmail/me)",
+      "Bash(node -e 'console.log\\(Buffer.from\\(JSON.stringify\\({u:\"x\",n:\"y\",o:\"http://localhost:3000\"}\\)\\).toString\\(\"base64url\"\\)\\)')",
+      "Bash(curl -s -i \"http://localhost:5001/api/integrations/gmail/callback?error=test&state=$\\(node -e 'console.log\\(Buffer.from\\(JSON.stringify\\({u:\"x\",n:\"y\",o:\"http://localhost:3000\"}\\)\\).toString\\(\"base64url\"\\)\\)'\\)\")",
+      "Bash(curl -s -o /dev/null -w \"Health %{http_code}\\\\n\" http://localhost:5001/api/health)",
+      "Bash(curl -s -o /dev/null -w 'Callback \\(localhost in state\\) → %{redirect_url}\\\\n' 'http://localhost:5001/api/integrations/gmail/callback?error=test&state=__TRACKED_VAR__')",
+      "Bash(node -e 'console.log\\(Buffer.from\\(JSON.stringify\\({u:\"x\",n:\"y\",o:\"https://profirmo.com\"}\\)\\).toString\\(\"base64url\"\\)\\)')",
+      "Bash(curl -s -o /dev/null -w 'Callback \\(prod in state\\)  → %{redirect_url}\\\\n' 'http://localhost:5001/api/integrations/gmail/callback?error=test&state=__TRACKED_VAR__')"
     ],
     "additionalDirectories": [
       "/Users/vishalchauhan/code/profirmo/frontend/app/services",
