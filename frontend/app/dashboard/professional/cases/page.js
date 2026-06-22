@@ -186,34 +186,6 @@ export default function ProfessionalCasesPage() {
                 : `${cases.length} case${cases.length === 1 ? '' : 's'}`}
             </p>
             <div className="flex items-center gap-2">
-              {/* View mode toggle — Table (default, dense) vs Kanban
-                  (columns by stage). Sticky in component state only;
-                  not persisted yet — easy to upgrade to a localStorage
-                  pref later. */}
-              <div className="inline-flex overflow-hidden rounded-lg border border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setViewMode('table')}
-                  className={`px-3 py-1.5 text-xs font-medium transition ${
-                    viewMode === 'table'
-                      ? 'bg-slate-900 text-white'
-                      : 'bg-white text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  Table
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('kanban')}
-                  className={`px-3 py-1.5 text-xs font-medium transition ${
-                    viewMode === 'kanban'
-                      ? 'bg-slate-900 text-white'
-                      : 'bg-white text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  Kanban
-                </button>
-              </div>
               <Button
                 variant="outline"
                 size="sm"
@@ -227,6 +199,40 @@ export default function ProfessionalCasesPage() {
                 <Plus size={15} />
                 New case
               </Button>
+            </div>
+          </div>
+        )}
+
+        {/* View-mode toggle — sits between the QuotaBanner (or simple
+            toolbar) and the list/board so it stays visible regardless
+            of which header variant rendered above. Earlier we tucked
+            this inside one branch and it disappeared whenever a
+            subscription/usage block rendered. */}
+        {!loading && !error && cases.length > 0 && (
+          <div className="flex items-center justify-end">
+            <div className="inline-flex overflow-hidden rounded-lg border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setViewMode('table')}
+                className={`px-3 py-1.5 text-xs font-medium transition ${
+                  viewMode === 'table'
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                Table
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('kanban')}
+                className={`px-3 py-1.5 text-xs font-medium transition ${
+                  viewMode === 'kanban'
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                Kanban
+              </button>
             </div>
           </div>
         )}
