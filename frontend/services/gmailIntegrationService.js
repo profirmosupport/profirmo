@@ -68,6 +68,18 @@ export async function listCalendarEvents({ from, to } = {}) {
   return unwrap(res) || { events: [] };
 }
 
+/**
+ * Bulk-push every Profirmo entity (bookings, hearings, tasks,
+ * reminders) to the connected Google Calendar. Idempotent — entities
+ * that already have a googleEventId upsert in place.
+ *
+ * Returns: { connected, pushed: {bookings, hearings, tasks, reminders}, total, errors }
+ */
+export async function syncCalendarAll() {
+  const res = await post('/api/integrations/google/calendar/sync-all', {});
+  return unwrap(res);
+}
+
 // --- Per-case Gmail ---------------------------------------------------
 
 export async function listMessagesForCase(caseId) {

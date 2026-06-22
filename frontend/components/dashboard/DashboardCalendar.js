@@ -24,6 +24,7 @@ import {
   Gavel,
   ClipboardList,
   CalendarDays,
+  Upload,
 } from 'lucide-react';
 import Card from '@/components/common/Card';
 import AddReminderModal from '@/components/dashboard/AddReminderModal';
@@ -34,7 +35,10 @@ import {
   deleteReminder,
 } from '@/services/reminderService';
 import { listMineUpcoming as listMyOpenCaseTasks } from '@/services/caseTaskService';
-import { listCalendarEvents as listGoogleEvents } from '@/services/gmailIntegrationService';
+import {
+  listCalendarEvents as listGoogleEvents,
+  syncCalendarAll as pushAllToGoogle,
+} from '@/services/gmailIntegrationService';
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -132,6 +136,9 @@ export default function DashboardCalendar({
   const [googleSkipReason, setGoogleSkipReason] = useState(null);
   const [loadingRem, setLoadingRem] = useState(false);
   const [error, setError] = useState('');
+  // Bulk-sync-to-Google state — drives the button label + result toast.
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
 
   // Modal state — either the prefilled date for an "add" (clicked cell)
   // or the reminder being edited (clicked pill). The form fields
@@ -345,6 +352,23 @@ export default function DashboardCalendar({
     setMonth(d.getMonth());
   }
 
+  async function handleSyncToGoogle() {
+    setSyncing(true);
+    setSyncResult(null);
+    setError('');
+    try {
+      const out = await pushAllToGoogle();
+      setSyncResult(out);
+      // Reload visible Google events so the user sees their freshly
+      // pushed bookings / hearings / tasks on the same widget.
+      await refresh();
+    } catch (err) {
+      setError(err.message || 'Sync to Google Calendar failed.');
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   return (
     <Card>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -383,8 +407,45 @@ export default function DashboardCalendar({
           >
             Today
           </button>
+          {/* Bulk push everything (bookings, hearings, tasks,
+              reminders) to the connected Google Calendar. Requires
+              calendar.events scope on the user's Google grant — if
+              missing, the API returns a friendly error and a hint
+              that the user should reconnect Gmail. */}
+          <button
+            type="button"
+            onClick={handleSyncToGoogle}
+            disabled={syncing}
+            title="Push Profirmo bookings, hearings, tasks and reminders to your Google Calendar"
+            className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-medium text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:opacity-60"
+          >
+            <Upload size={12} />
+            {syncing ? 'Syncing…' : 'Sync to Google'}
+          </button>
         </div>
       </div>
+
+      {syncResult && (
+        <p
+          className={`mt-2 rounded-md px-3 py-2 text-xs ${
+            syncResult.connected
+              ? 'bg-emerald-50 text-emerald-800'
+              : 'bg-amber-50 text-amber-800'
+          }`}
+        >
+          {syncResult.connected
+            ? `Synced to ${syncResult.connectedEmail}: ${syncResult.pushed.bookings} bookings, ${syncResult.pushed.hearings} hearings, ${syncResult.pushed.tasks} tasks, ${syncResult.pushed.reminders} reminders (${syncResult.total} total).`
+            : syncResult.reason || 'Could not sync.'}
+          {Array.isArray(syncResult.errors) && syncResult.errors.length > 0 && (
+            <>
+              {' '}
+              <span className="font-medium">
+                {syncResult.errors.length} item(s) failed.
+              </span>
+            </>
+          )}
+        </p>
+      )}
 
       {error && (
         <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">

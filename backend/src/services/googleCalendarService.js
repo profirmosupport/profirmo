@@ -387,6 +387,144 @@ async function deleteForReminder(userId, reminder) {
   }
 }
 
+/**
+ * Bulk-push everything that should live on the caller's Google
+ * Calendar:
+ *   * Bookings the user is the professional on (upcoming + recent)
+ *   * Cases they're assigned to with a nextHearingDate
+ *   * CaseUpdate rows on those cases with a dueDate (tasks)
+ *   * ProfessionalReminder rows owned by the user
+ *
+ * Used by the "Sync to Google" button on the dashboard calendar so
+ * the pro can backfill events that pre-date their Google connect, or
+ * after a connection went stale.
+ *
+ * Returns { connected, pushed: {bookings, hearings, tasks, reminders},
+ * skipped, errors }.
+ */
+async function syncAllForUser(userId) {
+  const connection = await findWritableConnection(userId);
+  if (!connection) {
+    return {
+      connected: false,
+      reason:
+        'Google account not connected, or calendar.events scope not granted. Re-connect from the Gmail card.',
+      pushed: { bookings: 0, hearings: 0, tasks: 0, reminders: 0 },
+    };
+  }
+  // eslint-disable-next-line global-require
+  const {
+    Booking,
+    Case,
+    CaseUpdate,
+    ProfessionalReminder,
+    ProfessionalDetail,
+  } = require('../models');
+  const { Op } = require('sequelize');
+
+  // Resolve the caller's ProfessionalDetail.id so we can look up their
+  // bookings and cases.
+  const detail = await ProfessionalDetail.findOne({
+    where: { userId },
+    attributes: ['id'],
+    raw: true,
+  });
+  const proId = detail ? detail.id : null;
+
+  let pushedBookings = 0;
+  let pushedHearings = 0;
+  let pushedTasks = 0;
+  let pushedReminders = 0;
+  const errors = [];
+
+  // --- Bookings ----------------------------------------------------
+  if (proId) {
+    const bookings = await Booking.findAll({
+      where: {
+        professionalId: proId,
+        status: { [Op.notIn]: ['cancelled', 'completed'] },
+      },
+      raw: true,
+    });
+    for (const b of bookings) {
+      try {
+        const id = await pushBooking(userId, b);
+        if (id) pushedBookings += 1;
+      } catch (err) {
+        errors.push(`booking ${b.id}: ${err.message || err}`);
+      }
+    }
+  }
+
+  // --- Hearings + Tasks on cases the user owns ---------------------
+  let caseIds = [];
+  if (proId) {
+    const cases = await Case.findAll({
+      where: { professionalId: proId },
+      raw: true,
+    });
+    caseIds = cases.map((c) => c.id);
+    for (const c of cases) {
+      if (!c.nextHearingDate) continue;
+      try {
+        const id = await pushHearing(userId, c);
+        if (id) pushedHearings += 1;
+      } catch (err) {
+        errors.push(`hearing ${c.id}: ${err.message || err}`);
+      }
+    }
+  }
+  if (caseIds.length > 0) {
+    const tasks = await CaseUpdate.findAll({
+      where: {
+        caseId: { [Op.in]: caseIds },
+        dueDate: { [Op.ne]: null },
+        [Op.or]: [
+          { status: { [Op.in]: ['open', 'in_progress'] } },
+          { status: null },
+        ],
+      },
+      raw: true,
+    });
+    for (const t of tasks) {
+      try {
+        const id = await pushTask(userId, t);
+        if (id) pushedTasks += 1;
+      } catch (err) {
+        errors.push(`task ${t.id}: ${err.message || err}`);
+      }
+    }
+  }
+
+  // --- Reminders ---------------------------------------------------
+  const reminders = await ProfessionalReminder.findAll({
+    where: { userId, done: false },
+    raw: true,
+  });
+  for (const r of reminders) {
+    try {
+      const id = await pushReminder(userId, r);
+      if (id) pushedReminders += 1;
+    } catch (err) {
+      errors.push(`reminder ${r.id}: ${err.message || err}`);
+    }
+  }
+
+  return {
+    connected: true,
+    connectedEmail: connection.email,
+    pushed: {
+      bookings: pushedBookings,
+      hearings: pushedHearings,
+      tasks: pushedTasks,
+      reminders: pushedReminders,
+    },
+    total:
+      pushedBookings + pushedHearings + pushedTasks + pushedReminders,
+    errors,
+  };
+}
+
 module.exports = {
   listEventsForUser,
   pushBooking,
@@ -395,4 +533,5 @@ module.exports = {
   pushReminder,
   deleteForBooking,
   deleteForReminder,
+  syncAllForUser,
 };

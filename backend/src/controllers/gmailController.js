@@ -200,6 +200,14 @@ const listCalendarEvents = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'Google Calendar events', out);
 });
 
+// Bulk push everything to Google — fired by the "Sync to Google"
+// button on the dashboard calendar widget. Idempotent: items that
+// already have a googleEventId upsert in place, no duplicates.
+const syncCalendarAll = asyncHandler(async (req, res) => {
+  const out = await googleCalendarService.syncAllForUser(req.user.id);
+  return successResponse(res, 200, 'Calendar sync complete', out);
+});
+
 module.exports = {
   connect,
   connectUrl,
@@ -208,6 +216,7 @@ module.exports = {
   sync,
   disconnect,
   listCalendarEvents,
+  syncCalendarAll,
   listMessagesForCase,
   pinMessage,
   unpinMessage,

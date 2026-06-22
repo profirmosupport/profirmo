@@ -23,17 +23,10 @@ const PRIORITY_VARIANT = {
   urgent: 'red',
 };
 
-const STATUS_VARIANT = {
-  open: 'blue',
-  'in-progress': 'amber',
-  closed: 'green',
-};
-
-const STATUS_LABEL = {
-  open: 'Open',
-  'in-progress': 'In progress',
-  closed: 'Closed',
-};
+// Status column was retired in favour of `stage` — stage is now the
+// single signal of where a case sits. The `status` column lingers on
+// the DB row for backward-compat with any external integrations but
+// is no longer surfaced.
 
 // Local mirror of backend/src/config/caseStages.js so the table /
 // Kanban don't need an extra API round-trip to render labels. Keep in
@@ -280,7 +273,6 @@ export default function ProfessionalCasesPage() {
                   <th className="px-4 py-3 font-semibold">Stage</th>
                   <th className="px-4 py-3 font-semibold">Client</th>
                   <th className="px-4 py-3 font-semibold">Priority</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3 font-semibold">Next hearing</th>
                   <th className="px-4 py-3 font-semibold">Created</th>
                   <th className="px-4 py-3 font-semibold text-right">
@@ -346,11 +338,6 @@ export default function ProfessionalCasesPage() {
                         {c.priority || 'medium'}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3">
-                      <Badge variant={STATUS_VARIANT[c.status] || 'gray'}>
-                        {STATUS_LABEL[c.status] || c.status || 'Open'}
-                      </Badge>
-                    </td>
                     <td className="px-4 py-3 text-slate-600">
                       {c.nextHearingDate ? formatDate(c.nextHearingDate) : '—'}
                     </td>
@@ -399,11 +386,38 @@ export default function ProfessionalCasesPage() {
   );
 }
 
+// Per-stage column tinting — matches the spirit of the case detail
+// stepper colours. Unassigned + closing/closed get muted tones; live
+// work-in-progress stages get accent colour so the eye is drawn to
+// the busiest part of the pipeline.
+const STAGE_COLUMN = {
+  unassigned: { head: 'bg-slate-100 text-slate-600', dot: 'bg-slate-400' },
+  intake: { head: 'bg-blue-100 text-blue-800', dot: 'bg-blue-500' },
+  preparation: { head: 'bg-amber-100 text-amber-800', dot: 'bg-amber-500' },
+  filed: { head: 'bg-purple-100 text-purple-800', dot: 'bg-purple-500' },
+  awaiting_response: {
+    head: 'bg-orange-100 text-orange-800',
+    dot: 'bg-orange-500',
+  },
+  hearing: { head: 'bg-indigo-100 text-indigo-800', dot: 'bg-indigo-500' },
+  closing: { head: 'bg-teal-100 text-teal-800', dot: 'bg-teal-500' },
+  closed: { head: 'bg-emerald-100 text-emerald-800', dot: 'bg-emerald-500' },
+};
+
 /**
  * CasesKanban — horizontal-scroll board with one column per canonical
- * stage. Cases without a stage drop into an "Unassigned" column at the
- * front so they're not lost. Read-only for v1 — no drag-and-drop yet;
- * the user updates stage from the case detail page.
+ * stage. Cases without a stage drop into an "Unassigned" column at
+ * the front so they're not lost. Read-only for v1 — no drag-and-drop
+ * yet; clicking a card opens the case detail where stage can be set.
+ *
+ * Layout notes:
+ *   * Outer wrapper has a fixed min-height (3 card rows) so columns
+ *     stay visible even when empty — earlier version collapsed empty
+ *     columns to a sliver, making the board look broken.
+ *   * Column header is sticky on vertical scroll within a tall column,
+ *     so the stage label is always visible.
+ *   * Each card surfaces title, client, priority, hearing-date (if
+ *     set) and a CNR pill for e-Courts-imported matters.
  */
 function CasesKanban({ cases }) {
   const columns = [{ key: 'unassigned', label: 'Unassigned' }];
@@ -419,54 +433,85 @@ function CasesKanban({ cases }) {
   }
 
   return (
-    <div className="flex gap-3 overflow-x-auto pb-3">
+    <div className="flex min-h-[480px] gap-3 overflow-x-auto pb-3">
       {columns.map((col) => {
         const items = byStage.get(col.key) || [];
+        const tint = STAGE_COLUMN[col.key] || STAGE_COLUMN.unassigned;
         return (
           <div
             key={col.key}
-            className="flex w-72 shrink-0 flex-col rounded-xl border border-slate-200 bg-slate-50"
+            className="flex w-80 shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
           >
-            <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            <div
+              className={`sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 px-3 py-2 ${tint.head}`}
+            >
+              <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide">
+                <span className={`h-2 w-2 rounded-full ${tint.dot}`} />
                 {col.label}
               </span>
-              <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-medium text-slate-500">
+              <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-medium">
                 {items.length}
               </span>
             </div>
             <div className="flex-1 space-y-2 overflow-y-auto p-2">
               {items.length === 0 ? (
-                <p className="px-1 py-4 text-center text-[11px] text-slate-400">
-                  No cases here
+                <p className="rounded-lg border border-dashed border-slate-200 bg-white/60 px-2 py-6 text-center text-[11px] text-slate-400">
+                  No cases in {col.label.toLowerCase()}
                 </p>
               ) : (
-                items.map((c) => (
-                  <a
-                    key={c.id}
-                    href={`/dashboard/professional/cases/${c.id}`}
-                    className="block rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-sm transition hover:border-amber-300 hover:shadow"
-                  >
-                    <p className="line-clamp-2 font-medium text-slate-800">
-                      {c.title || 'Untitled case'}
-                    </p>
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      {c.client && c.client.name
-                        ? c.client.name
-                        : c.clientId || '—'}
-                    </p>
-                    <div className="mt-2 flex flex-wrap items-center gap-1">
-                      <Badge variant={PRIORITY_VARIANT[c.priority] || 'gray'}>
-                        {c.priority || 'medium'}
-                      </Badge>
-                      {c.nextHearingDate && (
-                        <span className="text-[10px] text-slate-500">
-                          Hearing {formatDate(c.nextHearingDate)}
-                        </span>
-                      )}
-                    </div>
-                  </a>
-                ))
+                items.map((c) => {
+                  const assignees =
+                    Array.isArray(c.professionals) && c.professionals.length > 0
+                      ? c.professionals
+                      : c.professional
+                        ? [c.professional]
+                        : [];
+                  const isFirmCase = assignees.length >= 2;
+                  return (
+                    <a
+                      key={c.id}
+                      href={`/dashboard/professional/cases/${c.id}`}
+                      className="block rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-sm transition hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-md"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="line-clamp-2 flex-1 text-sm font-semibold text-slate-800">
+                          {c.title || 'Untitled case'}
+                        </p>
+                        {isFirmCase && (
+                          <span
+                            title={`Firm case — ${assignees.length} assignees`}
+                            className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-violet-700"
+                          >
+                            Firm
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1.5 text-[11px] text-slate-500">
+                        {c.client && c.client.name
+                          ? c.client.name
+                          : c.clientId || '—'}
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        <Badge variant={PRIORITY_VARIANT[c.priority] || 'gray'}>
+                          {c.priority || 'medium'}
+                        </Badge>
+                        {c.cnr && (
+                          <span
+                            className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-800"
+                            title={`E-Courts CNR ${c.cnr}`}
+                          >
+                            CNR
+                          </span>
+                        )}
+                        {c.nextHearingDate && (
+                          <span className="text-[10px] text-slate-500">
+                            ⚖ {formatDate(c.nextHearingDate)}
+                          </span>
+                        )}
+                      </div>
+                    </a>
+                  );
+                })
               )}
             </div>
           </div>

@@ -41,5 +41,6 @@ router.delete(
 // Google Calendar — reuses the Gmail OAuth grant; surfaces events on
 // the dashboard calendar widget.
 router.get('/google/calendar/events', gmailController.listCalendarEvents);
+router.post('/google/calendar/sync-all', gmailController.syncCalendarAll);
 
 module.exports = router;

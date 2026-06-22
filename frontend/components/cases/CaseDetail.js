@@ -52,17 +52,9 @@ const PRIORITY_VARIANT = {
   urgent: 'red',
 };
 
-const STATUS_VARIANT = {
-  open: 'blue',
-  'in-progress': 'amber',
-  closed: 'green',
-};
-
-const STATUS_LABEL = {
-  open: 'Open',
-  'in-progress': 'In progress',
-  closed: 'Closed',
-};
+// Status was retired in favour of `stage`. Stage is shown via the
+// CaseStageTracker at the top of the page — no separate Status badge
+// is rendered anywhere on this surface.
 
 function DetailRow({ label, value }) {
   return (
@@ -467,9 +459,8 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                 )}
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Badge variant={STATUS_VARIANT[data.status] || 'gray'}>
-                {STATUS_LABEL[data.status] || data.status || 'Open'}
-              </Badge>
+              {/* Status removed — stage handles "where is this case"
+                  via the CaseStageTracker at the top of the page. */}
               <Badge variant={PRIORITY_VARIANT[data.priority] || 'gray'}>
                 {data.priority || 'medium'}
               </Badge>
