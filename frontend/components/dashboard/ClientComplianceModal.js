@@ -17,6 +17,7 @@ import {
   getProfile,
   saveProfile,
   generateForClient,
+  getRequirements,
 } from '@/services/complianceService';
 
 const ENTITY_TYPES = [
@@ -68,6 +69,9 @@ export default function ClientComplianceModal({
   // True once the existing profile (if any) has been fetched — so the
   // "Generate schedule" button knows whether a profile exists yet.
   const [profileExists, setProfileExists] = useState(false);
+  // Live-fetched per-entity-type document + service requirements,
+  // refetched whenever the user picks a different entity type.
+  const [requirements, setRequirements] = useState(null);
 
   const load = useCallback(async () => {
     if (!open || !clientUserId) return;
@@ -104,6 +108,28 @@ export default function ClientComplianceModal({
   useEffect(() => {
     load();
   }, [load]);
+
+  // Refetch the document + service catalog whenever the entity type
+  // changes — switching from individual → private_ltd swaps in
+  // companies-act items, etc.
+  useEffect(() => {
+    let cancelled = false;
+    if (!form.entityType) {
+      setRequirements(null);
+      return undefined;
+    }
+    (async () => {
+      try {
+        const r = await getRequirements(form.entityType);
+        if (!cancelled) setRequirements(r);
+      } catch {
+        if (!cancelled) setRequirements(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [form.entityType]);
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -362,8 +388,110 @@ export default function ClientComplianceModal({
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
             />
           </div>
+
+          {/* Documents + services catalog. Auto-driven from
+              entityType — shows what to ask the client for and which
+              recurring services apply. Reference-only for v1;
+              upload + done-tracking lands with the document-workflow
+              module. */}
+          {requirements && (
+            <DocsServicesPanel requirements={requirements} />
+          )}
         </div>
       )}
     </Modal>
+  );
+}
+
+// Category → header style for the docs section. Keeps the visual
+// hierarchy lighter than the rest of the form.
+const CAT_LABEL = {
+  kyc: 'KYC',
+  registration: 'Registration',
+  financial: 'Financial',
+  compliance: 'Statutory compliance',
+};
+
+function DocsServicesPanel({ requirements }) {
+  // Group documents by category for readability.
+  const byCat = new Map();
+  for (const d of requirements.documents) {
+    const cat = d.category || 'other';
+    if (!byCat.has(cat)) byCat.set(cat, []);
+    byCat.get(cat).push(d);
+  }
+  const catOrder = ['kyc', 'registration', 'financial', 'compliance'];
+  return (
+    <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+          Documents to collect ({requirements.documents.length})
+        </p>
+        <p className="text-[11px] text-slate-500">
+          Standard checklist for a {requirements.label}. Ask the client
+          for the mandatory items first — the rest depend on their
+          situation.
+        </p>
+      </div>
+      {catOrder
+        .filter((c) => byCat.has(c))
+        .map((cat) => (
+          <div key={cat}>
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              {CAT_LABEL[cat] || cat}
+            </p>
+            <ul className="space-y-1">
+              {byCat.get(cat).map((d) => (
+                <li
+                  key={d.key}
+                  className="flex items-start gap-2 rounded border border-slate-200 bg-white px-2 py-1.5 text-xs"
+                >
+                  <span
+                    className={[
+                      'mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full',
+                      d.mandatory ? 'bg-red-500' : 'bg-slate-300',
+                    ].join(' ')}
+                    title={d.mandatory ? 'Mandatory' : 'Optional'}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-slate-800">{d.label}</p>
+                    {d.description && (
+                      <p className="text-[11px] text-slate-500">
+                        {d.description}
+                      </p>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+
+      <div>
+        <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
+          Recurring services ({requirements.services.length})
+        </p>
+        <ul className="mt-1 space-y-1">
+          {requirements.services.map((s) => (
+            <li
+              key={s.key}
+              className="flex items-start gap-2 rounded border border-slate-200 bg-white px-2 py-1.5 text-xs"
+            >
+              <span className="mt-0.5 inline-block rounded-full bg-indigo-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-indigo-700">
+                {s.cadence || 'ad-hoc'}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-slate-800">{s.label}</p>
+                {s.description && (
+                  <p className="text-[11px] text-slate-500">
+                    {s.description}
+                  </p>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
   );
 }

@@ -55,3 +55,35 @@ export async function updateObligation(id, payload) {
   );
   return unwrap(res);
 }
+
+// --- Entity-type requirements catalog -------------------------------
+
+export async function getRequirements(entityType) {
+  if (!entityType) return null;
+  const res = await get(
+    `/api/compliance/requirements/${encodeURIComponent(entityType)}`
+  );
+  return unwrap(res);
+}
+
+// --- Client self-service -------------------------------------------
+
+export async function getMyProfile() {
+  const res = await get('/api/compliance/profile/me');
+  return unwrap(res);
+}
+
+export async function saveMyProfile(payload) {
+  const res = await put('/api/compliance/profile/me', payload);
+  return unwrap(res);
+}
+
+export async function listMyObligations({ from, to, status } = {}) {
+  const params = {};
+  if (from) params.from = from;
+  if (to) params.to = to;
+  if (status) params.status = status;
+  const res = await get('/api/compliance/obligations/me', { params });
+  const data = unwrap(res);
+  return Array.isArray(data) ? data : [];
+}

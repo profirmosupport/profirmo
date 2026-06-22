@@ -71,10 +71,60 @@ const updateObligation = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'Obligation updated', row);
 });
 
+// --- Requirements catalog -------------------------------------------
+
+const requirementsCatalog = require('../config/entityTypeRequirements');
+
+const getRequirements = asyncHandler(async (req, res) => {
+  const out = requirementsCatalog.getRequirements(req.params.entityType);
+  if (!out) {
+    throw {
+      statusCode: 404,
+      message: `Unknown entity type: ${req.params.entityType}`,
+    };
+  }
+  return successResponse(res, 200, 'Requirements catalog', out);
+});
+
+const listEntities = asyncHandler(async (req, res) => {
+  return successResponse(
+    res,
+    200,
+    'Entity types',
+    requirementsCatalog.listEntities()
+  );
+});
+
+// --- Client self read/write -----------------------------------------
+
+const getMyProfile = asyncHandler(async (req, res) => {
+  const profile = await compliance.getMyProfile(req.user.id);
+  return successResponse(res, 200, 'My compliance profile', profile);
+});
+
+const putMyProfile = asyncHandler(async (req, res) => {
+  const out = await compliance.upsertMyProfile(req.user.id, req.body || {});
+  return successResponse(res, 200, 'Profile updated', out);
+});
+
+const listMyObligations = asyncHandler(async (req, res) => {
+  const items = await compliance.listForClient(req.user.id, {
+    from: req.query.from,
+    to: req.query.to,
+    status: req.query.status,
+  });
+  return successResponse(res, 200, 'My compliance obligations', items);
+});
+
 module.exports = {
   getProfile,
   putProfile,
   generate,
   listMine,
   updateObligation,
+  getRequirements,
+  listEntities,
+  getMyProfile,
+  putMyProfile,
+  listMyObligations,
 };

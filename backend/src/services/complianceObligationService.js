@@ -443,6 +443,71 @@ async function updateObligation(professionalId, id, payload) {
   return row.get({ plain: true });
 }
 
+/**
+ * Client self-read: get the most-recently-updated profile across any
+ * professional this user is linked with. Returns null when no pro has
+ * set up a profile yet (the UI then offers a "fill in your details"
+ * empty state).
+ */
+async function getMyProfile(clientUserId) {
+  return ClientComplianceProfile.findOne({
+    where: { clientUserId },
+    order: [['updatedAt', 'DESC']],
+    raw: true,
+  });
+}
+
+/**
+ * Client self-write: propagate the client's profile edit to EVERY
+ * row scoped to them across all their pros. The first time a client
+ * fills in details no row may exist yet — in that case we silently
+ * accept the update but it has no effect until a pro saves a profile
+ * (the pro-side modal seeds the row from this snapshot).
+ */
+async function upsertMyProfile(clientUserId, payload) {
+  const rows = await ClientComplianceProfile.findAll({
+    where: { clientUserId },
+  });
+  const patch = {};
+  if (payload.entityType !== undefined) {
+    patch.entityType = ClientComplianceProfile.ENTITY_TYPES.includes(payload.entityType)
+      ? payload.entityType
+      : null;
+  }
+  for (const f of ['pan', 'gstin', 'cin', 'notes']) {
+    if (payload[f] !== undefined) patch[f] = payload[f] || null;
+  }
+  if (payload.gstScheme !== undefined) {
+    patch.gstScheme = ['regular', 'composition', 'casual', 'isd'].includes(payload.gstScheme)
+      ? payload.gstScheme
+      : null;
+  }
+  for (const f of ['qrmpEligible', 'tdsDeductor', 'taxAuditRequired', 'gstr9cRequired']) {
+    if (payload[f] !== undefined) patch[f] = !!payload[f];
+  }
+  for (const r of rows) {
+    await r.update(patch);
+  }
+  return { applied: rows.length, patch };
+}
+
+/** Client self-read of obligations across all their pros. */
+async function listForClient(clientUserId, { from, to, status } = {}) {
+  const { Op } = require('sequelize');
+  const where = { clientUserId };
+  if (from || to) {
+    where.dueDate = {};
+    if (from) where.dueDate[Op.gte] = from;
+    if (to) where.dueDate[Op.lte] = to;
+  }
+  if (status) where.status = status;
+  return ComplianceObligation.findAll({
+    where,
+    order: [['dueDate', 'ASC']],
+    raw: true,
+  });
+}
+
 module.exports = {
   getProfile,
   upsertProfile,
@@ -450,4 +515,7 @@ module.exports = {
   listForProfessional,
   updateObligation,
   applicableRules, // exported for testing / preview
+  getMyProfile,
+  upsertMyProfile,
+  listForClient,
 };

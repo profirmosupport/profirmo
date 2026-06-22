@@ -251,7 +251,8 @@
       "Bash(ssh -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no ubuntu@proapi.profirmo.com 'cd /var/www/profirmo && git fetch /tmp/profirmo-deploy.bundle main:incoming 2>&1 && git reset --hard incoming && git log --oneline -8')",
       "Bash(ssh -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no ubuntu@proapi.profirmo.com 'cd /var/www/profirmo/backend && npm ci --omit=dev 2>&1 | tail -3 && pm2 restart profirmo-api && sleep 4 && pm2 status profirmo-api | tail -3')",
       "Bash(ssh -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no ubuntu@proapi.profirmo.com 'pm2 logs profirmo-api --lines 30 --nostream --raw 2>&1 | tail -25')",
-      "Bash(ssh -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no ubuntu@proapi.profirmo.com 'cd /var/www/profirmo/backend && npm ci --omit=dev 2>&1 | tail -3 && pm2 restart profirmo-api && sleep 5 && node -e \" *)"
+      "Bash(ssh -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no ubuntu@proapi.profirmo.com 'cd /var/www/profirmo/backend && npm ci --omit=dev 2>&1 | tail -3 && pm2 restart profirmo-api && sleep 5 && node -e \" *)",
+      "Bash(ssh -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no ubuntu@proapi.profirmo.com 'cd /var/www/profirmo && git fetch /tmp/profirmo-deploy.bundle main:incoming 2>&1 | tail -2 && git reset --hard incoming && cd backend && pm2 restart profirmo-api && sleep 4 && pm2 status profirmo-api | tail -3')"
     ],
     "additionalDirectories": [
       "/Users/vishalchauhan/code/profirmo/frontend/app/services",

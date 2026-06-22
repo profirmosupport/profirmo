@@ -133,6 +133,12 @@ const NAV_BY_ROLE = {
       icon: CreditCard,
     },
     {
+      // Inline label; i18n entry can be added later.
+      label: 'Compliance',
+      href: '/dashboard/client/compliance',
+      icon: Receipt,
+    },
+    {
       labelKey: 'dash.nav.findProfessionals',
       href: '/professionals',
       icon: Search,
