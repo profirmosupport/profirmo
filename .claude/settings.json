@@ -243,7 +243,14 @@
       "Bash(node -e 'console.log\\(Buffer.from\\(JSON.stringify\\({u:\"x\",n:\"y\",o:\"https://profirmo.com\"}\\)\\).toString\\(\"base64url\"\\)\\)')",
       "Bash(curl -s -o /dev/null -w 'Callback \\(prod in state\\)  → %{redirect_url}\\\\n' 'http://localhost:5001/api/integrations/gmail/callback?error=test&state=__TRACKED_VAR__')",
       "Bash(grep -n \"overflow-x-auto rounded-xl border border-slate-200 bg-white\\\\|</table>\\\\|</div>\\\\s*$\" /Users/vishalchauhan/code/profirmo/frontend/app/dashboard/professional/cases/page.js)",
-      "Bash(curl -s -o /dev/null -w \"Cases page %{http_code}\\\\n\" http://localhost:3000/dashboard/professional/cases)"
+      "Bash(curl -s -o /dev/null -w \"Cases page %{http_code}\\\\n\" http://localhost:3000/dashboard/professional/cases)",
+      "Bash(git push *)",
+      "Bash(git bundle *)",
+      "Bash(scp -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no /tmp/profirmo-deploy.bundle ubuntu@proapi.profirmo.com:/tmp/profirmo-deploy.bundle)",
+      "Bash(ssh -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no ubuntu@proapi.profirmo.com 'cd /var/www/profirmo && git log --oneline -1 && git fetch /tmp/profirmo-deploy.bundle main:incoming 2>&1 && git checkout main && git reset --hard incoming && git log --oneline -5')",
+      "Bash(ssh -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no ubuntu@proapi.profirmo.com 'cd /var/www/profirmo && git fetch /tmp/profirmo-deploy.bundle main:incoming 2>&1 && git reset --hard incoming && git log --oneline -8')",
+      "Bash(ssh -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no ubuntu@proapi.profirmo.com 'cd /var/www/profirmo/backend && npm ci --omit=dev 2>&1 | tail -3 && pm2 restart profirmo-api && sleep 4 && pm2 status profirmo-api | tail -3')",
+      "Bash(ssh -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no ubuntu@proapi.profirmo.com 'pm2 logs profirmo-api --lines 30 --nostream --raw 2>&1 | tail -25')"
     ],
     "additionalDirectories": [
       "/Users/vishalchauhan/code/profirmo/frontend/app/services",
