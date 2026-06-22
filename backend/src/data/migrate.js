@@ -376,6 +376,30 @@ async function runMigrations() {
     }
   }
 
+  // 7d-bis. CaseUpdate task fields — promotes an update into a task
+  // surface (status / priority / dueDate / completedAt). NULLs preserve
+  // the pure-narration shape. Drives the dashboard calendar pills.
+  const CASE_UPDATE_TASK_COLUMNS = [
+    ['status', "ENUM('open','in_progress','done','cancelled') NULL"],
+    ['priority', "ENUM('low','normal','high') NULL"],
+    ['dueDate', 'DATE NULL'],
+    ['completedAt', 'DATETIME NULL'],
+    ['completedByUserId', 'VARCHAR(64) NULL'],
+  ];
+  for (const [col, type] of CASE_UPDATE_TASK_COLUMNS) {
+    try {
+      await sequelize.query(
+        `ALTER TABLE \`case_updates\` ADD COLUMN IF NOT EXISTS \`${col}\` ${type}`
+      );
+    } catch (err) {
+      if (!/doesn'?t exist|Unknown table/i.test(err.message)) {
+        console.warn(
+          `[Migrate] Could not add case_updates.${col}: ${err.message}`
+        );
+      }
+    }
+  }
+
   // 7e. CaseNote `attachments` JSON column for existing DBs.
   try {
     await sequelize.query(

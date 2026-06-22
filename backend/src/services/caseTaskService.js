@@ -6,6 +6,7 @@
 const { Op } = require('sequelize');
 const {
   CaseTask,
+  CaseUpdate,
   Case,
   ProfessionalDetail,
   User,
@@ -137,8 +138,12 @@ async function listForCase(userId, caseId) {
 }
 
 /**
- * List tasks the caller is responsible for across all their cases —
- * surfaces upcoming work on the dashboard calendar / task widget.
+ * List task-shaped CaseUpdate rows the caller is responsible for
+ * across all their cases — surfaces upcoming work on the dashboard
+ * calendar. A row counts as a "task" when its `dueDate` is set and
+ * status is open / in_progress (or unset). After the F1→Updates
+ * refactor this reads from `case_updates`, not `case_tasks`, so the
+ * dashboard calendar stays in sync with the single source of truth.
  */
 async function listMineUpcoming(userId, window = {}) {
   const proId = await myProfessionalId(userId);
@@ -159,20 +164,34 @@ async function listMineUpcoming(userId, window = {}) {
 
   const where = {
     caseId: { [Op.in]: caseIds },
-    status: { [Op.in]: ['open', 'in_progress'] },
+    dueDate: { [Op.ne]: null },
+    [Op.or]: [
+      { status: { [Op.in]: ['open', 'in_progress'] } },
+      { status: null },
+    ],
   };
   if (window.from || window.to) {
-    where.dueDate = {};
+    where.dueDate = where.dueDate || {};
     if (window.from) where.dueDate[Op.gte] = window.from;
     if (window.to) where.dueDate[Op.lte] = window.to;
   }
-  const rows = await CaseTask.findAll({
+  const rows = await CaseUpdate.findAll({
     where,
     order: [['dueDate', 'ASC'], ['createdAt', 'ASC']],
     raw: true,
   });
   const caseById = new Map(caseRows.map((c) => [c.id, c]));
-  return rows.map((r) => ({ ...r, case: caseById.get(r.caseId) || null }));
+  // Project into the legacy task shape the frontend already consumes
+  // so the dashboard calendar keeps working without a UI change.
+  return rows.map((r) => ({
+    id: r.id,
+    caseId: r.caseId,
+    title: r.title || (r.body || '').slice(0, 80) || 'Task',
+    status: r.status || 'open',
+    priority: r.priority || 'normal',
+    dueDate: r.dueDate,
+    case: caseById.get(r.caseId) || null,
+  }));
 }
 
 async function create(userId, caseId, payload = {}) {

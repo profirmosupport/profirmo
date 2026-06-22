@@ -999,8 +999,16 @@ const listLog = async (caseId) =>
  * @param {object} data - { body, scheduledAt, nextHearingDate, attachments[] }
  */
 const addUpdate = async (caseId, user, data = {}) => {
-  if (!data.body || !String(data.body).trim()) {
-    throw { statusCode: 422, message: 'Update body is required.' };
+  // Body is optional now that an update can be a pure task (title + due
+  // date alone). Require at least one of body, title, dueDate.
+  const hasBody = data.body && String(data.body).trim();
+  const hasTitle = data.title && String(data.title).trim();
+  const hasDueDate = !!data.dueDate;
+  if (!hasBody && !hasTitle && !hasDueDate) {
+    throw {
+      statusCode: 422,
+      message: 'Add a title, body, or due date for the update.',
+    };
   }
   const found = await Case.findByPk(caseId);
   if (!found) throw { statusCode: 404, message: 'Case not found.' };
@@ -1018,15 +1026,33 @@ const addUpdate = async (caseId, user, data = {}) => {
     authorName = displayName(u);
   }
 
+  // Task fields — optional. Any one of status / dueDate / priority being
+  // set turns this update into a task row visible on the calendar.
+  const status = data.status && CaseUpdate.STATUSES.includes(data.status)
+    ? data.status
+    : null;
+  const priority = data.priority && CaseUpdate.PRIORITIES.includes(data.priority)
+    ? data.priority
+    : null;
+  const dueDate =
+    data.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(String(data.dueDate))
+      ? data.dueDate
+      : null;
+
   const update = await CaseUpdate.create({
     caseId,
     authorUserId: (user && user.id) || null,
     authorName: authorName || '',
     title: data.title ? String(data.title).trim() : null,
     scheduledAt,
-    body: String(data.body).trim(),
+    body: hasBody ? String(data.body).trim() : '',
     nextHearingDate: data.nextHearingDate || null,
     attachments,
+    status,
+    priority,
+    dueDate,
+    completedAt: status === 'done' ? new Date() : null,
+    completedByUserId: status === 'done' && user ? user.id : null,
   });
 
   // If a hearing date is provided, also push it to the case itself so the
@@ -1111,6 +1137,31 @@ const editUpdate = async (updateId, user, data = {}) => {
     patch.attachments = data.attachments.filter(
       (a) => a && (a.url || a.name)
     );
+  }
+  // Task-field patches — null clears, value sets, undefined leaves alone.
+  if (data.status !== undefined) {
+    const next = data.status && CaseUpdate.STATUSES.includes(data.status)
+      ? data.status
+      : null;
+    patch.status = next;
+    if (next === 'done' && row.status !== 'done') {
+      patch.completedAt = new Date();
+      patch.completedByUserId = user ? user.id : null;
+    } else if (next !== 'done' && row.status === 'done') {
+      patch.completedAt = null;
+      patch.completedByUserId = null;
+    }
+  }
+  if (data.priority !== undefined) {
+    patch.priority = data.priority && CaseUpdate.PRIORITIES.includes(data.priority)
+      ? data.priority
+      : null;
+  }
+  if (data.dueDate !== undefined) {
+    patch.dueDate =
+      data.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(String(data.dueDate))
+        ? data.dueDate
+        : null;
   }
   await row.update(patch);
 

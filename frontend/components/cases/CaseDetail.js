@@ -36,7 +36,6 @@ import AddCaseModal from '@/components/cases/AddCaseModal';
 import { resolveFileUrl } from '@/services/fileService';
 import CaseAttachmentLink from '@/components/cases/CaseAttachmentLink';
 import CaseAttachmentList from '@/components/cases/CaseAttachmentList';
-import CaseTasks from '@/components/cases/CaseTasks';
 import CaseAuditTrail from '@/components/cases/CaseAuditTrail';
 import caseService from '@/services/caseService';
 import { getLawFirm } from '@/services/profileService';
@@ -954,13 +953,11 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
         </div>
       </div>
 
-      {/* Tasks — actionable items, sits above Updates because tasks are
-          forward-looking ("what needs doing") whereas Updates is
-          backward-looking ("what happened"). */}
-      <CaseTasks caseId={caseId} />
-
       {/* Audit trail — compliance / dispute resolution. Stays at the
-          bottom so day-to-day work isn't drowned in change-history. */}
+          bottom so day-to-day work isn't drowned in change-history.
+          Tasks live inline on CaseUpdate rows now — every update can
+          carry an optional status / due date / priority that the
+          dashboard calendar reads. */}
       <CaseAuditTrail caseId={caseId} />
 
       {/* Updates — full-width timeline */}
@@ -1019,7 +1016,41 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                         </span>
                       </p>
                     </div>
-                    <div className="flex shrink-0 items-center gap-1.5">
+                    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                      {/* Task status chip — only renders if this update is
+                          tagged as a task (status set). Distinct colour per
+                          state for fast scanning. */}
+                      {u.status && (
+                        <Badge
+                          variant={
+                            u.status === 'done'
+                              ? 'green'
+                              : u.status === 'in_progress'
+                                ? 'blue'
+                                : u.status === 'cancelled'
+                                  ? 'red'
+                                  : 'gray'
+                          }
+                        >
+                          {u.status === 'in_progress'
+                            ? 'In progress'
+                            : u.status.charAt(0).toUpperCase() + u.status.slice(1)}
+                        </Badge>
+                      )}
+                      {u.priority && u.priority !== 'normal' && (
+                        <span
+                          className={`text-[10px] uppercase tracking-wide ${
+                            u.priority === 'high'
+                              ? 'font-semibold text-red-600'
+                              : 'text-slate-500'
+                          }`}
+                        >
+                          {u.priority} priority
+                        </span>
+                      )}
+                      {u.dueDate && (
+                        <Badge variant="violet">Due {formatDate(u.dueDate)}</Badge>
+                      )}
                       {u.nextHearingDate && (
                         <Badge variant="amber">
                           Next hearing {formatDate(u.nextHearingDate)}
@@ -1840,6 +1871,11 @@ function AddUpdateModal({ open, caseId, onClose, onAdded, authorDisplayName }) {
   const [body, setBody] = useState('');
   const [nextHearingDate, setNextHearingDate] = useState('');
   const [attachments, setAttachments] = useState([]);
+  // Task fields — leaving these empty produces a pure-narration update;
+  // setting any of them surfaces this row on the dashboard calendar.
+  const [dueDate, setDueDate] = useState('');
+  const [taskStatus, setTaskStatus] = useState('');
+  const [priority, setPriority] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -1850,6 +1886,9 @@ function AddUpdateModal({ open, caseId, onClose, onAdded, authorDisplayName }) {
       setBody('');
       setNextHearingDate('');
       setAttachments([]);
+      setDueDate('');
+      setTaskStatus('');
+      setPriority('');
       setSubmitting(false);
       setError('');
     }
@@ -1870,8 +1909,10 @@ function AddUpdateModal({ open, caseId, onClose, onAdded, authorDisplayName }) {
   async function submit(e) {
     if (e && e.preventDefault) e.preventDefault();
     if (submitting) return;
-    if (!body.trim()) {
-      setError('Write something for the update.');
+    // An update is valid if it has body, title, OR a due date (turns
+    // it into a pure task with no narration yet).
+    if (!body.trim() && !title.trim() && !dueDate) {
+      setError('Add a title, body, or due date.');
       return;
     }
     setSubmitting(true);
@@ -1885,6 +1926,9 @@ function AddUpdateModal({ open, caseId, onClose, onAdded, authorDisplayName }) {
           : undefined,
         nextHearingDate: nextHearingDate || undefined,
         attachments,
+        dueDate: dueDate || undefined,
+        status: taskStatus || (dueDate ? 'open' : undefined),
+        priority: priority || undefined,
       });
       if (typeof onAdded === 'function') await onAdded();
     } catch (err) {
@@ -1919,7 +1963,7 @@ function AddUpdateModal({ open, caseId, onClose, onAdded, authorDisplayName }) {
             variant="primary"
             size="sm"
             onClick={submit}
-            disabled={submitting || !body.trim()}
+            disabled={submitting || (!body.trim() && !title.trim() && !dueDate)}
           >
             {submitting ? 'Saving…' : 'Save update'}
           </Button>
@@ -1959,12 +2003,62 @@ function AddUpdateModal({ open, caseId, onClose, onAdded, authorDisplayName }) {
             hint="Saved to the case + the audit log."
           />
         </div>
+
+        {/* Task block — optional. Setting a due date turns this update
+            into a task: it shows up on the dashboard calendar and
+            renders a status chip on the timeline. */}
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Task (optional)
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Input
+              label="Due date"
+              name="dueDate"
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              hint="Surfaces on the calendar."
+            />
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                Status
+              </label>
+              <select
+                value={taskStatus}
+                onChange={(e) => setTaskStatus(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              >
+                <option value="">— Not a task —</option>
+                <option value="open">Open</option>
+                <option value="in_progress">In progress</option>
+                <option value="done">Done</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                Priority
+              </label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              >
+                <option value="">— Normal —</option>
+                <option value="low">Low</option>
+                <option value="normal">Normal</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+          </div>
+        </div>
         <div>
           <label
             htmlFor="update-body"
             className="mb-1.5 block text-sm font-medium text-slate-700"
           >
-            What happened?
+            What happened? <span className="text-xs font-normal text-slate-400">(optional if this is a pure task)</span>
           </label>
           <textarea
             id="update-body"
