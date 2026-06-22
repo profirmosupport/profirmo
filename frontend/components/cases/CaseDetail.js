@@ -951,13 +951,6 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
         </div>
       </div>
 
-      {/* Audit trail — compliance / dispute resolution. Stays at the
-          bottom so day-to-day work isn't drowned in change-history.
-          Tasks live inline on CaseUpdate rows now — every update can
-          carry an optional status / due date / priority that the
-          dashboard calendar reads. */}
-      <CaseAuditTrail caseId={caseId} />
-
       {/* Inbound Gmail messages matched to this case. Renders nothing
           when Gmail isn't connected — the dashboard-level
           GmailIntegrationCard handles the connect / re-grant UX. */}
@@ -1088,6 +1081,12 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
           so it stays out of the way until you explicitly scroll to it.
           Clients can only delete their own cases when no professional has
           been assigned yet (server-enforced as well). */}
+
+      {/* Audit trail — last item before the destructive Danger zone
+          so the change history is reviewable in one place when the
+          pro is about to delete the case. */}
+      <CaseAuditTrail caseId={caseId} />
+
       {(() => {
         const assignees = Array.isArray(data && data.professionalIds)
           ? data.professionalIds.filter(Boolean)
