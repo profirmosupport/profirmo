@@ -25,6 +25,11 @@ const lawFirmRoutes = require('./routes/lawFirmRoutes');
 const fileRoutes = require('./routes/fileRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const reminderRoutes = require('./routes/reminderRoutes');
+const {
+  perCaseRouter: caseTaskPerCaseRouter,
+  flatRouter: caseTaskFlatRouter,
+} = require('./routes/caseTaskRoutes');
+const auditRoutes = require('./routes/auditRoutes');
 const invitationRoutes = require('./routes/invitationRoutes');
 const firmJoinRoutes = require('./routes/firmJoinRoutes');
 const appSettingsRoutes = require('./routes/appSettingsRoutes');
@@ -170,6 +175,9 @@ app.use('/api/law-firm', lawFirmRoutes);
 app.use('/api/files', fileRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/reminders', reminderRoutes);
+app.use('/api/cases/:caseId/tasks', caseTaskPerCaseRouter);
+app.use('/api/case-tasks', caseTaskFlatRouter);
+app.use('/api/audit', auditRoutes);
 app.use('/api/invitations', invitationRoutes);
 app.use('/api/firm-join', firmJoinRoutes);
 app.use('/api/app-settings', appSettingsRoutes);

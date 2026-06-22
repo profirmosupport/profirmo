@@ -36,6 +36,8 @@ import AddCaseModal from '@/components/cases/AddCaseModal';
 import { resolveFileUrl } from '@/services/fileService';
 import CaseAttachmentLink from '@/components/cases/CaseAttachmentLink';
 import CaseAttachmentList from '@/components/cases/CaseAttachmentList';
+import CaseTasks from '@/components/cases/CaseTasks';
+import CaseAuditTrail from '@/components/cases/CaseAuditTrail';
 import caseService from '@/services/caseService';
 import { getLawFirm } from '@/services/profileService';
 import { syncCaseFromEcourts } from '@/services/ecourtsService';
@@ -951,6 +953,15 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
           </Card>
         </div>
       </div>
+
+      {/* Tasks — actionable items, sits above Updates because tasks are
+          forward-looking ("what needs doing") whereas Updates is
+          backward-looking ("what happened"). */}
+      <CaseTasks caseId={caseId} />
+
+      {/* Audit trail — compliance / dispute resolution. Stays at the
+          bottom so day-to-day work isn't drowned in change-history. */}
+      <CaseAuditTrail caseId={caseId} />
 
       {/* Updates — full-width timeline */}
       <Card>

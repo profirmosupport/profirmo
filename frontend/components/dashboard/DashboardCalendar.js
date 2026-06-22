@@ -1,13 +1,15 @@
 'use client';
 
 // DashboardCalendar — month-grid widget on the professional dashboard.
-// Combines four signals per cell:
+// Combines five signals per cell:
 //   * Availability — derived from the pro's weekly schedule via
 //     resolveDaySlots(); explicit days-off render with a faded "Off" chip.
 //   * Bookings    — confirmed/pending consultations for that day; click a
 //     pill to jump to the booking detail page.
 //   * Hearings    — case.nextHearingDate falling on that day; click a pill
 //     to jump to the case detail page.
+//   * Case tasks  — open/in-progress tasks across the pro's cases; click
+//     a pill to jump to the parent case.
 //   * Reminders   — pro-authored todos persisted via /api/reminders. Click
 //     an empty area inside a date cell to open the add-reminder modal.
 //
@@ -22,6 +24,7 @@ import {
   CheckCircle2,
   Circle,
   Gavel,
+  ClipboardList,
 } from 'lucide-react';
 import Card from '@/components/common/Card';
 import AddReminderModal from '@/components/dashboard/AddReminderModal';
@@ -31,6 +34,7 @@ import {
   updateReminder,
   deleteReminder,
 } from '@/services/reminderService';
+import { listMineUpcoming as listMyOpenCaseTasks } from '@/services/caseTaskService';
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -120,6 +124,7 @@ export default function DashboardCalendar({
   const [month, setMonth] = useState(initial.month);
 
   const [reminders, setReminders] = useState([]);
+  const [caseTasks, setCaseTasks] = useState([]);
   const [loadingRem, setLoadingRem] = useState(false);
   const [error, setError] = useState('');
 
@@ -149,11 +154,27 @@ export default function DashboardCalendar({
     setLoadingRem(true);
     setError('');
     try {
-      const rows = await listReminders({ from, to });
-      setReminders(Array.isArray(rows) ? rows : []);
+      const [remRows, taskRows] = await Promise.allSettled([
+        listReminders({ from, to }),
+        listMyOpenCaseTasks({ from, to }),
+      ]);
+      setReminders(
+        remRows.status === 'fulfilled' && Array.isArray(remRows.value)
+          ? remRows.value
+          : []
+      );
+      setCaseTasks(
+        taskRows.status === 'fulfilled' && Array.isArray(taskRows.value)
+          ? taskRows.value
+          : []
+      );
+      if (remRows.status === 'rejected') {
+        setError(remRows.reason?.message || 'Failed to load reminders.');
+      }
     } catch (err) {
-      setError(err.message || 'Failed to load reminders.');
+      setError(err.message || 'Failed to load calendar data.');
       setReminders([]);
+      setCaseTasks([]);
     } finally {
       setLoadingRem(false);
     }
@@ -216,6 +237,17 @@ export default function DashboardCalendar({
     }
     return map;
   }, [cases]);
+
+  const tasksByDate = useMemo(() => {
+    const map = new Map();
+    for (const t of caseTasks) {
+      if (!t || !t.dueDate) continue;
+      const key = String(t.dueDate).slice(0, 10);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(t);
+    }
+    return map;
+  }, [caseTasks]);
 
   function openModal(key) {
     setEditing(null);
@@ -332,6 +364,7 @@ export default function DashboardCalendar({
           const dayInfo = resolveDaySlots(availability, weekday);
           const dayBookings = bookingsByDate.get(key) || [];
           const dayHearings = hearingsByDate.get(key) || [];
+          const dayTasks = tasksByDate.get(key) || [];
           const dayReminders = remindersByDate.get(key) || [];
           const isToday = key === today;
 
@@ -404,6 +437,27 @@ export default function DashboardCalendar({
                   <span className="block text-[10px] text-slate-500">
                     +{dayHearings.length - 2} more hearing
                     {dayHearings.length - 2 === 1 ? '' : 's'}
+                  </span>
+                )}
+                {dayTasks.slice(0, 2).map((t) => (
+                  <a
+                    key={t.id}
+                    href={`/dashboard/professional/cases/${t.caseId}`}
+                    className="flex items-center gap-1 truncate rounded bg-teal-100 px-1.5 py-0.5 text-[10px] font-medium text-teal-800 hover:bg-teal-200"
+                    title={
+                      t.case && t.case.title
+                        ? `${t.title} · ${t.case.title}`
+                        : t.title
+                    }
+                  >
+                    <ClipboardList size={10} className="shrink-0" />
+                    <span className="truncate">{t.title}</span>
+                  </a>
+                ))}
+                {dayTasks.length > 2 && (
+                  <span className="block text-[10px] text-slate-500">
+                    +{dayTasks.length - 2} more task
+                    {dayTasks.length - 2 === 1 ? '' : 's'}
                   </span>
                 )}
                 {dayReminders.slice(0, 2).map((r) => (

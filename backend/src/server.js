@@ -123,6 +123,11 @@ const SYNC_ORDER = [
   // bookings + cases, so order vs. those tables doesn't matter, but it
   // does need to exist for the calendar widget to load.
   db.ProfessionalReminder,
+  // Case-scoped tasks. Soft link to Case + User (assignee). Must come
+  // after Case + User in this list — both already declared above.
+  db.CaseTask,
+  // Append-only audit log. No FKs — must survive entity deletion.
+  db.AuditEvent,
 ];
 
 // Boot the Profirmo HTTP server.
