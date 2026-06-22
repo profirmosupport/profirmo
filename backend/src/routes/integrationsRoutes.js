@@ -23,4 +23,8 @@ router.get('/gmail/me', gmailController.getMine);
 router.post('/gmail/sync', gmailController.sync);
 router.delete('/gmail', gmailController.disconnect);
 
+// Google Calendar — reuses the Gmail OAuth grant; surfaces events on
+// the dashboard calendar widget.
+router.get('/google/calendar/events', gmailController.listCalendarEvents);
+
 module.exports = router;

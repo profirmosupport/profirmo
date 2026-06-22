@@ -208,6 +208,20 @@ export default function GmailIntegrationCard() {
         </p>
       )}
 
+      {isConnected && status.hasCalendar === false && (
+        <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+          This account was connected before Calendar sync existed.{' '}
+          <button
+            type="button"
+            onClick={handleChange}
+            className="font-semibold underline hover:text-amber-900"
+          >
+            Re-grant access
+          </button>{' '}
+          to overlay your Google Calendar on the dashboard.
+        </p>
+      )}
+
       {matches && (
         <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs">
           <p className="font-medium text-slate-700">

@@ -1,17 +1,15 @@
 'use client';
 
 // DashboardCalendar — month-grid widget on the professional dashboard.
-// Combines five signals per cell:
-//   * Availability — derived from the pro's weekly schedule via
-//     resolveDaySlots(); explicit days-off render with a faded "Off" chip.
-//   * Bookings    — confirmed/pending consultations for that day; click a
-//     pill to jump to the booking detail page.
-//   * Hearings    — case.nextHearingDate falling on that day; click a pill
-//     to jump to the case detail page.
-//   * Case tasks  — open/in-progress tasks across the pro's cases; click
-//     a pill to jump to the parent case.
-//   * Reminders   — pro-authored todos persisted via /api/reminders. Click
-//     an empty area inside a date cell to open the add-reminder modal.
+// Combines six signals per cell:
+//   * Availability    — pro's weekly schedule (resolveDaySlots).
+//   * Bookings        — confirmed/pending consultations.
+//   * Hearings        — case.nextHearingDate matches.
+//   * Case tasks      — open/in-progress tasks with a due date.
+//   * Reminders       — pro-authored todos via /api/reminders.
+//   * Google events   — pulled from the connected Google Calendar
+//                       (read-only) via /api/integrations/google/calendar.
+//     Click empty area to open add-reminder modal.
 //
 // The modal lets the pro optionally pin a reminder to one of their cases or
 // bookings so the entry stays linked to the work it's about.
@@ -25,6 +23,7 @@ import {
   Circle,
   Gavel,
   ClipboardList,
+  CalendarDays,
 } from 'lucide-react';
 import Card from '@/components/common/Card';
 import AddReminderModal from '@/components/dashboard/AddReminderModal';
@@ -35,6 +34,7 @@ import {
   deleteReminder,
 } from '@/services/reminderService';
 import { listMineUpcoming as listMyOpenCaseTasks } from '@/services/caseTaskService';
+import { listCalendarEvents as listGoogleEvents } from '@/services/gmailIntegrationService';
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -125,6 +125,11 @@ export default function DashboardCalendar({
 
   const [reminders, setReminders] = useState([]);
   const [caseTasks, setCaseTasks] = useState([]);
+  const [googleEvents, setGoogleEvents] = useState([]);
+  // Google calendar pull is optional — if the user hasn't connected
+  // Google, or hasn't granted calendar.readonly yet, we silently skip.
+  // `googleSkipReason` is shown as a tiny footer hint, never as an error.
+  const [googleSkipReason, setGoogleSkipReason] = useState(null);
   const [loadingRem, setLoadingRem] = useState(false);
   const [error, setError] = useState('');
 
@@ -154,9 +159,10 @@ export default function DashboardCalendar({
     setLoadingRem(true);
     setError('');
     try {
-      const [remRows, taskRows] = await Promise.allSettled([
+      const [remRows, taskRows, gcalResult] = await Promise.allSettled([
         listReminders({ from, to }),
         listMyOpenCaseTasks({ from, to }),
+        listGoogleEvents({ from, to }),
       ]);
       setReminders(
         remRows.status === 'fulfilled' && Array.isArray(remRows.value)
@@ -168,6 +174,28 @@ export default function DashboardCalendar({
           ? taskRows.value
           : []
       );
+      if (
+        gcalResult.status === 'fulfilled' &&
+        gcalResult.value &&
+        Array.isArray(gcalResult.value.events)
+      ) {
+        setGoogleEvents(gcalResult.value.events);
+        setGoogleSkipReason(null);
+      } else {
+        setGoogleEvents([]);
+        // 404 = not connected; 403 = scope missing; anything else =
+        // silent skip. Show a tiny footer hint for the actionable cases.
+        const reason = gcalResult.reason || {};
+        if (reason.code === 'CALENDAR_SCOPE_MISSING') {
+          setGoogleSkipReason('Reconnect Gmail to overlay Google Calendar events.');
+        } else if (reason.statusCode === 404) {
+          setGoogleSkipReason(null);
+        } else if (reason.message) {
+          setGoogleSkipReason(`Google Calendar: ${reason.message}`);
+        } else {
+          setGoogleSkipReason(null);
+        }
+      }
       if (remRows.status === 'rejected') {
         setError(remRows.reason?.message || 'Failed to load reminders.');
       }
@@ -248,6 +276,22 @@ export default function DashboardCalendar({
     }
     return map;
   }, [caseTasks]);
+
+  const googleByDate = useMemo(() => {
+    const map = new Map();
+    for (const ev of googleEvents) {
+      if (!ev || !ev.start) continue;
+      // YYYY-MM-DD for all-day, or first 10 chars of an ISO datetime.
+      const key = String(ev.start).slice(0, 10);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(ev);
+    }
+    // Sort timed events earliest-first within a day.
+    for (const list of map.values()) {
+      list.sort((a, b) => String(a.start).localeCompare(String(b.start)));
+    }
+    return map;
+  }, [googleEvents]);
 
   function openModal(key) {
     setEditing(null);
@@ -365,6 +409,7 @@ export default function DashboardCalendar({
           const dayBookings = bookingsByDate.get(key) || [];
           const dayHearings = hearingsByDate.get(key) || [];
           const dayTasks = tasksByDate.get(key) || [];
+          const dayGoogle = googleByDate.get(key) || [];
           const dayReminders = remindersByDate.get(key) || [];
           const isToday = key === today;
 
@@ -460,6 +505,39 @@ export default function DashboardCalendar({
                     {dayTasks.length - 2 === 1 ? '' : 's'}
                   </span>
                 )}
+                {dayGoogle.slice(0, 2).map((ev) => {
+                  // Show HH:MM prefix for timed events; nothing for all-day.
+                  const timeChunk =
+                    !ev.allDay && ev.start && ev.start.length >= 16
+                      ? ev.start.slice(11, 16) + ' '
+                      : '';
+                  return (
+                    <a
+                      key={ev.id}
+                      href={ev.htmlLink || '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 truncate rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-700 hover:bg-red-100"
+                      title={`Google Calendar · ${ev.summary}`}
+                      onClick={(e) => {
+                        // Don't trigger the cell-level add-modal click.
+                        e.stopPropagation();
+                      }}
+                    >
+                      <CalendarDays size={10} className="shrink-0" />
+                      <span className="truncate">
+                        {timeChunk}
+                        {ev.summary}
+                      </span>
+                    </a>
+                  );
+                })}
+                {dayGoogle.length > 2 && (
+                  <span className="block text-[10px] text-slate-500">
+                    +{dayGoogle.length - 2} more event
+                    {dayGoogle.length - 2 === 1 ? '' : 's'}
+                  </span>
+                )}
                 {dayReminders.slice(0, 2).map((r) => (
                   <div
                     key={r.id}
@@ -519,6 +597,12 @@ export default function DashboardCalendar({
 
       {loadingRem && (
         <p className="mt-2 text-[11px] text-slate-400">Loading reminders…</p>
+      )}
+      {googleSkipReason && (
+        <p className="mt-2 inline-flex items-center gap-1 text-[11px] text-slate-500">
+          <CalendarDays size={11} className="text-red-500" />
+          {googleSkipReason}
+        </p>
       )}
 
       <AddReminderModal

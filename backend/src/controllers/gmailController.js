@@ -9,6 +9,7 @@
 const asyncHandler = require('../utils/asyncHandler');
 const { successResponse } = require('../utils/responseHandler');
 const gmailService = require('../services/gmailService');
+const googleCalendarService = require('../services/googleCalendarService');
 const auditService = require('../services/auditService');
 
 // Pull the frontend origin from Origin / Referer so the callback can
@@ -155,4 +156,22 @@ const disconnect = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'Gmail disconnected', out);
 });
 
-module.exports = { connect, connectUrl, callback, getMine, sync, disconnect };
+// Google Calendar — pulls events for the dashboard calendar widget.
+// Reuses the same Google account connection so no extra Connect click.
+const listCalendarEvents = asyncHandler(async (req, res) => {
+  const out = await googleCalendarService.listEventsForUser(req.user.id, {
+    from: req.query.from,
+    to: req.query.to,
+  });
+  return successResponse(res, 200, 'Google Calendar events', out);
+});
+
+module.exports = {
+  connect,
+  connectUrl,
+  callback,
+  getMine,
+  sync,
+  disconnect,
+  listCalendarEvents,
+};

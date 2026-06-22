@@ -53,3 +53,17 @@ export async function disconnect() {
   const res = await del('/api/integrations/gmail');
   return unwrap(res);
 }
+
+/**
+ * Pull Google Calendar events in a date window so the dashboard
+ * calendar can overlay them. Returns:
+ *   { connectedEmail, events: [{ id, summary, start, end, allDay, htmlLink }] }
+ * Throws with code='CALENDAR_SCOPE_MISSING' when the existing Google
+ * grant predates the calendar.readonly scope add.
+ */
+export async function listCalendarEvents({ from, to } = {}) {
+  const res = await get('/api/integrations/google/calendar/events', {
+    params: { from, to },
+  });
+  return unwrap(res) || { events: [] };
+}
