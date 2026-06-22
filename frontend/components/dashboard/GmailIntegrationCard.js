@@ -7,7 +7,14 @@
 // expected to surface that toast (or we can hook it inside this card).
 
 import { useCallback, useEffect, useState } from 'react';
-import { Mail, RefreshCw, Trash2, ExternalLink, AlertTriangle } from 'lucide-react';
+import {
+  Mail,
+  RefreshCw,
+  Trash2,
+  ExternalLink,
+  AlertTriangle,
+  Repeat,
+} from 'lucide-react';
 import Card from '@/components/common/Card';
 import Button from '@/components/common/Button';
 import {
@@ -69,6 +76,21 @@ export default function GmailIntegrationCard() {
   }, [load]);
 
   async function handleConnect() {
+    setBusy(true);
+    setError('');
+    try {
+      await startConnectFlow();
+    } catch (err) {
+      setError(err.message || 'Could not start Gmail OAuth.');
+      setBusy(false);
+    }
+  }
+
+  // Same as connect — backend upserts by userId, so re-running the OAuth
+  // flow with a different Google account replaces the existing
+  // connection in-place. We force prompt=select_account upstream so
+  // Google always shows the account picker on this path.
+  async function handleChange() {
     setBusy(true);
     setError('');
     try {
@@ -142,6 +164,16 @@ export default function GmailIntegrationCard() {
               >
                 <RefreshCw size={14} />
                 {busy ? 'Syncing…' : 'Sync inbox'}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleChange}
+                disabled={busy}
+                title="Switch to a different Google account"
+              >
+                <Repeat size={14} />
+                Change account
               </Button>
               <Button
                 size="sm"

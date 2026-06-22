@@ -62,7 +62,12 @@ async function buildAuthUrl(userId) {
     response_type: 'code',
     access_type: 'offline', // we need a refresh_token
     include_granted_scopes: 'true',
-    prompt: 'consent', // force refresh_token every time
+    // `select_account` forces the Google account picker even if the
+    // user is signed into exactly one Google account in their browser
+    // — important for the "Change account" flow where a connected user
+    // wants to switch to a different mailbox. `consent` also forces
+    // refresh_token re-issuance, so we don't lose it across reconnects.
+    prompt: 'select_account consent',
     scope: SCOPES.join(' '),
     state,
   });
