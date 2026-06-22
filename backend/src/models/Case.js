@@ -66,6 +66,10 @@ const Case = sequelize.define(
     stageType: { type: DataTypes.STRING(40), allowNull: true },
     stage: { type: DataTypes.STRING(60), allowNull: true },
     stageUpdatedAt: { type: DataTypes.DATE, allowNull: true },
+    // Google Calendar event id for the case's NEXT hearing. Recreated
+    // on every nextHearingDate change (we delete-then-create rather
+    // than patch to keep the upsert logic simple).
+    googleHearingEventId: { type: DataTypes.STRING(128), allowNull: true },
     // Optional: when a firm creates the case it may not yet have a
     // professional assigned. assignedByUserId records who made the assignment.
     assignedByUserId: { type: DataTypes.STRING(64), allowNull: true },

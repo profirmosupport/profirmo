@@ -694,6 +694,49 @@ const update = async (id, data = {}, actor = null) => {
  * shows up in the case timeline alongside hearings + updates.
  */
 const caseStages = require('../config/caseStages');
+const googleCalendarService = require('./googleCalendarService');
+
+/**
+ * Resolve a Case row → assigned professional's userId so we can push
+ * hearings to that pro's Google Calendar. Returns null when there is
+ * no resolvable owner (case has no professional yet, e.g. just-created
+ * by a client and unassigned).
+ */
+async function caseOwnerUserId(caseRow) {
+  if (!caseRow || !caseRow.professionalId) return null;
+  // eslint-disable-next-line global-require
+  const { ProfessionalDetail } = require('../models');
+  const detail = await ProfessionalDetail.findOne({
+    where: { id: caseRow.professionalId },
+    attributes: ['userId'],
+    raw: true,
+  });
+  return detail ? detail.userId : null;
+}
+
+async function pushHearingToCalendar(caseRow) {
+  try {
+    const userId = await caseOwnerUserId(caseRow);
+    if (!userId) return;
+    await googleCalendarService.pushHearing(userId, caseRow);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[caseService.calendar hearing]', err.message || err);
+  }
+}
+
+async function pushTaskToCalendar(caseUpdate) {
+  try {
+    if (!caseUpdate || !caseUpdate.caseId) return;
+    const caseRow = await Case.findByPk(caseUpdate.caseId, { raw: true });
+    const userId = await caseOwnerUserId(caseRow);
+    if (!userId) return;
+    await googleCalendarService.pushTask(userId, caseUpdate);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[caseService.calendar task]', err.message || err);
+  }
+}
 const setStage = async (id, payload = {}, actor = null) => {
   const found = await Case.findByPk(id);
   if (!found) return null;
@@ -1091,12 +1134,15 @@ const addUpdate = async (caseId, user, data = {}) => {
     completedAt: status === 'done' ? new Date() : null,
     completedByUserId: status === 'done' && user ? user.id : null,
   });
+  // Push task-shaped updates (those with dueDate) to Google Calendar.
+  if (dueDate) pushTaskToCalendar(update.get({ plain: true }));
 
   // If a hearing date is provided, also push it to the case itself so the
   // listing's "Next hearing" column stays current.
   if (data.nextHearingDate) {
     try {
       await found.update({ nextHearingDate: data.nextHearingDate });
+      pushHearingToCalendar(found.get({ plain: true }));
     } catch (err) {
       console.warn(`[caseUpdate] could not sync nextHearingDate: ${err.message}`);
     }
@@ -1201,12 +1247,19 @@ const editUpdate = async (updateId, user, data = {}) => {
         : null;
   }
   await row.update(patch);
+  // Re-push task to Google Calendar — dueDate may have changed
+  // (including being cleared, which causes the helper to delete the
+  // mirrored event).
+  pushTaskToCalendar(row.get({ plain: true }));
 
   // If the next hearing date changed, sync it to the case + log it.
   if (data.nextHearingDate !== undefined) {
     try {
       const c = await Case.findByPk(row.caseId);
-      if (c) await c.update({ nextHearingDate: data.nextHearingDate || null });
+      if (c) {
+        await c.update({ nextHearingDate: data.nextHearingDate || null });
+        pushHearingToCalendar(c.get({ plain: true }));
+      }
     } catch (err) {
       console.warn(`[caseUpdate] could not sync nextHearingDate: ${err.message}`);
     }

@@ -25,18 +25,20 @@ const GMAIL_API = 'https://gmail.googleapis.com/gmail/v1';
 // Scopes: read-only for v1. `gmail.modify` would let us mark as read or
 // add labels later; left out so the consent screen is friendlier.
 //
-// `calendar.readonly` was added so the dashboard calendar widget can
-// overlay the user's Google Calendar events alongside Profirmo
-// bookings / hearings / tasks. Reading only; we never modify events.
-// Users connected before this scope was added will see "Reconnect for
-// calendar access" until they re-run the OAuth flow.
+// `calendar.events` is upgraded from `calendar.readonly` so we can
+// both READ the user's events for the dashboard overlay AND WRITE
+// Profirmo bookings / hearings / tasks / reminders back into their
+// calendar. `calendar.events` is the narrowest write scope — it
+// doesn't grant access to ACL or calendar metadata. Users connected
+// before this upgrade will see "Reconnect for calendar access" until
+// they re-run the OAuth flow.
 const SCOPES = [
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/gmail.readonly',
-  'https://www.googleapis.com/auth/calendar.readonly',
+  'https://www.googleapis.com/auth/calendar.events',
 ];
 
-const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
+const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
 
 /** True if a connection's granted scope string includes the Calendar scope. */
 function hasCalendarScope(connection) {

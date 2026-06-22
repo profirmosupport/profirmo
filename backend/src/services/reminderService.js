@@ -8,6 +8,16 @@ const {
   Case,
   ProfessionalDetail,
 } = require('../models');
+const googleCalendarService = require('./googleCalendarService');
+
+/** Fire-and-forget Google Calendar mirror for a reminder. */
+function pushReminderToCalendar(reminder) {
+  if (!reminder || !reminder.userId) return;
+  googleCalendarService.pushReminder(reminder.userId, reminder).catch((err) => {
+    // eslint-disable-next-line no-console
+    console.error('[reminder.calendar]', err.message || err);
+  });
+}
 
 /**
  * Helper: pull the bookingId / caseId out of a create/update payload,
@@ -95,7 +105,9 @@ async function create(userId, payload = {}) {
     bookingId: links.bookingId || null,
     caseId: links.caseId || null,
   });
-  return row.get({ plain: true });
+  const plain = row.get({ plain: true });
+  pushReminderToCalendar(plain);
+  return plain;
 }
 
 async function update(userId, id, payload = {}) {
@@ -130,7 +142,9 @@ async function update(userId, id, payload = {}) {
     }
   }
   await row.update(patch);
-  return row.get({ plain: true });
+  const plain = row.get({ plain: true });
+  pushReminderToCalendar(plain);
+  return plain;
 }
 
 async function remove(userId, id) {
@@ -138,7 +152,12 @@ async function remove(userId, id) {
     where: { id, userId },
   });
   if (!row) throw { statusCode: 404, message: 'Reminder not found' };
+  const plain = row.get({ plain: true });
   await row.destroy();
+  // Best-effort cleanup of the mirrored Google Calendar event.
+  googleCalendarService
+    .deleteForReminder(userId, plain)
+    .catch(() => {});
   return { id };
 }
 

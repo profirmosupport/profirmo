@@ -378,10 +378,12 @@ async function runMigrations() {
 
   // 7c-bis. Case stage tracking — pipeline + step within pipeline,
   // sourced from seeds/compliance-rules.json via config/caseStages.
+  // googleHearingEventId mirrors nextHearingDate to Google Calendar.
   const CASE_STAGE_COLUMNS = [
     ['stageType', 'VARCHAR(40) NULL'],
     ['stage', 'VARCHAR(60) NULL'],
     ['stageUpdatedAt', 'DATETIME NULL'],
+    ['googleHearingEventId', 'VARCHAR(128) NULL'],
   ];
   for (const [col, type] of CASE_STAGE_COLUMNS) {
     try {
@@ -404,6 +406,7 @@ async function runMigrations() {
     ['dueDate', 'DATE NULL'],
     ['completedAt', 'DATETIME NULL'],
     ['completedByUserId', 'VARCHAR(64) NULL'],
+    ['googleEventId', 'VARCHAR(128) NULL'],
   ];
   for (const [col, type] of CASE_UPDATE_TASK_COLUMNS) {
     try {

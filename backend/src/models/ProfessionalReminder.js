@@ -43,6 +43,8 @@ const ProfessionalReminder = sequelize.define(
       allowNull: false,
       defaultValue: false,
     },
+    // Google Calendar event id when this reminder has been mirrored.
+    googleEventId: { type: DataTypes.STRING(128), allowNull: true },
   },
   {
     tableName: 'professional_reminders',

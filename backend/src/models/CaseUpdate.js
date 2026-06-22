@@ -61,6 +61,11 @@ const CaseUpdate = sequelize.define(
     dueDate: { type: DataTypes.DATEONLY, allowNull: true },
     completedAt: { type: DataTypes.DATE, allowNull: true },
     completedByUserId: { type: DataTypes.STRING(64), allowNull: true },
+
+    // Google Calendar event id mirroring this task into the
+    // professional's Google Calendar. Only populated when dueDate is
+    // set (pure-narration updates have nothing to put on a calendar).
+    googleEventId: { type: DataTypes.STRING(128), allowNull: true },
   },
   {
     tableName: 'case_updates',
