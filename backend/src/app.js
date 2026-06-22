@@ -31,6 +31,7 @@ const {
 } = require('./routes/caseTaskRoutes');
 const auditRoutes = require('./routes/auditRoutes');
 const userPreferenceRoutes = require('./routes/userPreferenceRoutes');
+const complianceRoutes = require('./routes/complianceRoutes');
 const integrationsRoutes = require('./routes/integrationsRoutes');
 const invitationRoutes = require('./routes/invitationRoutes');
 const firmJoinRoutes = require('./routes/firmJoinRoutes');
@@ -181,6 +182,7 @@ app.use('/api/cases/:caseId/tasks', caseTaskPerCaseRouter);
 app.use('/api/case-tasks', caseTaskFlatRouter);
 app.use('/api/audit', auditRoutes);
 app.use('/api/user-prefs', userPreferenceRoutes);
+app.use('/api/compliance', complianceRoutes);
 app.use('/api/integrations', integrationsRoutes);
 app.use('/api/invitations', invitationRoutes);
 app.use('/api/firm-join', firmJoinRoutes);

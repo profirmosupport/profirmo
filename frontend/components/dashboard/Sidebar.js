@@ -30,6 +30,7 @@ import {
   Newspaper,
   Hash,
   Mail,
+  Receipt,
 } from 'lucide-react';
 import BrandLogo from '@/components/common/BrandLogo';
 import { useLanguage } from '@/components/LanguageProvider';
@@ -56,6 +57,13 @@ const PROFESSIONAL_NAV = [
     labelKey: 'dash.nav.bookings',
     href: '/dashboard/professional/bookings',
     icon: CalendarClock,
+  },
+  {
+    // Inline label — i18n entry can be added later. Surfaces upcoming
+    // GST / TDS / ITR / ROC filings across all clients.
+    label: 'Compliance',
+    href: '/dashboard/professional/compliance',
+    icon: Receipt,
   },
   {
     labelKey: 'dash.nav.myReviews',

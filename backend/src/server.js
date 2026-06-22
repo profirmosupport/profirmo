@@ -135,6 +135,10 @@ const SYNC_ORDER = [
   db.GmailMessageLink,
   // Per-user small UI preferences (kv store).
   db.UserPreference,
+  // Tax / legal compliance: per-client entity profile drives the rule
+  // generator; obligations are the resulting per-period due-date rows.
+  db.ClientComplianceProfile,
+  db.ComplianceObligation,
 ];
 
 // Boot the Profirmo HTTP server.

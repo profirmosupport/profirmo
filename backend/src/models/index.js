@@ -37,6 +37,8 @@ const AuditEvent = require('./AuditEvent');
 const GmailConnection = require('./GmailConnection');
 const GmailMessageLink = require('./GmailMessageLink');
 const UserPreference = require('./UserPreference');
+const ClientComplianceProfile = require('./ClientComplianceProfile');
+const ComplianceObligation = require('./ComplianceObligation');
 
 // --- Phase-2 profile / firm models ----------------------------------------
 const Address = require('./Address');
@@ -459,4 +461,6 @@ module.exports = {
   GmailConnection,
   GmailMessageLink,
   UserPreference,
+  ClientComplianceProfile,
+  ComplianceObligation,
 };

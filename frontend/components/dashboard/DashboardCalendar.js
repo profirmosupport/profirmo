@@ -25,6 +25,7 @@ import {
   ClipboardList,
   CalendarDays,
   Upload,
+  Receipt,
 } from 'lucide-react';
 import Card from '@/components/common/Card';
 import AddReminderModal from '@/components/dashboard/AddReminderModal';
@@ -39,6 +40,7 @@ import {
   listCalendarEvents as listGoogleEvents,
   syncCalendarAll as pushAllToGoogle,
 } from '@/services/gmailIntegrationService';
+import { listObligations as listComplianceObligations } from '@/services/complianceService';
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -129,6 +131,7 @@ export default function DashboardCalendar({
 
   const [reminders, setReminders] = useState([]);
   const [caseTasks, setCaseTasks] = useState([]);
+  const [complianceItems, setComplianceItems] = useState([]);
   const [googleEvents, setGoogleEvents] = useState([]);
   // Google calendar pull is optional — if the user hasn't connected
   // Google, or hasn't granted calendar.readonly yet, we silently skip.
@@ -166,11 +169,13 @@ export default function DashboardCalendar({
     setLoadingRem(true);
     setError('');
     try {
-      const [remRows, taskRows, gcalResult] = await Promise.allSettled([
-        listReminders({ from, to }),
-        listMyOpenCaseTasks({ from, to }),
-        listGoogleEvents({ from, to }),
-      ]);
+      const [remRows, taskRows, gcalResult, complianceRows] =
+        await Promise.allSettled([
+          listReminders({ from, to }),
+          listMyOpenCaseTasks({ from, to }),
+          listGoogleEvents({ from, to }),
+          listComplianceObligations({ from, to, status: 'pending' }),
+        ]);
       setReminders(
         remRows.status === 'fulfilled' && Array.isArray(remRows.value)
           ? remRows.value
@@ -203,6 +208,12 @@ export default function DashboardCalendar({
           setGoogleSkipReason(null);
         }
       }
+      setComplianceItems(
+        complianceRows.status === 'fulfilled' &&
+          Array.isArray(complianceRows.value)
+          ? complianceRows.value
+          : []
+      );
       if (remRows.status === 'rejected') {
         setError(remRows.reason?.message || 'Failed to load reminders.');
       }
@@ -283,6 +294,17 @@ export default function DashboardCalendar({
     }
     return map;
   }, [caseTasks]);
+
+  const complianceByDate = useMemo(() => {
+    const map = new Map();
+    for (const c of complianceItems) {
+      if (!c || !c.dueDate) continue;
+      const key = String(c.dueDate).slice(0, 10);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(c);
+    }
+    return map;
+  }, [complianceItems]);
 
   const googleByDate = useMemo(() => {
     const map = new Map();
@@ -470,6 +492,7 @@ export default function DashboardCalendar({
           const dayBookings = bookingsByDate.get(key) || [];
           const dayHearings = hearingsByDate.get(key) || [];
           const dayTasks = tasksByDate.get(key) || [];
+          const dayCompliance = complianceByDate.get(key) || [];
           const dayGoogle = googleByDate.get(key) || [];
           const dayReminders = remindersByDate.get(key) || [];
           const isToday = key === today;
@@ -564,6 +587,24 @@ export default function DashboardCalendar({
                   <span className="block text-[10px] text-slate-500">
                     +{dayTasks.length - 2} more task
                     {dayTasks.length - 2 === 1 ? '' : 's'}
+                  </span>
+                )}
+                {dayCompliance.slice(0, 2).map((c) => (
+                  <a
+                    key={c.id}
+                    href="/dashboard/professional/compliance"
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex items-center gap-1 truncate rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-800 hover:bg-green-200"
+                    title={`Compliance · ${c.ruleKey} · ${c.periodLabel}`}
+                  >
+                    <Receipt size={10} className="shrink-0" />
+                    <span className="truncate">{c.ruleKey.toUpperCase()}</span>
+                  </a>
+                ))}
+                {dayCompliance.length > 2 && (
+                  <span className="block text-[10px] text-slate-500">
+                    +{dayCompliance.length - 2} more filing
+                    {dayCompliance.length - 2 === 1 ? '' : 's'}
                   </span>
                 )}
                 {dayGoogle.slice(0, 2).map((ev) => {
