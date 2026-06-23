@@ -21,14 +21,39 @@ import {
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
 import LeadGenFloater from '@/components/common/LeadGenFloater';
+import JsonLd, { breadcrumb, webPage } from '@/components/seo/JsonLd';
 import { API_BASE_URL } from '@/utils/constants';
 
+const PAGE_TITLE = 'Resources & Topic Clusters · Pro Firmo';
+const PAGE_DESC =
+  'Plain-English Indian-law explainers organised by topic — property & rent, family, employment, consumer & cheque bounce, GST, income tax, company & startups, NRI, freelancer tax.';
+
 export const metadata = {
-  title: 'Resources & Topic Clusters · Pro Firmo',
-  description:
-    'Plain-English Indian-law explainers organised by topic — property & rent, family, employment, consumer & cheque bounce, GST, income tax, company & startups, NRI, freelancer tax.',
+  title: PAGE_TITLE,
+  description: PAGE_DESC,
   alternates: { canonical: '/resources' },
+  openGraph: {
+    title: PAGE_TITLE,
+    description: PAGE_DESC,
+    url: '/resources',
+    siteName: 'Pro Firmo',
+    type: 'website',
+  },
+  twitter: { card: 'summary_large_image', title: PAGE_TITLE, description: PAGE_DESC },
 };
+
+const JSON_LD = [
+  webPage({
+    url: '/resources',
+    name: PAGE_TITLE,
+    description: PAGE_DESC,
+    type: 'CollectionPage',
+  }),
+  breadcrumb([
+    { name: 'Home', url: '/' },
+    { name: 'Resources', url: '/resources' },
+  ]),
+];
 
 const CLUSTERS = [
   {
@@ -162,6 +187,7 @@ export default async function ResourcesPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
+      <JsonLd data={JSON_LD} />
       <Header />
       <main className="flex-1">
         <section className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-white">

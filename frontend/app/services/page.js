@@ -7,13 +7,25 @@ import { ArrowRight } from 'lucide-react';
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
 import LeadGenFloater from '@/components/common/LeadGenFloater';
+import JsonLd, { breadcrumb, webPage, SITE_URL } from '@/components/seo/JsonLd';
 import { SERVICE_LANDINGS, ICONS } from '@/data/serviceLandings';
 
+const PAGE_TITLE = 'All Legal & Tax Services · Pro Firmo';
+const PAGE_DESC =
+  'Browse every Pro Firmo consultation service — property disputes, GST notices, ITR filing, divorce, legal notices, cheque bounce, startup law, company registration, trademarks, consumer complaints, NRI property, and more. Verified experts, AI-matched in minutes.';
+
 export const metadata = {
-  title: 'All Legal & Tax Services · Pro Firmo',
-  description:
-    'Browse every Pro Firmo consultation service — property disputes, GST notices, ITR filing, divorce, legal notices, cheque bounce, startup law, company registration, trademarks, consumer complaints, NRI property, and more. Verified experts, AI-matched in minutes.',
+  title: PAGE_TITLE,
+  description: PAGE_DESC,
   alternates: { canonical: '/services' },
+  openGraph: {
+    type: 'website',
+    title: PAGE_TITLE,
+    description: PAGE_DESC,
+    url: '/services',
+    siteName: 'Pro Firmo',
+  },
+  twitter: { card: 'summary_large_image', title: PAGE_TITLE, description: PAGE_DESC },
 };
 
 const ACCENT = {
@@ -23,9 +35,35 @@ const ACCENT = {
   rose: 'bg-rose-100 text-rose-700',
 };
 
+const JSON_LD = [
+  webPage({
+    url: '/services',
+    name: PAGE_TITLE,
+    description: PAGE_DESC,
+    type: 'CollectionPage',
+  }),
+  breadcrumb([
+    { name: 'Home', url: '/' },
+    { name: 'Services', url: '/services' },
+  ]),
+  {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    '@id': `${SITE_URL}/services#itemlist`,
+    name: 'Pro Firmo services',
+    itemListElement: SERVICE_LANDINGS.map((s, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      url: `${SITE_URL}/services/${s.slug}`,
+      name: s.title,
+    })),
+  },
+];
+
 export default function ServicesIndexPage() {
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
+      <JsonLd data={JSON_LD} />
       <Header />
       <main className="flex-1">
         <section className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-white">

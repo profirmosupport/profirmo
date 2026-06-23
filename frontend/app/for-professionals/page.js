@@ -18,15 +18,39 @@ import {
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
 import LeadGenFloater from '@/components/common/LeadGenFloater';
+import JsonLd, { breadcrumb, webPage } from '@/components/seo/JsonLd';
+
+const PAGE_TITLE = 'For Professionals: Grow Your Practice on Pro Firmo';
+const PAGE_DESC =
+  'Verified tax, GST, CA, CS, and documentation professionals — get matched with high-intent clients across India. AI-screened consultation requests, no cold outreach, transparent platform fees.';
 
 export const metadata = {
-  title: 'For Professionals: Grow Your Practice on Pro Firmo',
-  description:
-    'Verified tax, GST, CA, CS, and documentation professionals — get matched with high-intent clients across India. AI-screened consultation requests, no cold outreach, transparent platform fees.',
+  title: PAGE_TITLE,
+  description: PAGE_DESC,
   keywords:
     'consultation platform CA, online tax consultant India, GST consultant platform, freelance CA, online CA practice, earn online tax consultant',
   alternates: { canonical: '/for-professionals' },
+  openGraph: {
+    title: PAGE_TITLE,
+    description: PAGE_DESC,
+    url: '/for-professionals',
+    siteName: 'Pro Firmo',
+    type: 'website',
+  },
+  twitter: { card: 'summary_large_image', title: PAGE_TITLE, description: PAGE_DESC },
 };
+
+const JSON_LD = [
+  webPage({
+    url: '/for-professionals',
+    name: PAGE_TITLE,
+    description: PAGE_DESC,
+  }),
+  breadcrumb([
+    { name: 'Home', url: '/' },
+    { name: 'For Professionals', url: '/for-professionals' },
+  ]),
+];
 
 const VALUE_PROPS = [
   {
@@ -117,6 +141,7 @@ const FAQ = [
 export default function ForProfessionalsPage() {
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
+      <JsonLd data={JSON_LD} />
       <Header />
       <main className="flex-1">
         <section className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-white">

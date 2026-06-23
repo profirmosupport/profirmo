@@ -90,7 +90,11 @@ export default async function ServiceLandingPage({ params }) {
   // Category pillars get long-form authority sections rendered below the FAQ.
   const pillar = s.pillarSlug ? PILLAR_PAGES[s.pillarSlug] : null;
 
-  // FAQ JSON-LD — Google / AI search love this for service pages.
+  const pageUrl = `${SITE_URL}/services/${s.slug}`;
+
+  // FAQ + Service + Breadcrumb JSON-LD — Google / AI search love this
+  // for service pages. The Service node anchors to the site
+  // Organization defined in the root layout.
   const faqJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
@@ -100,6 +104,27 @@ export default async function ServiceLandingPage({ params }) {
       acceptedAnswer: { '@type': 'Answer', text: a },
     })),
   };
+  const serviceJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Service',
+    '@id': `${pageUrl}#service`,
+    name: s.title,
+    description: s.subtitle,
+    serviceType: s.category || 'Legal & tax advisory',
+    provider: { '@id': `${SITE_URL}#organization` },
+    areaServed: { '@type': 'Country', name: 'India' },
+    url: pageUrl,
+    audience: { '@type': 'Audience', audienceType: 'Individuals and businesses in India' },
+  };
+  const breadcrumbJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+      { '@type': 'ListItem', position: 2, name: 'Services', item: `${SITE_URL}/services` },
+      { '@type': 'ListItem', position: 3, name: s.title, item: pageUrl },
+    ],
+  };
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
@@ -107,6 +132,16 @@ export default async function ServiceLandingPage({ params }) {
         type="application/ld+json"
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        // eslint-disable-next-line react/no-danger
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(serviceJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        // eslint-disable-next-line react/no-danger
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
       <Header />
 

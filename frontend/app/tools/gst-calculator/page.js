@@ -2,6 +2,7 @@ import GSTCalculatorClient from './GSTCalculatorClient';
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
 import LeadGenFloater from '@/components/common/LeadGenFloater';
+import JsonLd, { breadcrumb, webPage, SITE_URL } from '@/components/seo/JsonLd';
 
 export const metadata = {
   title: 'Free GST Calculator (2026) — CGST + SGST + IGST in One Click · Pro Firmo',
@@ -49,6 +50,32 @@ const HOWTO_JSONLD = {
   ],
 };
 
+const EXTRA_JSONLD = [
+  webPage({
+    url: '/tools/gst-calculator',
+    name: 'Free GST Calculator (2026) — CGST + SGST + IGST in One Click · Pro Firmo',
+    description:
+      'Free GST calculator for Indian businesses. Add or remove GST at 0.25%, 3%, 5%, 12%, 18%, 28%. Split CGST + SGST for intra-state, IGST for inter-state.',
+    type: 'WebPage',
+  }),
+  breadcrumb([
+    { name: 'Home', url: '/' },
+    { name: 'Tools', url: '/tools/gst-calculator' },
+    { name: 'GST Calculator', url: '/tools/gst-calculator' },
+  ]),
+  {
+    '@context': 'https://schema.org',
+    '@type': 'WebApplication',
+    '@id': `${SITE_URL}/tools/gst-calculator#app`,
+    name: 'GST Calculator',
+    url: `${SITE_URL}/tools/gst-calculator`,
+    applicationCategory: 'FinanceApplication',
+    operatingSystem: 'Any',
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'INR' },
+    publisher: { '@id': `${SITE_URL}#organization` },
+  },
+];
+
 export default function GSTCalculatorPage() {
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
@@ -57,6 +84,7 @@ export default function GSTCalculatorPage() {
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: JSON.stringify(HOWTO_JSONLD) }}
       />
+      <JsonLd data={EXTRA_JSONLD} />
       <Header />
       <main className="flex-1">
         <section className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-white">
