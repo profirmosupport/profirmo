@@ -450,6 +450,87 @@ async function analyseDocument(caseId, userId, documentId) {
   };
 }
 
+/**
+ * Analyse a one-off uploaded file (the user pastes / drops a doc
+ * in the AI Clerk's Analyse-document tile without first storing it
+ * against the client). Caller passes the file buffer directly; we
+ * forward to Claude without ever persisting it. Claude's native
+ * document/image blocks handle OCR for us — no separate Tesseract
+ * step needed.
+ */
+async function analyseUploadedDocument(caseId, userId, file) {
+  await assertPremium(userId);
+  if (!file || !file.buffer) {
+    throw { statusCode: 422, message: 'No file received.' };
+  }
+  const mimeType = file.mimetype || 'application/octet-stream';
+  const isPdf = /pdf$/i.test(mimeType) || /\.pdf$/i.test(file.originalname || '');
+  const isImage = /^image\//i.test(mimeType);
+  if (!isPdf && !isImage) {
+    throw {
+      statusCode: 415,
+      message:
+        'Upload a PDF or image (PNG/JPG/WEBP). DOC/DOCX is not supported by the AI document pipeline — convert to PDF first.',
+    };
+  }
+  // Re-use the same 10 MB ceiling as the linked-doc analyser.
+  const TEN_MB = 10 * 1024 * 1024;
+  if (file.size && file.size > TEN_MB) {
+    throw { statusCode: 413, message: 'File too large — keep under 10 MB.' };
+  }
+  const { apiKey, model } = await getClient();
+  const base64 = Buffer.from(file.buffer).toString('base64');
+  const contentBlock = isPdf
+    ? {
+        type: 'document',
+        source: { type: 'base64', media_type: 'application/pdf', data: base64 },
+      }
+    : {
+        type: 'image',
+        source: { type: 'base64', media_type: mimeType, data: base64 },
+      };
+  const textBlock = {
+    type: 'text',
+    text:
+      `OCR + analyse the attached ${isPdf ? 'PDF' : 'image'} (filename: ${file.originalname || 'upload'}).\n\n` +
+      'Return a structured summary covering:\n' +
+      '  * Document type + purpose (one line)\n' +
+      '  * Key parties / signatories\n' +
+      '  * Important dates + deadlines\n' +
+      '  * Amounts / values\n' +
+      '  * Notable clauses, obligations, or risks\n' +
+      '  * Anything unclear that the professional should follow up on\n\n' +
+      'Be concise; bullet points fine. Do not invent facts.',
+  };
+  const resp = await fetch(ANTHROPIC_URL, {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': ANTHROPIC_VERSION,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 1500,
+      messages: [{ role: 'user', content: [contentBlock, textBlock] }],
+    }),
+  });
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const detail =
+      (json.error && (json.error.message || json.error.type)) ||
+      `HTTP ${resp.status}`;
+    throw { statusCode: 502, message: `Claude analysis failed: ${detail}` };
+  }
+  const blocks = Array.isArray(json.content) ? json.content : [];
+  const text = blocks
+    .filter((b) => b && b.type === 'text' && typeof b.text === 'string')
+    .map((b) => b.text)
+    .join('\n')
+    .trim();
+  return { analysis: text, fileName: file.originalname || null, mimeType };
+}
+
 async function prompt(caseId, instruction, userId) {
   await assertPremium(userId);
   if (!instruction || !String(instruction).trim()) {
@@ -470,5 +551,6 @@ module.exports = {
   suggestNextStep,
   prompt,
   analyseDocument,
+  analyseUploadedDocument,
   buildCaseContext, // exported for testing
 };

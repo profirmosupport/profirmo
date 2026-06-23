@@ -217,6 +217,14 @@ const listStages = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'Case stages', caseStages.listStages());
 });
 
+// POST /api/cases/:id/leave — detach the calling pro from a shared
+// case. Refuses if they're the only pro (UI then swaps to Delete).
+const leaveCase = asyncHandler(async (req, res) => {
+  const updated = await caseService.leaveCase(req.params.id, req.user);
+  if (!updated) throw notFound(req.params.id);
+  return successResponse(res, 200, 'You left the case', updated);
+});
+
 // DELETE /api/cases/:id
 const deleteCase = asyncHandler(async (req, res) => {
   // Clients can delete only their own E-Courts-imported cases when no
@@ -498,6 +506,23 @@ const aiAnalyseDocument = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'Document analysis', out);
 });
 
+// One-shot OCR: the pro uploads a fresh file (PDF or image) right
+// inside the AI Clerk panel and Claude returns structured findings
+// without us ever persisting the file. Lets a pro paste a hearing
+// notice / opposing-counsel letter / scanned challan into the case
+// without first stashing it in the client's document bucket.
+const aiAnalyseUploadedDocument = asyncHandler(async (req, res) => {
+  if (!req.file || !req.file.buffer) {
+    throw { statusCode: 422, message: 'No file received.' };
+  }
+  const out = await aiClerkService.analyseUploadedDocument(
+    req.params.id,
+    req.user.id,
+    req.file
+  );
+  return successResponse(res, 200, 'Document analysis', out);
+});
+
 module.exports = {
   listCases,
   getCase,
@@ -505,6 +530,7 @@ module.exports = {
   updateCase,
   updateCaseStage,
   listStages,
+  leaveCase,
   deleteCase,
   getCasesByClient,
   getCasesByProfessional,
@@ -528,4 +554,5 @@ module.exports = {
   aiSaveAsUpdate,
   aiListDocuments,
   aiAnalyseDocument,
+  aiAnalyseUploadedDocument,
 };

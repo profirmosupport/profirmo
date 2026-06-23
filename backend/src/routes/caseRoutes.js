@@ -4,6 +4,10 @@ const { authenticate } = require('../middleware/authMiddleware');
 const { validateBody } = require('../middleware/validateRequest');
 const requirePermission = require('../middleware/requirePermission');
 const { ACTIONS } = require('../config/permissions');
+const {
+  uploadSingle,
+  handleUploadErrors,
+} = require('../middleware/uploadMiddleware');
 
 const router = express.Router();
 
@@ -42,6 +46,7 @@ router.post(
 router.get('/:id', caseController.getCase);
 router.patch('/:id', caseController.updateCase);
 router.patch('/:id/stage', caseController.updateCaseStage);
+router.post('/:id/leave', caseController.leaveCase);
 
 // AI Clerk — per-case Claude-powered helpers. All four authenticate
 // + go through caseService.userCanAccessCase implicitly via the
@@ -52,6 +57,12 @@ router.post('/:id/ai/prompt', caseController.aiPrompt);
 router.post('/:id/ai/save-as-update', caseController.aiSaveAsUpdate);
 router.get('/:id/ai/documents', caseController.aiListDocuments);
 router.post('/:id/ai/analyse-document', caseController.aiAnalyseDocument);
+router.post(
+  '/:id/ai/analyse-uploaded',
+  uploadSingle,
+  handleUploadErrors,
+  caseController.aiAnalyseUploadedDocument
+);
 // Delete case — RBAC happens inside the controller because clients
 // have a self-serve carve-out (own unassigned case) that the firm
 // permission middleware can't model cleanly.

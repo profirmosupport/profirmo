@@ -55,6 +55,17 @@ export async function remove(id) {
   return unwrap(res);
 }
 
+/**
+ * Step off a firm-shared case — the professional removes themselves
+ * from the assignment list. Server rejects with 422 LAST_PROFESSIONAL
+ * when the caller is the only pro left (use {@link remove} in that
+ * case).
+ */
+export async function leave(id) {
+  const res = await post(`${BASE}/${id}/leave`, {});
+  return unwrap(res);
+}
+
 /** Cases assigned to the logged-in professional. */
 export async function getMyCases() {
   const res = await get(`${BASE}/mine`);
@@ -184,6 +195,7 @@ export default {
   setStage,
   listStages,
   remove,
+  leave,
   getByClient,
   getByProfessional,
   getAttachmentUrl,

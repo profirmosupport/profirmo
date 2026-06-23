@@ -24,6 +24,7 @@ import {
   ListChecks,
   Send,
   FileSearch,
+  Upload,
   X,
   Save,
   RefreshCw,
@@ -36,6 +37,7 @@ import {
   saveAiResponseAsUpdate,
   listAnalysableDocuments,
   analyseDocument,
+  analyseUploadedDocument,
 } from '@/services/caseAiService';
 import { getMyUsage } from '@/services/subscriptionService';
 
@@ -68,6 +70,10 @@ export default function CaseAiClerk({ caseId, onChange }) {
   // Document picker state (Analyse Document mode).
   const [docs, setDocs] = useState([]);
   const [docsLoading, setDocsLoading] = useState(false);
+  // Hidden file input — driven by the "Upload new" button so the pro
+  // can analyse a file off their disk without first stashing it in the
+  // client's document bucket.
+  const uploadInputRef = useRef(null);
 
   // Rotating tagline index.
   const [tagIndex, setTagIndex] = useState(0);
@@ -198,6 +204,25 @@ export default function CaseAiClerk({ caseId, onChange }) {
     setResult('');
     try {
       const out = await analyseDocument(caseId, doc.id);
+      setResult(out.analysis || '');
+      setResultMode('analyse');
+    } catch (err) {
+      setError(err.message || 'Document analysis failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleUploadAndAnalyse(event) {
+    const file = event && event.target && event.target.files && event.target.files[0];
+    // Reset the input so the same filename can be re-picked after a failure.
+    if (event && event.target) event.target.value = '';
+    if (!file) return;
+    setBusy(true);
+    setError('');
+    setResult('');
+    try {
+      const out = await analyseUploadedDocument(caseId, file);
       setResult(out.analysis || '');
       setResultMode('analyse');
     } catch (err) {
@@ -356,15 +381,34 @@ export default function CaseAiClerk({ caseId, onChange }) {
 
             {mode === 'analyse' && !result && (
               <div className="space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  Pick a document
-                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Pick a document
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => uploadInputRef.current?.click()}
+                    disabled={busy}
+                    className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-medium text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:opacity-60"
+                  >
+                    <Upload size={11} />
+                    Upload new
+                  </button>
+                </div>
+                <input
+                  ref={uploadInputRef}
+                  type="file"
+                  accept="application/pdf,image/jpeg,image/png,image/webp,image/gif"
+                  className="hidden"
+                  onChange={handleUploadAndAnalyse}
+                />
                 {docsLoading ? (
                   <p className="text-xs text-slate-500">Loading documents…</p>
                 ) : docs.length === 0 ? (
                   <p className="rounded-md border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-500">
-                    No documents uploaded for this case's client yet. Upload one
-                    from the manage-client page first.
+                    No documents stored against this case&apos;s client yet — use{' '}
+                    <span className="font-semibold">Upload new</span> above to
+                    analyse a one-off file without saving it.
                   </p>
                 ) : (
                   <ul className="space-y-1">

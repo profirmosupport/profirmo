@@ -52,6 +52,7 @@ function emptyForm(defaults) {
     description: (defaults && defaults.description) || '',
     priority: (defaults && defaults.priority) || 'medium',
     caseNumber: (defaults && defaults.caseNumber) || '',
+    cnr: (defaults && defaults.cnr) || '',
     courtName: (defaults && defaults.courtName) || '',
     opposingParty: (defaults && defaults.opposingParty) || '',
     nextHearingDate: (defaults && defaults.nextHearingDate) || '',
@@ -295,6 +296,9 @@ export default function AddCaseModal({
         description: form.description.trim() || undefined,
         priority: form.priority || 'medium',
         caseNumber: form.caseNumber.trim() || undefined,
+        // CNR (Case Number Record) is the unique 16-char identifier
+        // every Indian court issues — gating for E-Courts sync.
+        cnr: form.cnr.trim().toUpperCase() || undefined,
         courtName: form.courtName.trim() || undefined,
         opposingParty: form.opposingParty.trim() || undefined,
         nextHearingDate: form.nextHearingDate || undefined,
@@ -517,20 +521,28 @@ export default function AddCaseModal({
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
+            label="CNR (E-Courts)"
+            name="cnr"
+            value={form.cnr}
+            onChange={handleChange}
+            placeholder="e.g. DLCT01-001234-2024"
+            hint="Adding a CNR unlocks one-click sync of hearings & orders from E-Courts India."
+          />
+          <Input
             label="Court name"
             name="courtName"
             value={form.courtName}
             onChange={handleChange}
             placeholder="Optional"
           />
-          <Input
-            label="Opposing party"
-            name="opposingParty"
-            value={form.opposingParty}
-            onChange={handleChange}
-            placeholder="Optional"
-          />
         </div>
+        <Input
+          label="Opposing party"
+          name="opposingParty"
+          value={form.opposingParty}
+          onChange={handleChange}
+          placeholder="Optional"
+        />
         <Input
           label="Next hearing date"
           name="nextHearingDate"

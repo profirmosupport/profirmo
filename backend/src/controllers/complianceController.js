@@ -89,25 +89,17 @@ const updateObligation = asyncHandler(async (req, res) => {
  * that the PATCH endpoint then writes to the row.
  */
 const uploadAttachment = asyncHandler(async (req, res) => {
-  if (!req.file || !req.file.path) {
+  if (!req.file || !req.file.buffer) {
     throw { statusCode: 422, message: 'No file received.' };
   }
   // eslint-disable-next-line global-require
-  const fs = require('fs');
-  // eslint-disable-next-line global-require
   const storageService = require('../services/storageService');
-  const buffer = fs.readFileSync(req.file.path);
   const stored = await storageService.uploadFile({
-    buffer,
+    buffer: req.file.buffer,
     mimeType: req.file.mimetype,
     originalName: req.file.originalname,
     type: 'document',
   });
-  try {
-    fs.unlinkSync(req.file.path);
-  } catch {
-    /* swallow */
-  }
   const storagePath =
     (stored && (stored.storedPath || stored.path || stored.key)) || stored;
   return successResponse(res, 201, 'Attachment uploaded', {

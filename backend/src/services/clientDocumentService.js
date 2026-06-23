@@ -12,8 +12,6 @@
 // helper because a single user can be a client to one pro AND a pro
 // to other people simultaneously.
 
-const { Op } = require('sequelize');
-const fs = require('fs');
 const {
   ClientDocument,
   ClientDocumentAccess,
@@ -102,29 +100,24 @@ async function uploadOne(actorUserId, clientUserId, file, meta = {}) {
         'You need the client to grant access before you can upload to their document store.',
     };
   }
-  if (!file || !file.path) {
+  if (!file || !file.buffer) {
     throw { statusCode: 422, message: 'No file received.' };
   }
   // Hard 1 MB per-file cap for the client document store. Bank
   // statements / Form 16 / etc. should be export-PDFs, not scanned
   // images — keeps S3 cost predictable and the consent screen
-  // friendly. Caller can split into multiple uploads for the same
-  // doc + FY combo if they need to.
+  // friendly.
   const ONE_MB = 1 * 1024 * 1024;
-  if (file.size && file.size > ONE_MB) {
-    try {
-      fs.unlinkSync(file.path);
-    } catch {
-      /* ignore */
-    }
+  const size = file.size || file.buffer.length;
+  if (size > ONE_MB) {
     throw {
       statusCode: 413,
-      message: `File too large — keep each upload under 1 MB. "${file.originalname}" was ${(file.size / 1024 / 1024).toFixed(2)} MB.`,
+      message: `File too large — keep each upload under 1 MB. "${file.originalname}" was ${(size / 1024 / 1024).toFixed(2)} MB.`,
     };
   }
-  // Read the file from the temp path multer wrote it to; storageService
-  // accepts a buffer.
-  const buffer = fs.readFileSync(file.path);
+  // multer is configured in memoryStorage mode, so the file buffer is
+  // already in `file.buffer` — no temp-path read needed.
+  const buffer = file.buffer;
   // Push to storage — type 'document' lands under documents/ prefix on
   // S3 (per storageService.TYPE_TO_PREFIX) which is already on the
   // PRIVATE_PREFIXES list so reads go via presigned URLs.
@@ -134,12 +127,6 @@ async function uploadOne(actorUserId, clientUserId, file, meta = {}) {
     originalName: file.originalname,
     type: 'document',
   });
-  // Best-effort cleanup of the multer temp file.
-  try {
-    fs.unlinkSync(file.path);
-  } catch {
-    /* swallow */
-  }
   // Validate financialYear when present — expected format 'YYYY-YY',
   // e.g. '2025-26'. Anything else is dropped so the DB stays clean.
   let financialYear = null;

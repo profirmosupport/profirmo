@@ -127,6 +127,14 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
   const [deletingCase, setDeletingCase] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
+  // Leave-case modal state — only reachable on firm-shared cases
+  // (≥ 2 professionals assigned). Pulling out keeps the row in
+  // professionalIds but leaves the case intact for the rest of the
+  // firm.
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [leavingCase, setLeavingCase] = useState(false);
+  const [leaveError, setLeaveError] = useState('');
+
   // Firm members — loaded lazily; only populated when the caller belongs to
   // a firm. Used by the Edit modal so the assignee picker is available.
   const [firmMembers, setFirmMembers] = useState([]);
@@ -403,6 +411,28 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
     }
   }
 
+  function openLeaveCase() {
+    setLeaveError('');
+    setLeaveOpen(true);
+  }
+  function closeLeaveCase() {
+    if (leavingCase) return;
+    setLeaveOpen(false);
+    setLeaveError('');
+  }
+  async function confirmLeaveCase() {
+    if (leavingCase) return;
+    setLeavingCase(true);
+    setLeaveError('');
+    try {
+      await caseService.leave(caseId);
+      router.back();
+    } catch (err) {
+      setLeaveError(err.message || 'Could not leave the case.');
+      setLeavingCase(false);
+    }
+  }
+
   if (loading) return <Skeleton />;
 
   if (error || !data) {
@@ -496,15 +526,15 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
               <RefreshCw size={15} />
               Refresh
             </Button>
-            {data && data.source === 'ecourts' && data.cnr ? (
+            {data && data.cnr ? (
               <Button
                 variant="primary"
                 size="sm"
                 href={`/ecourts/${encodeURIComponent(data.cnr)}?from=${encodeURIComponent(pathname || '')}`}
-                title="Open the live E-Courts India record for this case"
+                title="Pull the latest hearing / order detail from E-Courts India for this CNR"
               >
                 <CloudDownload size={15} />
-                Update from E-Court
+                Sync from E-Courts
               </Button>
             ) : null}
             {!isClient && (() => {
@@ -1100,38 +1130,59 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
         )}
       </Card>
 
-      {/* Danger zone — case deletion lives at the very bottom of the page
-          so it stays out of the way until you explicitly scroll to it.
-          Clients can only delete their own cases when no professional has
-          been assigned yet (server-enforced as well). */}
+      {/* Danger zone — case deletion / leave-case live at the very bottom
+          of the page so they stay out of the way until you explicitly
+          scroll to it.
+          Rules:
+            * Clients can only delete their own cases when no professional
+              has been assigned yet (server-enforced as well).
+            * On a firm-shared case (≥ 2 professionals assigned) a
+              professional can LEAVE the case but cannot delete it — the
+              remaining pros must keep working. Deletion is reserved for
+              the last professional standing, which falls back to the
+              individual-case rules. */}
 
       {(() => {
         const assignees = Array.isArray(data && data.professionalIds)
           ? data.professionalIds.filter(Boolean)
           : [];
         const hasPro = !!(data && data.professionalId) || assignees.length > 0;
-        const canDelete = isClient ? !hasPro : true;
-        if (isClient && hasPro) return null;
+        const isFirmShared = assignees.length >= 2;
+        // Clients see the delete button only on their own
+        // unassigned cases (same rule as before).
+        const clientCanDelete = isClient && !hasPro;
+        // Pros on a firm-shared case leave instead of delete; pros on
+        // a sole-assignee case delete as before.
+        const proCanLeave = !isClient && isFirmShared;
+        const proCanDelete = !isClient && !isFirmShared;
+        if (!clientCanDelete && !proCanLeave && !proCanDelete) return null;
         return (
           <Card className="border-red-200">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h3 className="text-sm font-semibold text-red-700">Danger zone</h3>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  {isClient
+                  {clientCanDelete
                     ? 'Deleting this case removes every note and update you added. No professional is assigned yet, so this can be done from your side. This cannot be undone.'
-                    : 'Deleting the case removes every note, update, attachment, and activity-log entry. This cannot be undone.'}
+                    : proCanLeave
+                      ? `This case is shared with ${assignees.length - 1} other professional${assignees.length - 1 === 1 ? '' : 's'} in your firm. You can step off it any time — the case stays with the rest of the team. To delete the case entirely, every other professional needs to leave first.`
+                      : 'Deleting the case removes every note, update, attachment, and activity-log entry. This cannot be undone.'}
                 </p>
               </div>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={openDeleteCase}
-                disabled={!canDelete}
-              >
-                <Trash2 size={14} />
-                Delete case
-              </Button>
+              {proCanLeave ? (
+                <Button variant="outline" size="sm" onClick={openLeaveCase}>
+                  Leave case
+                </Button>
+              ) : (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={openDeleteCase}
+                >
+                  <Trash2 size={14} />
+                  Delete case
+                </Button>
+              )}
             </div>
           </Card>
         );
@@ -1437,6 +1488,48 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
           {deleteError && (
             <p className="text-xs text-red-600">{deleteError}</p>
           )}
+        </div>
+      </Modal>
+
+      {/* Confirm "leave case" on a firm-shared case. Lightweight: no
+          confirm-text required because leaving is reversible (the firm
+          can re-add the pro). */}
+      <Modal
+        open={leaveOpen}
+        onClose={closeLeaveCase}
+        title="Leave case"
+        size="md"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={closeLeaveCase}
+              disabled={leavingCase}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={confirmLeaveCase}
+              disabled={leavingCase}
+            >
+              {leavingCase ? 'Leaving…' : 'Leave case'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-sm text-slate-700">
+          <p>
+            You will be removed from <span className="font-semibold">{data.title || 'this case'}</span>.
+            Other professionals in your firm will continue to work on it.
+          </p>
+          <p className="text-xs text-slate-500">
+            You can be added back at any time by another firm member. Your
+            previous notes and updates stay on the case.
+          </p>
+          {leaveError && <p className="text-xs text-red-600">{leaveError}</p>}
         </div>
       </Modal>
 
