@@ -364,11 +364,46 @@ const SETTINGS = {
   claude_model: {
     label: 'Claude model',
     description:
-      'Model identifier passed to /v1/messages. Default: claude-sonnet-4-6 (good balance of cost + capability). Switch to claude-opus-4-7 for harder analytical tasks or claude-haiku-4-5-20251001 for cheaper drafts.',
-    defaultGetter: () => process.env.CLAUDE_MODEL || 'claude-sonnet-4-6',
+      'Model identifier passed to /v1/messages. Default is Haiku 4.5 — the cheapest currently-supported model, ideal for trialling the AI Clerk. Move to Sonnet for production once token usage stabilises, or Opus for the hardest analytical work.',
+    // Default to Haiku 4.5 — roughly $0.80 / $4 per 1M tokens, ~10×
+    // cheaper than Sonnet 4.6. Right pick while piloting.
+    defaultGetter: () => process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001',
     type: 'string',
     group: 'AI / Anthropic',
-    coerce: stringCoerce,
+    options: [
+      {
+        value: 'claude-haiku-4-5-20251001',
+        label: 'Haiku 4.5 — cheapest (~$0.80 / $4 per 1M tokens)',
+      },
+      {
+        value: 'claude-sonnet-4-6',
+        label: 'Sonnet 4.6 — balanced (~$3 / $15 per 1M)',
+      },
+      {
+        value: 'claude-opus-4-7',
+        label: 'Opus 4.7 — strongest (~$15 / $75 per 1M)',
+      },
+      {
+        value: 'claude-opus-4-8',
+        label: 'Opus 4.8 — latest strongest (~$15 / $75 per 1M)',
+      },
+    ],
+    coerce: (raw) => {
+      const v = stringCoerce(raw);
+      const allowed = [
+        'claude-haiku-4-5-20251001',
+        'claude-sonnet-4-6',
+        'claude-opus-4-7',
+        'claude-opus-4-8',
+      ];
+      if (v && !allowed.includes(v)) {
+        throw {
+          statusCode: 422,
+          message: `claude_model must be one of: ${allowed.join(', ')}`,
+        };
+      }
+      return v || 'claude-haiku-4-5-20251001';
+    },
     format: stringCoerce,
   },
 };
