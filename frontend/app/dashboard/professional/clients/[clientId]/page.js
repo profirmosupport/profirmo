@@ -72,6 +72,35 @@ const EMPTY = {
   notes: '',
 };
 
+/**
+ * Per-entity-type field visibility. Hides fields that don't apply so
+ * the form isn't cluttered with questions the user has no answer for
+ * (e.g. GSTIN / CIN for an individual). PAN + Tax audit show for
+ * every entity type because both can apply to almost any taxpayer.
+ */
+function fieldVisibility(entityType) {
+  const v = {
+    gstin: false,
+    gstScheme: false,
+    cin: false,
+    qrmpEligible: false,
+    tdsDeductor: false,
+    taxAuditRequired: true,
+    gstr9cRequired: false,
+  };
+  if (!entityType) return v;
+  if (entityType === 'individual' || entityType === 'huf') return v;
+  v.gstin = true;
+  v.gstScheme = true;
+  v.qrmpEligible = true;
+  v.gstr9cRequired = true;
+  v.tdsDeductor = true;
+  if (entityType === 'private_ltd' || entityType === 'public_ltd') {
+    v.cin = true;
+  }
+  return v;
+}
+
 export default function ProfessionalClientDetailPage({ params }) {
   // Next.js 15 — params is a thenable; unwrap via use().
   const { clientId } = use(params);
@@ -201,13 +230,8 @@ export default function ProfessionalClientDetailPage({ params }) {
           </p>
         )}
 
-        {/* --- Editable client basics -------------------------------- */}
-        {client && (
-          <ClientBasicsCard
-            client={client}
-            onSaved={(c) => setClient((prev) => ({ ...prev, ...c }))}
-          />
-        )}
+        {/* --- Client basics (read-only — owned by the client) ------ */}
+        {client && <ClientBasicsCard client={client} />}
 
         {/* --- Compliance profile editor ----------------------------- */}
         <Card>
@@ -252,132 +276,148 @@ export default function ProfessionalClientDetailPage({ params }) {
           {loading ? (
             <p className="mt-3 text-sm text-slate-500">Loading…</p>
           ) : (
-            <div className="mt-4 space-y-4">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">
-                    Entity type *
-                  </label>
-                  <select
-                    value={form.entityType}
-                    onChange={(e) => update('entityType', e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-                  >
-                    {ENTITY_TYPES.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">
-                    PAN
-                  </label>
-                  <input
-                    type="text"
-                    value={form.pan}
-                    onChange={(e) => update('pan', e.target.value.toUpperCase())}
-                    placeholder="ABCDE1234F"
-                    maxLength={10}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono uppercase"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">
-                    GSTIN
-                  </label>
-                  <input
-                    type="text"
-                    value={form.gstin}
-                    onChange={(e) =>
-                      update('gstin', e.target.value.toUpperCase())
-                    }
-                    placeholder="27ABCDE1234F1Z5"
-                    maxLength={15}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono uppercase"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">
-                    CIN (companies only)
-                  </label>
-                  <input
-                    type="text"
-                    value={form.cin}
-                    onChange={(e) => update('cin', e.target.value.toUpperCase())}
-                    placeholder="U72200KA2020PTC123456"
-                    maxLength={30}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono uppercase"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">
-                    GST scheme
-                  </label>
-                  <select
-                    value={form.gstScheme}
-                    onChange={(e) => update('gstScheme', e.target.value)}
-                    disabled={!form.gstin}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
-                  >
-                    {GST_SCHEMES.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  Applicable obligations
-                </p>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {[
-                    [
-                      'qrmpEligible',
-                      'QRMP eligible',
-                      'Turnover ≤ ₹5cr previous FY. Drives quarterly GSTR-1.',
-                    ],
-                    [
-                      'tdsDeductor',
-                      'TDS deductor',
-                      'Generates quarterly 24Q/26Q + monthly TDS payment.',
-                    ],
-                    [
-                      'taxAuditRequired',
-                      'Tax audit (44AB)',
-                      'Switches ITR due date to 31 Oct + adds Form 3CD due 30 Sep.',
-                    ],
-                    [
-                      'gstr9cRequired',
-                      'GSTR-9C required',
-                      'Turnover above ₹5cr. Reconciliation statement due 31 Dec.',
-                    ],
-                  ].map(([k, label, desc]) => (
-                    <label
-                      key={k}
-                      className="flex items-start gap-2 text-sm text-slate-700"
-                    >
+            (() => {
+              const vis = fieldVisibility(form.entityType);
+              const TOGGLES = [
+                vis.qrmpEligible && [
+                  'qrmpEligible',
+                  'QRMP eligible',
+                  'Turnover ≤ ₹5cr previous FY. Drives quarterly GSTR-1.',
+                ],
+                vis.tdsDeductor && [
+                  'tdsDeductor',
+                  'TDS deductor',
+                  'Generates quarterly 24Q/26Q + monthly TDS payment.',
+                ],
+                vis.taxAuditRequired && [
+                  'taxAuditRequired',
+                  'Tax audit (44AB)',
+                  'Switches ITR due date to 31 Oct + adds Form 3CD due 30 Sep.',
+                ],
+                vis.gstr9cRequired && [
+                  'gstr9cRequired',
+                  'GSTR-9C required',
+                  'Turnover above ₹5cr. Reconciliation statement due 31 Dec.',
+                ],
+              ].filter(Boolean);
+              return (
+                <div className="mt-4 space-y-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-700">
+                        Entity type *
+                      </label>
+                      <select
+                        value={form.entityType}
+                        onChange={(e) => update('entityType', e.target.value)}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                      >
+                        {ENTITY_TYPES.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-700">
+                        PAN
+                      </label>
                       <input
-                        type="checkbox"
-                        checked={!!form[k]}
-                        onChange={(e) => update(k, e.target.checked)}
-                        className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                        type="text"
+                        value={form.pan}
+                        onChange={(e) =>
+                          update('pan', e.target.value.toUpperCase())
+                        }
+                        placeholder="ABCDE1234F"
+                        maxLength={10}
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono uppercase"
                       />
-                      <span>
-                        <span className="font-medium">{label}</span>
-                        <br />
-                        <span className="text-[11px] text-slate-500">
-                          {desc}
-                        </span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
+                    </div>
+                    {vis.gstin && (
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-700">
+                          GSTIN
+                        </label>
+                        <input
+                          type="text"
+                          value={form.gstin}
+                          onChange={(e) =>
+                            update('gstin', e.target.value.toUpperCase())
+                          }
+                          placeholder="27ABCDE1234F1Z5"
+                          maxLength={15}
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono uppercase"
+                        />
+                      </div>
+                    )}
+                    {vis.cin && (
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-700">
+                          CIN
+                        </label>
+                        <input
+                          type="text"
+                          value={form.cin}
+                          onChange={(e) =>
+                            update('cin', e.target.value.toUpperCase())
+                          }
+                          placeholder="U72200KA2020PTC123456"
+                          maxLength={30}
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono uppercase"
+                        />
+                      </div>
+                    )}
+                    {vis.gstScheme && (
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-700">
+                          GST scheme
+                        </label>
+                        <select
+                          value={form.gstScheme}
+                          onChange={(e) => update('gstScheme', e.target.value)}
+                          disabled={!form.gstin}
+                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
+                        >
+                          {GST_SCHEMES.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  {TOGGLES.length > 0 && (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                        Applicable obligations
+                      </p>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {TOGGLES.map(([k, label, desc]) => (
+                          <label
+                            key={k}
+                            className="flex items-start gap-2 text-sm text-slate-700"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={!!form[k]}
+                              onChange={(e) => update(k, e.target.checked)}
+                              className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                            />
+                            <span>
+                              <span className="font-medium">{label}</span>
+                              <br />
+                              <span className="text-[11px] text-slate-500">
+                                {desc}
+                              </span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">
@@ -411,6 +451,8 @@ export default function ProfessionalClientDetailPage({ params }) {
                 </Button>
               </div>
             </div>
+              );
+            })()
           )}
         </Card>
 
@@ -471,109 +513,34 @@ export default function ProfessionalClientDetailPage({ params }) {
 }
 
 /**
- * ClientBasicsCard — name + email inline editor. Phone is read-only
- * because phone is the canonical user identifier in our system and
- * shouldn't be changed by a professional acting on the client's
- * behalf.
+ * ClientBasicsCard — read-only display of the client's identity
+ * fields. The professional can't edit Name / Email / Phone here —
+ * those belong to the client account and the client updates them
+ * from their own profile.
  */
-function ClientBasicsCard({ client, onSaved }) {
-  const [name, setName] = useState(client.name || '');
-  const [email, setEmail] = useState(client.email || '');
-  const [saving, setSaving] = useState(false);
-  const [savedAt, setSavedAt] = useState(null);
-  const [error, setError] = useState('');
-
-  // Sync when parent client prop changes (e.g. after refresh).
-  useEffect(() => {
-    setName(client.name || '');
-    setEmail(client.email || '');
-  }, [client.id, client.name, client.email]);
-
-  const dirty = name !== (client.name || '') || email !== (client.email || '');
-
-  async function handleSave() {
-    setSaving(true);
-    setError('');
-    try {
-      const updated = await clientService.update(client.id, {
-        name: name.trim(),
-        email: email.trim(),
-      });
-      onSaved(updated || { name: name.trim(), email: email.trim() });
-      setSavedAt(new Date());
-    } catch (err) {
-      setError(err.message || 'Save failed.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
+function ClientBasicsCard({ client }) {
   return (
     <Card>
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Client basics
-        </p>
-        {savedAt && (
-          <span className="text-[11px] text-emerald-700">
-            Saved {savedAt.toLocaleTimeString()}
-          </span>
-        )}
-      </div>
-
-      {error && (
-        <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
-          {error}
-        </p>
-      )}
-
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Client basics
+      </p>
+      <h2 className="mt-1 text-lg font-semibold text-slate-900">
+        {client.name || '—'}
+      </h2>
+      <div className="mt-2 grid grid-cols-1 gap-2 text-sm text-slate-600 sm:grid-cols-2">
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-700">
-            Name
-          </label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          />
+          <span className="text-xs uppercase text-slate-400">Email</span>
+          <p>{client.email || '—'}</p>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-700">
-            Email
-          </label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-700">
-            Phone
-          </label>
-          <input
-            type="text"
-            value={client.phone || ''}
-            disabled
-            className="w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500"
-            title="Phone is the canonical identifier and can't be edited here. The client can update it from their own profile."
-          />
+          <span className="text-xs uppercase text-slate-400">Phone</span>
+          <p>{client.phone || '—'}</p>
         </div>
       </div>
-      <div className="mt-3 flex items-center justify-end gap-2">
-        {client.city && (
-          <span className="text-xs text-slate-500">
-            City: <span className="text-slate-700">{client.city}</span>
-          </span>
-        )}
-        <Button size="sm" onClick={handleSave} disabled={!dirty || saving}>
-          <Save size={14} />
-          {saving ? 'Saving…' : 'Save changes'}
-        </Button>
-      </div>
+      <p className="mt-3 text-[11px] text-slate-400">
+        Identity fields are owned by the client — they can update them
+        from their own profile.
+      </p>
     </Card>
   );
 }

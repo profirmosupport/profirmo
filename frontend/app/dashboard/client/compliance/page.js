@@ -79,6 +79,29 @@ const EMPTY = {
   notes: '',
 };
 
+function fieldVisibility(entityType) {
+  const v = {
+    gstin: false,
+    gstScheme: false,
+    cin: false,
+    qrmpEligible: false,
+    tdsDeductor: false,
+    taxAuditRequired: true,
+    gstr9cRequired: false,
+  };
+  if (!entityType) return v;
+  if (entityType === 'individual' || entityType === 'huf') return v;
+  v.gstin = true;
+  v.gstScheme = true;
+  v.qrmpEligible = true;
+  v.gstr9cRequired = true;
+  v.tdsDeductor = true;
+  if (entityType === 'private_ltd' || entityType === 'public_ltd') {
+    v.cin = true;
+  }
+  return v;
+}
+
 const STATUS_VARIANT = {
   pending: 'amber',
   done: 'green',
@@ -239,6 +262,15 @@ export default function ClientCompliancePage() {
           {loading ? (
             <p className="mt-3 text-sm text-slate-500">Loading profile…</p>
           ) : (
+            (() => {
+              const vis = fieldVisibility(form.entityType);
+              const TOGGLES = [
+                vis.qrmpEligible && ['qrmpEligible', 'QRMP eligible (turnover ≤ ₹5cr)'],
+                vis.tdsDeductor && ['tdsDeductor', 'I deduct TDS (24Q/26Q applicable)'],
+                vis.taxAuditRequired && ['taxAuditRequired', 'Tax audit (44AB) required'],
+                vis.gstr9cRequired && ['gstr9cRequired', 'GSTR-9C required (turnover > ₹5cr)'],
+              ].filter(Boolean);
+              return (
             <div className="mt-4 space-y-4">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
@@ -270,76 +302,83 @@ export default function ClientCompliancePage() {
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono uppercase"
                   />
                 </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">
-                    GSTIN
-                  </label>
-                  <input
-                    type="text"
-                    value={form.gstin}
-                    onChange={(e) => update('gstin', e.target.value.toUpperCase())}
-                    placeholder="27ABCDE1234F1Z5"
-                    maxLength={15}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono uppercase"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">
-                    CIN (companies)
-                  </label>
-                  <input
-                    type="text"
-                    value={form.cin}
-                    onChange={(e) => update('cin', e.target.value.toUpperCase())}
-                    maxLength={30}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono uppercase"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">
-                    GST scheme
-                  </label>
-                  <select
-                    value={form.gstScheme}
-                    onChange={(e) => update('gstScheme', e.target.value)}
-                    disabled={!form.gstin}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
-                  >
-                    {GST_SCHEMES.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {vis.gstin && (
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-700">
+                      GSTIN
+                    </label>
+                    <input
+                      type="text"
+                      value={form.gstin}
+                      onChange={(e) =>
+                        update('gstin', e.target.value.toUpperCase())
+                      }
+                      placeholder="27ABCDE1234F1Z5"
+                      maxLength={15}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono uppercase"
+                    />
+                  </div>
+                )}
+                {vis.cin && (
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-700">
+                      CIN
+                    </label>
+                    <input
+                      type="text"
+                      value={form.cin}
+                      onChange={(e) =>
+                        update('cin', e.target.value.toUpperCase())
+                      }
+                      maxLength={30}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono uppercase"
+                    />
+                  </div>
+                )}
+                {vis.gstScheme && (
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-700">
+                      GST scheme
+                    </label>
+                    <select
+                      value={form.gstScheme}
+                      onChange={(e) => update('gstScheme', e.target.value)}
+                      disabled={!form.gstin}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
+                    >
+                      {GST_SCHEMES.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  Applicable obligations
-                </p>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {[
-                    ['qrmpEligible', 'QRMP eligible (turnover ≤ ₹5cr)'],
-                    ['tdsDeductor', 'I deduct TDS (24Q/26Q applicable)'],
-                    ['taxAuditRequired', 'Tax audit (44AB) required'],
-                    ['gstr9cRequired', 'GSTR-9C required (turnover > ₹5cr)'],
-                  ].map(([k, label]) => (
-                    <label
-                      key={k}
-                      className="flex items-center gap-2 text-sm text-slate-700"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={!!form[k]}
-                        onChange={(e) => update(k, e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-300"
-                      />
-                      {label}
-                    </label>
-                  ))}
+              {TOGGLES.length > 0 && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Applicable obligations
+                  </p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {TOGGLES.map(([k, label]) => (
+                      <label
+                        key={k}
+                        className="flex items-center gap-2 text-sm text-slate-700"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!form[k]}
+                          onChange={(e) => update(k, e.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">
@@ -360,6 +399,8 @@ export default function ClientCompliancePage() {
                 </Button>
               </div>
             </div>
+              );
+            })()
           )}
         </Card>
 

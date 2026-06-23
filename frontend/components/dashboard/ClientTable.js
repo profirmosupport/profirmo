@@ -6,6 +6,18 @@ import EmptyState from '@/components/common/EmptyState';
 import { useLanguage } from '@/components/LanguageProvider';
 import { getInitials } from '@/utils/formatters';
 
+const ENTITY_TYPE_LABEL = {
+  individual: 'Individual',
+  sole_proprietor: 'Sole proprietor',
+  partnership: 'Partnership',
+  llp: 'LLP',
+  private_ltd: 'Private limited',
+  public_ltd: 'Public limited',
+  huf: 'HUF',
+  trust: 'Trust',
+  society: 'Society',
+};
+
 const AVATAR_COLORS = [
   'bg-blue-600',
   'bg-emerald-600',
@@ -52,8 +64,9 @@ export default function ClientTable({ clients }) {
               <th className="px-4 py-3">{t('dash.table.client')}</th>
               <th className="px-4 py-3">{t('dash.table.email')}</th>
               <th className="px-4 py-3">{t('dash.table.phone')}</th>
-              <th className="px-4 py-3">{t('dash.table.city')}</th>
-              <th className="px-4 py-3">{t('dash.table.type')}</th>
+              {/* City + the old "client type" column dropped — the
+                  compliance-derived Entity type replaces them. */}
+              <th className="px-4 py-3">Entity type</th>
               <th className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
@@ -79,13 +92,18 @@ export default function ClientTable({ clients }) {
                 </td>
                 <td className="px-4 py-3 text-slate-600">{c.email || '—'}</td>
                 <td className="px-4 py-3 text-slate-600">{c.phone || '—'}</td>
-                <td className="px-4 py-3 text-slate-600">{c.city || '—'}</td>
                 <td className="px-4 py-3">
-                  <Badge variant={c.userType === 'business' ? 'blue' : 'gray'}>
-                    {c.userType === 'business'
-                      ? t('dash.table.business')
-                      : t('dash.table.individual')}
-                  </Badge>
+                  {c.entityType ? (
+                    <Badge
+                      variant={
+                        c.entityType === 'individual' ? 'gray' : 'blue'
+                      }
+                    >
+                      {ENTITY_TYPE_LABEL[c.entityType] || c.entityType}
+                    </Badge>
+                  ) : (
+                    <span className="text-xs text-slate-400">— Not set —</span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-right">
                   <a

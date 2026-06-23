@@ -11,7 +11,7 @@
 //                       user row gets a starter ClientComplianceProfile
 //                       so the manage page lands you ready to generate.
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Search } from 'lucide-react';
 import Modal from '@/components/common/Modal';
 import Button from '@/components/common/Button';
@@ -20,7 +20,6 @@ import Combobox from '@/components/common/Combobox';
 import Avatar from '@/components/common/Avatar';
 import Badge from '@/components/common/Badge';
 import clientService from '@/services/clientService';
-import { listCities } from '@/services/appSettingsService';
 import { saveProfile } from '@/services/complianceService';
 
 // Entity types — same list as the compliance editor so the new
@@ -48,7 +47,6 @@ function userTypeFor(entityType) {
 const EMPTY_NEW_FORM = {
   name: '',
   email: '',
-  city: '',
   entityType: 'individual',
 };
 
@@ -62,26 +60,6 @@ export default function AddClientModal({ open, onClose, onAdded }) {
   const [newForm, setNewForm] = useState(EMPTY_NEW_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
-
-  // Cities catalog — loaded once when the modal opens, kept across
-  // step transitions so switching back/forth doesn't re-fetch.
-  const [cityOptions, setCityOptions] = useState([]);
-  useEffect(() => {
-    if (!open) return;
-    (async () => {
-      try {
-        const rows = await listCities();
-        const list = Array.isArray(rows) ? rows : [];
-        setCityOptions(
-          list
-            .filter((c) => c && c.name)
-            .map((c) => ({ value: c.name, label: c.name }))
-        );
-      } catch {
-        setCityOptions([]);
-      }
-    })();
-  }, [open]);
 
   function reset() {
     setStep('lookup');
@@ -120,7 +98,7 @@ export default function AddClientModal({ open, onClose, onAdded }) {
         setNonClientRole(result.role || 'user');
         setStep('nonClientUser');
       } else {
-        setNewForm((f) => ({ ...f, name: '', email: '', city: '' }));
+        setNewForm((f) => ({ ...f, name: '', email: '' }));
         setStep('newForm');
       }
     } catch (err) {
@@ -160,7 +138,6 @@ export default function AddClientModal({ open, onClose, onAdded }) {
         name: newForm.name.trim(),
         email: newForm.email.trim(),
         phone: phone.trim(),
-        city: newForm.city.trim(),
         userType: userTypeFor(newForm.entityType),
       });
       // Seed a compliance profile with the entity type so the manage
@@ -344,30 +321,15 @@ export default function AddClientModal({ open, onClose, onAdded }) {
             placeholder="Optional"
             hint="Provide an email so the client receives an invitation to claim their account."
           />
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Combobox
-              label="City"
-              name="city"
-              value={newForm.city}
-              onChange={(e) =>
-                setNewForm((f) => ({ ...f, city: e.target.value }))
-              }
-              options={cityOptions}
-              placeholder={
-                cityOptions.length === 0 ? 'Loading cities…' : 'Search cities…'
-              }
-              emptyLabel="No match — leave blank or pick later"
-            />
-            <Combobox
-              label="Entity type"
-              name="entityType"
-              value={newForm.entityType}
-              onChange={(e) =>
-                setNewForm((f) => ({ ...f, entityType: e.target.value }))
-              }
-              options={ENTITY_TYPE_OPTIONS}
-            />
-          </div>
+          <Combobox
+            label="Entity type"
+            name="entityType"
+            value={newForm.entityType}
+            onChange={(e) =>
+              setNewForm((f) => ({ ...f, entityType: e.target.value }))
+            }
+            options={ENTITY_TYPE_OPTIONS}
+          />
           <button type="submit" className="hidden" aria-hidden="true" />
           {submitError && <p className="text-xs text-red-600">{submitError}</p>}
         </form>

@@ -116,7 +116,34 @@ const list = async ({ filters = {}, page, limit, actor } = {}) => {
     raw: true,
   });
 
-  return { items: rows.map(toClientView), page: p, limit: l, total: count };
+  // Decorate each client with their compliance entityType (relative
+  // to the calling professional). One bulk lookup so the listing
+  // doesn't N+1.
+  let entityByClient = new Map();
+  if (rows.length > 0 && actor && actor.role === 'professional') {
+    // eslint-disable-next-line global-require
+    const { ClientComplianceProfile } = require('../models');
+    const proId = await resolveActorProfessionalId(actor);
+    if (proId) {
+      const profiles = await ClientComplianceProfile.findAll({
+        where: {
+          professionalId: proId,
+          clientUserId: { [Op.in]: rows.map((r) => r.id) },
+        },
+        attributes: ['clientUserId', 'entityType'],
+        raw: true,
+      });
+      entityByClient = new Map(
+        profiles.map((p) => [p.clientUserId, p.entityType || null])
+      );
+    }
+  }
+
+  const items = rows.map((u) => ({
+    ...toClientView(u),
+    entityType: entityByClient.get(u.id) || null,
+  }));
+  return { items, page: p, limit: l, total: count };
 };
 
 /** Find a client by id, or null when not found. */
