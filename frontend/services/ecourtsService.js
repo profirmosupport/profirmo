@@ -2,7 +2,7 @@
 // to https://webapi.ecourtsindia.com). The partner API key lives on
 // the backend; this client never sees it.
 
-import { get, post, del, API_BASE_URL } from '@/services/api';
+import { get, post, del, getApiBaseUrl } from '@/services/api';
 
 // CNR validation — partner schema is 16 alphanumeric chars (e.g.
 // `UPHC052793522026`). We use a slightly loose 12-20 window so the
@@ -40,7 +40,7 @@ export async function getCaseByCnr(cnr) {
  * blob() trickery needed.
  */
 export function orderDownloadUrl(cnr, filename) {
-  return `${API_BASE_URL}/api/ecourts/case/${encodeURIComponent(
+  return `${getApiBaseUrl()}/api/ecourts/case/${encodeURIComponent(
     cnr
   )}/order/${encodeURIComponent(filename)}/download`;
 }

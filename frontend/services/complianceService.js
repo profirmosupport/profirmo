@@ -1,7 +1,7 @@
 // complianceService — wraps /api/compliance/* for client-side
 // compliance profile + obligation flows.
 
-import { get, put, post, patch, del, API_BASE_URL, getAccessToken } from '@/services/api';
+import { get, put, post, patch, del, getApiBaseUrl, getAccessToken } from '@/services/api';
 
 function unwrap(response) {
   if (response && Object.prototype.hasOwnProperty.call(response, 'data')) {
@@ -62,7 +62,7 @@ export async function uploadObligationAttachment(id, file) {
   fd.append('file', file);
   const token = getAccessToken();
   const resp = await fetch(
-    `${API_BASE_URL}/api/compliance/obligations/${encodeURIComponent(id)}/attachment`,
+    `${getApiBaseUrl()}/api/compliance/obligations/${encodeURIComponent(id)}/attachment`,
     {
       method: 'POST',
       headers: token ? { authorization: `Bearer ${token}` } : {},

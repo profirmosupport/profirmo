@@ -1,6 +1,6 @@
 // gmailIntegrationService — frontend wrapper for /api/integrations/gmail.
 
-import { get, post, del, API_BASE_URL, getAccessToken } from '@/services/api';
+import { get, post, del } from '@/services/api';
 
 function unwrap(response) {
   if (response && Object.prototype.hasOwnProperty.call(response, 'data')) {

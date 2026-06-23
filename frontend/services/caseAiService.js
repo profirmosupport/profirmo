@@ -1,7 +1,7 @@
 // caseAiService — frontend wrapper for /api/cases/:id/ai/*. Drives
 // the floating AI Clerk panel on the case detail page.
 
-import { get, post, API_BASE_URL, getAccessToken } from '@/services/api';
+import { get, post, getApiBaseUrl, getAccessToken } from '@/services/api';
 
 function unwrap(response) {
   if (response && Object.prototype.hasOwnProperty.call(response, 'data')) {
@@ -74,7 +74,7 @@ export async function analyseUploadedDocument(caseId, file) {
   fd.append('file', file);
   const token = getAccessToken();
   const resp = await fetch(
-    `${API_BASE_URL}/api/cases/${encodeURIComponent(caseId)}/ai/analyse-uploaded`,
+    `${getApiBaseUrl()}/api/cases/${encodeURIComponent(caseId)}/ai/analyse-uploaded`,
     {
       method: 'POST',
       headers: token ? { authorization: `Bearer ${token}` } : {},

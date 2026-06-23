@@ -2,7 +2,7 @@
 // frontend. Upload uses FormData (multipart) because we delegate the
 // actual file handling to multer + storageService on the backend.
 
-import { get, post, patch, del, API_BASE_URL, getAccessToken } from '@/services/api';
+import { get, post, patch, del, getApiBaseUrl, getAccessToken } from '@/services/api';
 
 function unwrap(response) {
   if (response && Object.prototype.hasOwnProperty.call(response, 'data')) {
@@ -35,7 +35,7 @@ export async function uploadDocument(clientUserId, file, meta = {}) {
 
   const token = getAccessToken();
   const resp = await fetch(
-    `${API_BASE_URL}/api/client-documents/by-client/${encodeURIComponent(clientUserId)}/upload`,
+    `${getApiBaseUrl()}/api/client-documents/by-client/${encodeURIComponent(clientUserId)}/upload`,
     {
       method: 'POST',
       headers: token ? { authorization: `Bearer ${token}` } : {},
