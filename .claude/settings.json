@@ -285,7 +285,10 @@
       "Bash(node -c src/services/ecourtsService.js)",
       "Bash(node -c src/controllers/ecourtsController.js)",
       "Bash(npx --no eslint components/cases/ImportByCnrModal.js app/dashboard/professional/cases/page.js)",
-      "Bash(npx --no eslint components/cases/CaseAiClerk.js)"
+      "Bash(npx --no eslint components/cases/CaseAiClerk.js)",
+      "Bash(ssh -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@13.235.85.94 'cd /var/www/profirmo && git log -1 --oneline; echo \"---pm2---\"; pm2 list --no-color 2>&1 | head -25; echo \"---ls frontend---\"; ls -d frontend frontend/.next 2>/dev/null; echo \"---node---\"; node --version')",
+      "Bash(grep -rnE \"API_BASE_URL\\\\s*\\\\}\\\\s*from\\\\s*'@/services/api'|\\\\\\\\\\\\$\\\\\\\\{API_BASE_URL\\\\\\\\}|API_BASE_URL,\" services/)",
+      "Bash(npx --no eslint services/caseAiService.js services/complianceService.js services/clientDocumentService.js services/ecourtsService.js services/gmailIntegrationService.js)"
     ],
     "additionalDirectories": [
       "/Users/vishalchauhan/code/profirmo/frontend/app/services",
