@@ -52,6 +52,11 @@ const ComplianceObligation = sequelize.define(
     // presigned URL on demand.
     attachmentStoragePath: { type: DataTypes.STRING(255), allowNull: true },
     attachmentFileName: { type: DataTypes.STRING(255), allowNull: true },
+    // Soft delete — the row stays so a future audit can prove the
+    // obligation was once on the schedule + see why it was removed.
+    deletedAt: { type: DataTypes.DATE, allowNull: true },
+    deletedByUserId: { type: DataTypes.STRING(64), allowNull: true },
+    deletionReason: { type: DataTypes.STRING(500), allowNull: true },
   },
   {
     tableName: 'compliance_obligations',

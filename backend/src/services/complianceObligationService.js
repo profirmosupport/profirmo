@@ -403,18 +403,51 @@ async function generateForClient(professionalId, clientUserId) {
 
 async function listForProfessional(professionalId, { from, to, status } = {}) {
   const { Op } = require('sequelize');
+  // Soft-deleted obligations are hidden from the main list. To audit
+  // them, pass status:'deleted' explicitly (renders them in the
+  // overview's "Deleted" filter on the frontend).
   const where = { professionalId };
   if (from || to) {
     where.dueDate = {};
     if (from) where.dueDate[Op.gte] = from;
     if (to) where.dueDate[Op.lte] = to;
   }
-  if (status) where.status = status;
+  if (status === 'deleted') {
+    where.deletedAt = { [Op.ne]: null };
+  } else {
+    where.deletedAt = null;
+    if (status) where.status = status;
+  }
   return ComplianceObligation.findAll({
     where,
     order: [['dueDate', 'ASC']],
     raw: true,
   });
+}
+
+/**
+ * Soft-delete an obligation. Required reason is stored alongside
+ * deletedAt + deletedByUserId so a future audit can see who removed
+ * the obligation and why. Row stays in the DB — listForProfessional
+ * just filters it out unless status='deleted' is requested.
+ */
+async function softDeleteObligation(professionalId, id, reason, userId) {
+  if (!reason || !String(reason).trim()) {
+    throw {
+      statusCode: 422,
+      message: 'A reason is required to delete a compliance obligation.',
+    };
+  }
+  const row = await ComplianceObligation.findOne({
+    where: { id, professionalId },
+  });
+  if (!row) throw { statusCode: 404, message: 'Obligation not found' };
+  await row.update({
+    deletedAt: new Date(),
+    deletedByUserId: userId || null,
+    deletionReason: String(reason).trim().slice(0, 500),
+  });
+  return row.get({ plain: true });
 }
 
 async function updateObligation(professionalId, id, payload) {
@@ -507,7 +540,8 @@ async function upsertMyProfile(clientUserId, payload) {
 async function listForClient(clientUserId, { from, to, status } = {}) {
   const { Op } = require('sequelize');
   const profile = await getMyProfile(clientUserId);
-  const where = { clientUserId };
+  // Clients should never see soft-deleted rows.
+  const where = { clientUserId, deletedAt: null };
   if (from || to) {
     where.dueDate = {};
     if (from) where.dueDate[Op.gte] = from;
@@ -536,6 +570,7 @@ module.exports = {
   generateForClient,
   listForProfessional,
   updateObligation,
+  softDeleteObligation,
   applicableRules, // exported for testing / preview
   getMyProfile,
   upsertMyProfile,

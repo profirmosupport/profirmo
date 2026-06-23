@@ -251,7 +251,8 @@ export function put(path, body, options = {}) {
   return apiRequest(path, { ...options, method: 'PUT', body });
 }
 
-/** DELETE convenience wrapper. */
+/** DELETE convenience wrapper. Accepts options.body for endpoints
+ *  that require a payload (e.g. soft-delete with a reason). */
 export function del(path, options = {}) {
   return apiRequest(path, { ...options, method: 'DELETE' });
 }

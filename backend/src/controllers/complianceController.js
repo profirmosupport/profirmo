@@ -56,6 +56,18 @@ const listMine = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'Compliance obligations', items);
 });
 
+const softDeleteObligation = asyncHandler(async (req, res) => {
+  const proId = await myProfessionalId(req.user.id);
+  if (!proId) throw { statusCode: 403, message: 'Only professionals.' };
+  const row = await compliance.softDeleteObligation(
+    proId,
+    req.params.id,
+    req.body && req.body.reason,
+    req.user.id
+  );
+  return successResponse(res, 200, 'Obligation removed', row);
+});
+
 const updateObligation = asyncHandler(async (req, res) => {
   const proId = await myProfessionalId(req.user.id);
   if (!proId) throw { statusCode: 403, message: 'Only professionals can update obligations.' };
@@ -180,6 +192,7 @@ module.exports = {
   generate,
   listMine,
   updateObligation,
+  softDeleteObligation,
   uploadAttachment,
   getAttachmentUrl,
   getRequirements,

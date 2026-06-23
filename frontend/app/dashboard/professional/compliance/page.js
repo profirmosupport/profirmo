@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
+  Trash2,
 } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import Card from '@/components/common/Card';
@@ -25,6 +26,7 @@ import {
   updateObligation,
   uploadObligationAttachment,
   getObligationAttachmentUrl,
+  softDeleteObligation,
 } from '@/services/complianceService';
 import Modal from '@/components/common/Modal';
 import { ROLES } from '@/utils/constants';
@@ -92,6 +94,9 @@ export default function CompliancePage() {
   // 'Mark done' opens this modal — completion requires a short note
   // and lets the pro attach a supporting file (challan, ack, etc.).
   const [doneItem, setDoneItem] = useState(null);
+  // Soft-delete opens a separate modal that requires a reason. Rows
+  // stay in the DB for audit, just disappear from the default list.
+  const [deleteItem, setDeleteItem] = useState(null);
 
   const today = todayIso();
   const overdue = items.filter(
@@ -282,6 +287,15 @@ export default function CompliancePage() {
                               <XCircle size={14} />
                             </button>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => setDeleteItem(it)}
+                            disabled={busyId === it.id}
+                            title="Remove from schedule (soft delete, requires reason)"
+                            className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                          >
+                            <Trash2 size={14} />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -301,7 +315,97 @@ export default function CompliancePage() {
           await load();
         }}
       />
+
+      <DeleteObligationModal
+        item={deleteItem}
+        onClose={() => setDeleteItem(null)}
+        onDone={async () => {
+          setDeleteItem(null);
+          await load();
+        }}
+      />
     </DashboardLayout>
+  );
+}
+
+function DeleteObligationModal({ item, onClose, onDone }) {
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (item) {
+      setReason('');
+      setError('');
+    }
+  }, [item]);
+
+  async function submit() {
+    if (!reason.trim()) {
+      setError('A reason is required.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      await softDeleteObligation(item.id, reason.trim());
+      if (typeof onDone === 'function') await onDone();
+    } catch (err) {
+      setError(err.message || 'Could not delete.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={!!item}
+      onClose={onClose}
+      title={item ? `Remove "${item.ruleKey.toUpperCase()} — ${item.periodLabel}"` : 'Remove obligation'}
+      size="md"
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            onClick={submit}
+            disabled={busy || !reason.trim()}
+            className="border-red-200 bg-red-600 text-white hover:bg-red-700"
+          >
+            {busy ? 'Removing…' : 'Remove'}
+          </Button>
+        </>
+      }
+    >
+      {item && (
+        <div className="space-y-3">
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            This is a soft-delete — the obligation stays in the database
+            with your reason captured so a future audit can trace it.
+            It just disappears from the active schedule.
+          </p>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-700">
+              Reason for removing *
+            </label>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={3}
+              placeholder="Filed under a different rule / client not registered for this any more / data entry error / etc."
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
+          </div>
+          {error && (
+            <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+              {error}
+            </p>
+          )}
+        </div>
+      )}
+    </Modal>
   );
 }
 

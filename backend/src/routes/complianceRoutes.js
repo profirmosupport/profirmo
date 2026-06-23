@@ -29,6 +29,9 @@ router.put('/profiles/:clientUserId', ctrl.putProfile);
 router.post('/profiles/:clientUserId/generate', ctrl.generate);
 router.get('/obligations', ctrl.listMine);
 router.patch('/obligations/:id', ctrl.updateObligation);
+// Soft-delete with required reason — row stays for audit, just
+// stops appearing in default lists.
+router.delete('/obligations/:id', ctrl.softDeleteObligation);
 router.post(
   '/obligations/:id/attachment',
   uploadSingle,

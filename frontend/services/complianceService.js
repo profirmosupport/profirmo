@@ -1,7 +1,7 @@
 // complianceService — wraps /api/compliance/* for client-side
 // compliance profile + obligation flows.
 
-import { get, put, post, patch, API_BASE_URL, getAccessToken } from '@/services/api';
+import { get, put, post, patch, del, API_BASE_URL, getAccessToken } from '@/services/api';
 
 function unwrap(response) {
   if (response && Object.prototype.hasOwnProperty.call(response, 'data')) {
@@ -77,6 +77,15 @@ export async function uploadObligationAttachment(id, file) {
 export async function getObligationAttachmentUrl(id) {
   const res = await get(
     `/api/compliance/obligations/${encodeURIComponent(id)}/attachment/url`
+  );
+  return unwrap(res);
+}
+
+/** Soft-delete the obligation with a required reason. */
+export async function softDeleteObligation(id, reason) {
+  const res = await del(
+    `/api/compliance/obligations/${encodeURIComponent(id)}`,
+    { body: { reason } }
   );
   return unwrap(res);
 }

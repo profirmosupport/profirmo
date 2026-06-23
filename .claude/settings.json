@@ -256,7 +256,9 @@
       "Bash(ssh -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no ubuntu@proapi.profirmo.com 'cd /var/www/profirmo && git fetch /tmp/profirmo-deploy.bundle main:incoming 2>&1 | tail -2 && git reset --hard incoming && pm2 restart profirmo-api && sleep 4 && pm2 status profirmo-api | tail -3')",
       "Bash(curl -s -o /dev/null -w \"Clients page %{http_code}\\\\n\" http://localhost:3000/dashboard/professional/clients)",
       "Bash(curl -s -o /dev/null -w \"Client detail page %{http_code}\\\\n\" \"http://localhost:3000/dashboard/professional/clients/u-xxx\")",
-      "Bash(ssh -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no ubuntu@proapi.profirmo.com 'cd /var/www/profirmo && git fetch /tmp/profirmo-deploy.bundle main:incoming 2>&1 | tail -2 && git reset --hard incoming && pm2 restart profirmo-api && sleep 3 && pm2 status profirmo-api | tail -3')"
+      "Bash(ssh -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no ubuntu@proapi.profirmo.com 'cd /var/www/profirmo && git fetch /tmp/profirmo-deploy.bundle main:incoming 2>&1 | tail -2 && git reset --hard incoming && pm2 restart profirmo-api && sleep 3 && pm2 status profirmo-api | tail -3')",
+      "Bash(grep -n \"apiRequest\\\\|const { method, body\" /Users/vishalchauhan/code/profirmo/frontend/services/api.js)",
+      "Bash(grep -n \"method, body\\\\|async function rawRequest\\\\|const { method\" /Users/vishalchauhan/code/profirmo/frontend/services/api.js)"
     ],
     "additionalDirectories": [
       "/Users/vishalchauhan/code/profirmo/frontend/app/services",
