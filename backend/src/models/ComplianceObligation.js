@@ -46,6 +46,12 @@ const ComplianceObligation = sequelize.define(
     completedAt: { type: DataTypes.DATE, allowNull: true },
     completedByUserId: { type: DataTypes.STRING(64), allowNull: true },
     notes: { type: DataTypes.TEXT, allowNull: true },
+    // Optional supporting document attached when the pro marks the
+    // obligation done (acknowledgement screenshot, challan, etc.).
+    // Stored as a storage-service path; the UI resolves it to a
+    // presigned URL on demand.
+    attachmentStoragePath: { type: DataTypes.STRING(255), allowNull: true },
+    attachmentFileName: { type: DataTypes.STRING(255), allowNull: true },
   },
   {
     tableName: 'compliance_obligations',

@@ -279,12 +279,13 @@ export default function AddClientModal({ open, onClose, onAdded }) {
       {step === 'nonClientUser' && (
         <div className="space-y-3">
           <p className="text-sm text-slate-700">
-            This phone number is already in use by a{' '}
-            <span className="font-semibold">{nonClientRole}</span> account on
-            Profirmo, so we can't add it as a client. If this person should
-            also be a client, ask them to add a separate client account
-            (different phone number) — or contact support if you think this
-            is wrong.
+            This phone number is{' '}
+            <span className="font-semibold">already in the system</span> under
+            a <span className="font-semibold">{nonClientRole}</span> account.
+            We can't add it as a client too — the phone number is the
+            canonical identifier across user types. If this person should
+            also be your client, ask them to sign up with a separate phone,
+            or contact support to merge accounts.
           </p>
         </div>
       )}
@@ -296,12 +297,15 @@ export default function AddClientModal({ open, onClose, onAdded }) {
             also seed a starter compliance profile for the entity type you
             pick.
           </p>
+          {/* Phone is fixed at this step — the lookup we just ran is
+              what decided we're creating a NEW client, so the user
+              must go Back to change it. */}
           <Input
             label="Phone number"
             name="newPhone"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            required
+            disabled
+            hint="Click Back if you need a different number."
           />
           <Input
             label="Name"

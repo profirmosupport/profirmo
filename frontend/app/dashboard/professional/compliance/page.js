@@ -23,7 +23,10 @@ import Badge from '@/components/common/Badge';
 import {
   listObligations,
   updateObligation,
+  uploadObligationAttachment,
+  getObligationAttachmentUrl,
 } from '@/services/complianceService';
+import Modal from '@/components/common/Modal';
 import { ROLES } from '@/utils/constants';
 import { formatDate } from '@/utils/formatters';
 
@@ -85,6 +88,10 @@ export default function CompliancePage() {
       setBusyId(null);
     }
   }
+
+  // 'Mark done' opens this modal — completion requires a short note
+  // and lets the pro attach a supporting file (challan, ack, etc.).
+  const [doneItem, setDoneItem] = useState(null);
 
   const today = todayIso();
   const overdue = items.filter(
@@ -235,12 +242,30 @@ export default function CompliancePage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
+                          {it.status === 'done' && it.attachmentStoragePath && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const out = await getObligationAttachmentUrl(it.id);
+                                  if (out && out.url)
+                                    window.open(out.url, '_blank', 'noopener,noreferrer');
+                                } catch (err) {
+                                  setError(err.message || 'Could not open file.');
+                                }
+                              }}
+                              title={`Open attachment (${it.attachmentFileName || 'file'})`}
+                              className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                            >
+                              📎
+                            </button>
+                          )}
                           {it.status !== 'done' && (
                             <button
                               type="button"
-                              onClick={() => setStatus(it, 'done')}
+                              onClick={() => setDoneItem(it)}
                               disabled={busyId === it.id}
-                              title="Mark done"
+                              title="Mark done (add note + optional attachment)"
                               className="rounded p-1.5 text-emerald-600 hover:bg-emerald-50"
                             >
                               <CheckCircle2 size={14} />
@@ -267,6 +292,118 @@ export default function CompliancePage() {
           </div>
         )}
       </div>
+
+      <MarkDoneModal
+        item={doneItem}
+        onClose={() => setDoneItem(null)}
+        onDone={async () => {
+          setDoneItem(null);
+          await load();
+        }}
+      />
     </DashboardLayout>
+  );
+}
+
+/**
+ * MarkDoneModal — completion form for a compliance obligation.
+ * Requires a non-empty note; lets the pro optionally attach a file
+ * (challan / acknowledgement / etc.) which goes to S3 via the
+ * existing storageService before the obligation is patched done.
+ */
+function MarkDoneModal({ item, onClose, onDone }) {
+  const [note, setNote] = useState('');
+  const [file, setFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (item) {
+      setNote('');
+      setFile(null);
+      setError('');
+    }
+  }, [item]);
+
+  async function submit() {
+    if (!note.trim()) {
+      setError('Add a short note describing what was filed.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      const payload = { status: 'done', notes: note.trim() };
+      if (file) {
+        const up = await uploadObligationAttachment(item.id, file);
+        if (up && up.storagePath) {
+          payload.attachmentStoragePath = up.storagePath;
+          payload.attachmentFileName = up.fileName || file.name;
+        }
+      }
+      await updateObligation(item.id, payload);
+      if (typeof onDone === 'function') await onDone();
+    } catch (err) {
+      setError(err.message || 'Could not mark done.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={!!item}
+      onClose={onClose}
+      title={item ? `Mark "${item.ruleKey.toUpperCase()} — ${item.periodLabel}" as done` : 'Mark done'}
+      size="md"
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={submit} disabled={busy || !note.trim()}>
+            {busy ? 'Saving…' : 'Mark done'}
+          </Button>
+        </>
+      }
+    >
+      {item && (
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-700">
+              Filing note *
+            </label>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={3}
+              placeholder="ARN / acknowledgement number, what was filed, any caveats…"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-700">
+              Attachment <span className="text-slate-400">(optional)</span>
+            </label>
+            <input
+              type="file"
+              onChange={(e) => setFile((e.target.files && e.target.files[0]) || null)}
+              accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
+              className="w-full text-xs"
+            />
+            {file && (
+              <p className="mt-1 text-[11px] text-slate-500">
+                {file.name} · {Math.round(file.size / 1024)} KB
+              </p>
+            )}
+          </div>
+          {error && (
+            <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+              {error}
+            </p>
+          )}
+        </div>
+      )}
+    </Modal>
   );
 }

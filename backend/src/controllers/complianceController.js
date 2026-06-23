@@ -71,6 +71,64 @@ const updateObligation = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'Obligation updated', row);
 });
 
+/**
+ * Multipart upload for the obligation's optional supporting document
+ * (filing acknowledgement, challan, etc.). Returns the storagePath
+ * that the PATCH endpoint then writes to the row.
+ */
+const uploadAttachment = asyncHandler(async (req, res) => {
+  if (!req.file || !req.file.path) {
+    throw { statusCode: 422, message: 'No file received.' };
+  }
+  // eslint-disable-next-line global-require
+  const fs = require('fs');
+  // eslint-disable-next-line global-require
+  const storageService = require('../services/storageService');
+  const buffer = fs.readFileSync(req.file.path);
+  const stored = await storageService.uploadFile({
+    buffer,
+    mimeType: req.file.mimetype,
+    originalName: req.file.originalname,
+    type: 'document',
+  });
+  try {
+    fs.unlinkSync(req.file.path);
+  } catch {
+    /* swallow */
+  }
+  const storagePath =
+    (stored && (stored.storedPath || stored.path || stored.key)) || stored;
+  return successResponse(res, 201, 'Attachment uploaded', {
+    storagePath,
+    fileName: req.file.originalname,
+  });
+});
+
+/** Resolve a presigned URL for the obligation's attachment. */
+const getAttachmentUrl = asyncHandler(async (req, res) => {
+  const proId = await myProfessionalId(req.user.id);
+  if (!proId) throw { statusCode: 403, message: 'Only professionals.' };
+  // eslint-disable-next-line global-require
+  const { ComplianceObligation } = require('../models');
+  const row = await ComplianceObligation.findOne({
+    where: { id: req.params.id, professionalId: proId },
+    raw: true,
+  });
+  if (!row) throw { statusCode: 404, message: 'Obligation not found.' };
+  if (!row.attachmentStoragePath) {
+    throw { statusCode: 404, message: 'No attachment on this obligation.' };
+  }
+  // eslint-disable-next-line global-require
+  const storageService = require('../services/storageService');
+  const url = await storageService.getFileUrl(row.attachmentStoragePath, {
+    expiryMinutes: 15,
+  });
+  return successResponse(res, 200, 'Attachment URL', {
+    url,
+    fileName: row.attachmentFileName,
+  });
+});
+
 // --- Requirements catalog -------------------------------------------
 
 const requirementsCatalog = require('../config/entityTypeRequirements');
@@ -122,6 +180,8 @@ module.exports = {
   generate,
   listMine,
   updateObligation,
+  uploadAttachment,
+  getAttachmentUrl,
   getRequirements,
   listEntities,
   getMyProfile,

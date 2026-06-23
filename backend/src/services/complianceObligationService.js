@@ -439,6 +439,12 @@ async function updateObligation(professionalId, id, payload) {
     }
   }
   if (payload.notes !== undefined) patch.notes = payload.notes || null;
+  if (payload.attachmentStoragePath !== undefined) {
+    patch.attachmentStoragePath = payload.attachmentStoragePath || null;
+  }
+  if (payload.attachmentFileName !== undefined) {
+    patch.attachmentFileName = payload.attachmentFileName || null;
+  }
   await row.update(patch);
   return row.get({ plain: true });
 }
@@ -491,9 +497,16 @@ async function upsertMyProfile(clientUserId, payload) {
   return { applied: rows.length, patch };
 }
 
-/** Client self-read of obligations across all their pros. */
+/**
+ * Client self-read of obligations across all their pros, filtered to
+ * only those that match the client's CURRENT entity type. If the
+ * client's profile entityType changed (e.g. from private_ltd back to
+ * individual), legacy rows from the old applicable-rule set are
+ * suppressed so the client doesn't see filings that no longer apply.
+ */
 async function listForClient(clientUserId, { from, to, status } = {}) {
   const { Op } = require('sequelize');
+  const profile = await getMyProfile(clientUserId);
   const where = { clientUserId };
   if (from || to) {
     where.dueDate = {};
@@ -501,11 +514,20 @@ async function listForClient(clientUserId, { from, to, status } = {}) {
     if (to) where.dueDate[Op.lte] = to;
   }
   if (status) where.status = status;
-  return ComplianceObligation.findAll({
+  const rows = await ComplianceObligation.findAll({
     where,
     order: [['dueDate', 'ASC']],
     raw: true,
   });
+
+  // If we know the entity type, restrict to applicable rule keys.
+  if (profile && profile.entityType) {
+    const allowedKeys = new Set(
+      applicableRules(profile).map((r) => r.key)
+    );
+    return rows.filter((r) => allowedKeys.has(r.ruleKey));
+  }
+  return rows;
 }
 
 module.exports = {

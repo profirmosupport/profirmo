@@ -70,14 +70,17 @@ async function listForClient(actorUserId, clientUserId) {
   if (!actor) {
     throw { statusCode: 403, message: 'You do not have access to this client.' };
   }
-  // Client sees everything; pro with granted access sees everything;
-  // pro without granted access sees only their own uploads.
-  const where = { clientUserId };
+  // Client always sees everything.
+  // Pro: must have an EXPLICIT 'granted' status to see ANY documents
+  // — including ones they uploaded themselves. If the client never
+  // granted access, denied, or revoked it, the pro's view is empty.
+  // (This intentionally hides their own uploads too, per the
+  // "client owns the bucket" model.)
   if (actor.isPro && !actor.granted) {
-    where.uploaderUserId = actorUserId;
+    return [];
   }
   const rows = await ClientDocument.findAll({
-    where,
+    where: { clientUserId },
     order: [['createdAt', 'DESC']],
     raw: true,
   });
@@ -88,6 +91,16 @@ async function uploadOne(actorUserId, clientUserId, file, meta = {}) {
   const actor = await resolveActor(actorUserId, clientUserId);
   if (!actor) {
     throw { statusCode: 403, message: 'You do not have access to this client.' };
+  }
+  // Pros must have granted access to add to the client's document
+  // bucket — there's no point uploading what they wouldn't be able
+  // to see afterwards. Clients uploading their own docs always pass.
+  if (actor.isPro && !actor.granted) {
+    throw {
+      statusCode: 403,
+      message:
+        'You need the client to grant access before you can upload to their document store.',
+    };
   }
   if (!file || !file.path) {
     throw { statusCode: 422, message: 'No file received.' };
@@ -131,11 +144,14 @@ async function getDocumentUrl(actorUserId, docId) {
   if (!actor) {
     throw { statusCode: 403, message: 'You do not have access.' };
   }
-  // Pros without granted access can only view their own uploads.
-  if (actor.isPro && !actor.granted && doc.uploaderUserId !== actorUserId) {
+  // Pros must have granted access to view ANY document — including
+  // ones they uploaded themselves. The client owns the bucket; if
+  // they pull access, the pro loses sight of the bucket entirely.
+  if (actor.isPro && !actor.granted) {
     throw {
       statusCode: 403,
-      message: 'Client has not shared this document with you yet.',
+      message:
+        'You no longer have access to this client\'s document store. Ask the client to grant access.',
     };
   }
   const url = await storageService.getFileUrl(doc.storagePath, {

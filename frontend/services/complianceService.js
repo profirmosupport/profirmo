@@ -1,7 +1,7 @@
 // complianceService — wraps /api/compliance/* for client-side
 // compliance profile + obligation flows.
 
-import { get, put, post, patch } from '@/services/api';
+import { get, put, post, patch, API_BASE_URL, getAccessToken } from '@/services/api';
 
 function unwrap(response) {
   if (response && Object.prototype.hasOwnProperty.call(response, 'data')) {
@@ -52,6 +52,31 @@ export async function updateObligation(id, payload) {
   const res = await patch(
     `/api/compliance/obligations/${encodeURIComponent(id)}`,
     payload
+  );
+  return unwrap(res);
+}
+
+/** Upload an optional supporting document for an obligation. */
+export async function uploadObligationAttachment(id, file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  const token = getAccessToken();
+  const resp = await fetch(
+    `${API_BASE_URL}/api/compliance/obligations/${encodeURIComponent(id)}/attachment`,
+    {
+      method: 'POST',
+      headers: token ? { authorization: `Bearer ${token}` } : {},
+      body: fd,
+    }
+  );
+  const json = await resp.json();
+  if (!resp.ok) throw new Error(json.message || 'Upload failed');
+  return unwrap(json);
+}
+
+export async function getObligationAttachmentUrl(id) {
+  const res = await get(
+    `/api/compliance/obligations/${encodeURIComponent(id)}/attachment/url`
   );
   return unwrap(res);
 }

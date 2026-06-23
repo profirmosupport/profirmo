@@ -1,6 +1,10 @@
 const express = require('express');
 const ctrl = require('../controllers/complianceController');
 const { authenticate } = require('../middleware/authMiddleware');
+const {
+  uploadSingle,
+  handleUploadErrors,
+} = require('../middleware/uploadMiddleware');
 
 const router = express.Router();
 router.use(authenticate);
@@ -25,5 +29,12 @@ router.put('/profiles/:clientUserId', ctrl.putProfile);
 router.post('/profiles/:clientUserId/generate', ctrl.generate);
 router.get('/obligations', ctrl.listMine);
 router.patch('/obligations/:id', ctrl.updateObligation);
+router.post(
+  '/obligations/:id/attachment',
+  uploadSingle,
+  handleUploadErrors,
+  ctrl.uploadAttachment
+);
+router.get('/obligations/:id/attachment/url', ctrl.getAttachmentUrl);
 
 module.exports = router;
