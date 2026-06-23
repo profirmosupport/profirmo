@@ -126,21 +126,23 @@ export default function CaseAiClerk({ caseId, onChange }) {
 
   return (
     <>
-      {/* Floating launcher — sits bottom-left so it doesn't overlap
-          the auto-save toasts that appear bottom-right elsewhere. */}
+      {/* Floating launcher — bottom-right so it stays clear of the
+          dashboard sidebar (which fixes itself at left:0, z-30 and
+          would otherwise sit on top of the button). z-40 keeps it
+          above any sticky sub-headers. */}
       {!open && (
         <button
           type="button"
           onClick={() => setOpen(true)}
           title="AI Clerk"
-          className="fixed bottom-5 left-5 z-30 inline-flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-lg ring-4 ring-white transition hover:from-indigo-500 hover:to-violet-500"
+          className="fixed bottom-5 right-5 z-40 inline-flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-lg ring-4 ring-white transition hover:from-indigo-500 hover:to-violet-500"
         >
           <Bot size={22} />
         </button>
       )}
 
       {open && (
-        <div className="fixed bottom-5 left-5 z-30 flex w-[min(420px,calc(100vw-2rem))] flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div className="fixed bottom-5 right-5 z-40 flex w-[min(420px,calc(100vw-2rem))] flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl">
           <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-gradient-to-br from-indigo-600 to-violet-600 px-4 py-3 text-white">
             <div className="flex items-center gap-2">
               <Bot size={18} />
