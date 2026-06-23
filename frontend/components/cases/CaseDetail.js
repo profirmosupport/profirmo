@@ -24,6 +24,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
+  Sparkles,
 } from 'lucide-react';
 import Card from '@/components/common/Card';
 import Button from '@/components/common/Button';
@@ -39,6 +40,7 @@ import CaseAttachmentList from '@/components/cases/CaseAttachmentList';
 import CaseStageTracker from '@/components/cases/CaseStageTracker';
 import CaseGmailMessages from '@/components/cases/CaseGmailMessages';
 import CaseAiClerk from '@/components/cases/CaseAiClerk';
+import { summarizeCase } from '@/services/caseAiService';
 import caseService from '@/services/caseService';
 import { getLawFirm } from '@/services/profileService';
 import { syncCaseFromEcourts } from '@/services/ecourtsService';
@@ -435,31 +437,9 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
           open a case. Drives the Kanban board on /cases too. */}
       <CaseStageTracker caseRow={data} onUpdated={loadCase} />
 
-      {/* AI Clerk persisted summary — surfaced as a card so it sits
-          right under the stage stepper. Visible to both client + pro
-          (whoever has access to the case), but only the pro can
-          regenerate it via the floating AI Clerk button. */}
-      {data && data.aiSummary && (
-        <Card>
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">
-                AI Clerk summary
-              </p>
-              <p className="text-[11px] text-slate-400">
-                {data.aiSummaryUpdatedAt
-                  ? `Updated ${new Date(data.aiSummaryUpdatedAt).toLocaleString()}`
-                  : ''}
-              </p>
-            </div>
-          </div>
-          <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
-            {data.aiSummary}
-          </p>
-        </Card>
-      )}
-
-      {/* Floating AI Clerk launcher — only for the professional. */}
+      {/* Floating AI Clerk launcher — only for the professional.
+          Premium-gating happens inside the component (it self-fetches
+          the plan + hides itself for non-premium pros). */}
       {!isClient && data && (
         <CaseAiClerk caseId={caseId} onChange={loadCase} />
       )}
@@ -556,6 +536,20 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
           </div>
         </div>
       </Card>
+
+      {/* AI Clerk persisted summary — sits right below the header
+          card. Visible to client + pro. A "Regenerate" button on the
+          right re-runs summarisation; only the professional can press
+          it (clients see the existing summary read-only). */}
+      {data && data.aiSummary && (
+        <AiSummaryCard
+          summary={data.aiSummary}
+          updatedAt={data.aiSummaryUpdatedAt}
+          canRegenerate={!isClient}
+          caseId={caseId}
+          onRegenerated={loadCase}
+        />
+      )}
 
       {/* Client panel — always on top of the detail view */}
       <Card>
@@ -2436,5 +2430,74 @@ function UpdateViewModal({
         </div>
       )}
     </Modal>
+  );
+}
+
+/**
+ * AiSummaryCard — persisted-summary surface on the case detail page.
+ * Pros see a Regenerate button on the right; clients see the same
+ * card minus the button. Designed to sit immediately under the case
+ * header card so a quick read tells you what's going on with the
+ * matter without scrolling.
+ */
+function AiSummaryCard({ summary, updatedAt, canRegenerate, caseId, onRegenerated }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function regenerate() {
+    setBusy(true);
+    setError('');
+    try {
+      await summarizeCase(caseId);
+      if (typeof onRegenerated === 'function') await onRegenerated();
+    } catch (err) {
+      setError(err.message || 'Could not regenerate summary.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="border-indigo-200 bg-gradient-to-br from-indigo-50/60 via-white to-violet-50/40">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-sm">
+            <Sparkles size={15} />
+          </span>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
+              AI Clerk summary
+            </p>
+            <p className="text-[11px] text-slate-400">
+              {updatedAt
+                ? `Updated ${new Date(updatedAt).toLocaleString()}`
+                : 'Just now'}
+            </p>
+          </div>
+        </div>
+        {canRegenerate && (
+          <button
+            type="button"
+            onClick={regenerate}
+            disabled={busy}
+            title="Re-run the AI summary against the latest case data"
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 py-1 text-[11px] font-medium text-indigo-700 hover:border-indigo-300 hover:bg-indigo-50 disabled:opacity-60"
+          >
+            <RefreshCw size={12} className={busy ? 'animate-spin' : ''} />
+            {busy ? 'Analysing…' : 'Analyse again'}
+          </button>
+        )}
+      </div>
+
+      {error && (
+        <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+          {error}
+        </p>
+      )}
+
+      <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+        {summary}
+      </p>
+    </Card>
   );
 }

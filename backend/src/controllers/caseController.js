@@ -439,14 +439,15 @@ const aiSummarize = asyncHandler(async (req, res) => {
 });
 
 const aiSuggestNextStep = asyncHandler(async (req, res) => {
-  const out = await aiClerkService.suggestNextStep(req.params.id);
+  const out = await aiClerkService.suggestNextStep(req.params.id, req.user.id);
   return successResponse(res, 200, 'Next-step suggestions', out);
 });
 
 const aiPrompt = asyncHandler(async (req, res) => {
   const out = await aiClerkService.prompt(
     req.params.id,
-    (req.body && req.body.instruction) || ''
+    (req.body && req.body.instruction) || '',
+    req.user.id
   );
   return successResponse(res, 200, 'AI Clerk response', out);
 });
@@ -461,6 +462,40 @@ const aiSaveAsUpdate = asyncHandler(async (req, res) => {
     body: (req.body && req.body.body) || '',
   });
   return successResponse(res, 201, 'Saved as case update', row);
+});
+
+/**
+ * List documents available to analyse for this case — every
+ * ClientDocument belonging to any client on the case. Used by the
+ * AI Clerk's "Analyse document" picker.
+ */
+const aiListDocuments = asyncHandler(async (req, res) => {
+  // eslint-disable-next-line global-require
+  const { ClientDocument, Case } = require('../models');
+  // eslint-disable-next-line global-require
+  const { Op } = require('sequelize');
+  const c = await Case.findByPk(req.params.id, { raw: true });
+  if (!c) throw notFound(req.params.id);
+  const clientIds = [];
+  if (c.clientId) clientIds.push(c.clientId);
+  if (Array.isArray(c.clientIds)) for (const id of c.clientIds) if (id) clientIds.push(id);
+  if (clientIds.length === 0) return successResponse(res, 200, 'Documents', []);
+  const docs = await ClientDocument.findAll({
+    where: { clientUserId: { [Op.in]: clientIds } },
+    order: [['createdAt', 'DESC']],
+    attributes: ['id', 'docKey', 'label', 'fileName', 'mimeType', 'size', 'financialYear', 'createdAt'],
+    raw: true,
+  });
+  return successResponse(res, 200, 'Documents', docs);
+});
+
+const aiAnalyseDocument = asyncHandler(async (req, res) => {
+  const out = await aiClerkService.analyseDocument(
+    req.params.id,
+    req.user.id,
+    (req.body && req.body.documentId) || null
+  );
+  return successResponse(res, 200, 'Document analysis', out);
 });
 
 module.exports = {
@@ -491,4 +526,6 @@ module.exports = {
   aiSuggestNextStep,
   aiPrompt,
   aiSaveAsUpdate,
+  aiListDocuments,
+  aiAnalyseDocument,
 };

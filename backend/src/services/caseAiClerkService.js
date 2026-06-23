@@ -30,6 +30,56 @@ const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
 const MAX_OUTPUT_TOKENS = 1024;
 
+/**
+ * Gate AI access to professionals on a paid plan. Slugs treated as
+ * paid: anything other than 'starter' (or no subscription at all).
+ * Admins always pass. Throws 402 with a friendly upgrade prompt so
+ * the frontend can surface it.
+ */
+const PAID_SLUGS = new Set(['premium', 'team', 'custom']);
+
+async function assertPremium(userId) {
+  if (!userId) {
+    throw { statusCode: 401, message: 'Sign in to use the AI Clerk.' };
+  }
+  // eslint-disable-next-line global-require
+  const { User, ProfessionalSubscription, SubscriptionPlan } = require('../models');
+  const user = await User.findByPk(userId, {
+    attributes: ['id', 'role'],
+    raw: true,
+  });
+  if (!user) {
+    throw { statusCode: 401, message: 'Account not found.' };
+  }
+  // Admins always have access (operational convenience).
+  if (String(user.role || '').toLowerCase() === 'platform_admin') return;
+
+  const sub = await ProfessionalSubscription.findOne({
+    where: { userId, status: 'active' },
+    raw: true,
+  });
+  if (!sub) {
+    throw {
+      statusCode: 402,
+      message:
+        'AI Clerk is available on the Premium, Team and Custom plans. Upgrade your subscription to unlock it.',
+      code: 'AI_PREMIUM_REQUIRED',
+    };
+  }
+  const plan = await SubscriptionPlan.findByPk(sub.planId, {
+    attributes: ['slug'],
+    raw: true,
+  });
+  if (!plan || !PAID_SLUGS.has(String(plan.slug).toLowerCase())) {
+    throw {
+      statusCode: 402,
+      message:
+        'AI Clerk requires a Premium, Team or Custom plan. Upgrade to unlock it.',
+      code: 'AI_PREMIUM_REQUIRED',
+    };
+  }
+}
+
 async function getClient() {
   const [apiKey, model] = await Promise.all([
     adminSettings.getString('claude_api_key'),
@@ -214,6 +264,7 @@ async function callClaude({ system, userMessage, maxTokens = MAX_OUTPUT_TOKENS }
 // --- Public surface --------------------------------------------------
 
 async function summarize(caseId, userId) {
+  await assertPremium(userId);
   const { context, caseRow } = await buildCaseContext(caseId);
   const { text } = await callClaude({
     system:
@@ -235,7 +286,8 @@ async function summarize(caseId, userId) {
   };
 }
 
-async function suggestNextStep(caseId) {
+async function suggestNextStep(caseId, userId) {
+  await assertPremium(userId);
   const { context, caseRow } = await buildCaseContext(caseId);
   const grounding =
     caseRow.aiSummary
@@ -250,7 +302,156 @@ async function suggestNextStep(caseId) {
   return { suggestion: text };
 }
 
-async function prompt(caseId, instruction) {
+/**
+ * Analyse a document (PDF or image) attached to this case's client.
+ * Fetches the file from S3 via storageService, base64-encodes it
+ * and passes it through Claude as a document/image content block.
+ * Returns a structured analysis: key facts, dates, amounts, parties,
+ * deadlines and red flags. PDF + common image types only — DOC/DOCX
+ * 415s with a "convert to PDF first" message.
+ */
+async function analyseDocument(caseId, userId, documentId) {
+  await assertPremium(userId);
+  if (!documentId) {
+    throw { statusCode: 422, message: 'documentId is required.' };
+  }
+  // eslint-disable-next-line global-require
+  const { ClientDocument, Case } = require('../models');
+  const doc = await ClientDocument.findOne({
+    where: { id: documentId },
+    raw: true,
+  });
+  if (!doc) throw { statusCode: 404, message: 'Document not found.' };
+
+  // Ensure the document belongs to a client on this case.
+  const caseRow = await Case.findByPk(caseId, { raw: true });
+  if (!caseRow) throw { statusCode: 404, message: 'Case not found.' };
+  const caseClientIds = [];
+  if (caseRow.clientId) caseClientIds.push(caseRow.clientId);
+  if (Array.isArray(caseRow.clientIds)) for (const id of caseRow.clientIds) if (id) caseClientIds.push(id);
+  if (!caseClientIds.includes(doc.clientUserId)) {
+    throw {
+      statusCode: 403,
+      message: 'Document does not belong to a client on this case.',
+    };
+  }
+
+  // Pull the file off S3 / local disk. storageService exposes a
+  // download helper that returns a buffer + metadata.
+  // eslint-disable-next-line global-require
+  const storageService = require('./storageService');
+  let buffer;
+  let mimeType = doc.mimeType || 'application/octet-stream';
+  try {
+    // Most storage drivers expose getFile(path) returning { buffer, mimeType }.
+    if (typeof storageService.getFileBuffer === 'function') {
+      const out = await storageService.getFileBuffer(doc.storagePath);
+      buffer = out.buffer;
+      mimeType = out.mimeType || mimeType;
+    } else {
+      // Fallback: fetch the presigned URL ourselves.
+      const url = await storageService.getFileUrl(doc.storagePath, {
+        expiryMinutes: 5,
+      });
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`storage fetch failed (${r.status})`);
+      buffer = Buffer.from(await r.arrayBuffer());
+    }
+  } catch (err) {
+    throw {
+      statusCode: 502,
+      message: `Could not download document for analysis: ${err.message || err}`,
+    };
+  }
+
+  // Claude /v1/messages supports PDF and image content blocks. Cap
+  // at ~10 MB; we already enforce 1 MB at upload time so this is
+  // belt-and-braces.
+  const TEN_MB = 10 * 1024 * 1024;
+  if (buffer.length > TEN_MB) {
+    throw { statusCode: 413, message: 'Document too large for AI analysis.' };
+  }
+
+  const isPdf = /pdf$/i.test(mimeType) || /\.pdf$/i.test(doc.fileName || '');
+  const isImage = /^image\//i.test(mimeType);
+  if (!isPdf && !isImage) {
+    throw {
+      statusCode: 415,
+      message:
+        'AI analysis supports PDF and image files only for now. Convert this document to PDF before retrying.',
+    };
+  }
+
+  const { apiKey, model } = await getClient();
+  const base64 = buffer.toString('base64');
+  const contentBlock = isPdf
+    ? {
+        type: 'document',
+        source: { type: 'base64', media_type: 'application/pdf', data: base64 },
+      }
+    : {
+        type: 'image',
+        source: { type: 'base64', media_type: mimeType, data: base64 },
+      };
+
+  const userTextBlock = {
+    type: 'text',
+    text:
+      `Analyse the attached ${isPdf ? 'PDF' : 'image'} (filename: ${doc.fileName || doc.docKey}).\n\n` +
+      'Return a structured summary covering:\n' +
+      '  * Document type + purpose (one line)\n' +
+      '  * Key parties / signatories\n' +
+      '  * Important dates + deadlines\n' +
+      '  * Amounts / values\n' +
+      '  * Notable clauses, obligations, or risks\n' +
+      '  * Anything missing or unclear that the professional should follow up on\n\n' +
+      'Be concise; bullet points fine. Do not invent facts.',
+  };
+
+  const resp = await fetch(ANTHROPIC_URL, {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': ANTHROPIC_VERSION,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 1500,
+      messages: [
+        {
+          role: 'user',
+          content: [contentBlock, userTextBlock],
+        },
+      ],
+    }),
+  });
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const detail =
+      (json.error && (json.error.message || json.error.type)) ||
+      `HTTP ${resp.status}`;
+    throw {
+      statusCode: 502,
+      message: `Claude analysis failed: ${detail}`,
+    };
+  }
+  const blocks = Array.isArray(json.content) ? json.content : [];
+  const text = blocks
+    .filter((b) => b && b.type === 'text' && typeof b.text === 'string')
+    .map((b) => b.text)
+    .join('\n')
+    .trim();
+  return {
+    analysis: text,
+    fileName: doc.fileName,
+    docKey: doc.docKey,
+    mimeType,
+  };
+}
+
+async function prompt(caseId, instruction, userId) {
+  await assertPremium(userId);
   if (!instruction || !String(instruction).trim()) {
     throw { statusCode: 422, message: 'Please describe what you want help with.' };
   }
@@ -268,5 +469,6 @@ module.exports = {
   summarize,
   suggestNextStep,
   prompt,
+  analyseDocument,
   buildCaseContext, // exported for testing
 };

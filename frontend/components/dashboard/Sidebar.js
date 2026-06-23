@@ -95,9 +95,11 @@ const PROFESSIONAL_NAV = [
       },
     ],
   },
-  // 'dash.nav.myFirm' link removed per product decision — firm
-  // owners reach the firm dashboard via the auto-injected
-  // "Manage firm" entry below.
+  {
+    labelKey: 'dash.nav.myFirm',
+    href: '/dashboard/professional/firm',
+    icon: Building2,
+  },
   {
     labelKey: 'dash.nav.subscription',
     href: '/dashboard/professional/subscription',
