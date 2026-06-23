@@ -121,8 +121,15 @@ export async function removeFavorite(cnr) {
 
 // --- Import / Sync the user's own Case row ------------------------------
 
-export async function importCaseFromEcourts(cnr) {
-  const res = await post('/api/ecourts/cases/import', { cnr });
+export async function importCaseFromEcourts(cnr, opts = {}) {
+  const body = { cnr };
+  if (Array.isArray(opts.clientIds) && opts.clientIds.length > 0) {
+    body.clientIds = opts.clientIds;
+  }
+  if (opts.overrides && typeof opts.overrides === 'object') {
+    body.overrides = opts.overrides;
+  }
+  const res = await post('/api/ecourts/cases/import', body);
   return unwrap(res);
 }
 

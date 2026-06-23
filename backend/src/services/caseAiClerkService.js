@@ -31,52 +31,15 @@ const ANTHROPIC_VERSION = '2023-06-01';
 const MAX_OUTPUT_TOKENS = 1024;
 
 /**
- * Gate AI access to professionals on a paid plan. Slugs treated as
- * paid: anything other than 'starter' (or no subscription at all).
- * Admins always pass. Throws 402 with a friendly upgrade prompt so
- * the frontend can surface it.
+ * Sign-in gate for the AI Clerk. The actual capability gate is the
+ * admin-configured `claude_api_key` (enforced in getClient() below)
+ * — when the key is set, any signed-in user can use the clerk. The
+ * earlier premium-plan gate was rolled back so the only spend dial
+ * is the admin's API key.
  */
-const PAID_SLUGS = new Set(['premium', 'team', 'custom']);
-
 async function assertPremium(userId) {
   if (!userId) {
     throw { statusCode: 401, message: 'Sign in to use the AI Clerk.' };
-  }
-  // eslint-disable-next-line global-require
-  const { User, ProfessionalSubscription, SubscriptionPlan } = require('../models');
-  const user = await User.findByPk(userId, {
-    attributes: ['id', 'role'],
-    raw: true,
-  });
-  if (!user) {
-    throw { statusCode: 401, message: 'Account not found.' };
-  }
-  // Admins always have access (operational convenience).
-  if (String(user.role || '').toLowerCase() === 'platform_admin') return;
-
-  const sub = await ProfessionalSubscription.findOne({
-    where: { userId, status: 'active' },
-    raw: true,
-  });
-  if (!sub) {
-    throw {
-      statusCode: 402,
-      message:
-        'AI Clerk is available on the Premium, Team and Custom plans. Upgrade your subscription to unlock it.',
-      code: 'AI_PREMIUM_REQUIRED',
-    };
-  }
-  const plan = await SubscriptionPlan.findByPk(sub.planId, {
-    attributes: ['slug'],
-    raw: true,
-  });
-  if (!plan || !PAID_SLUGS.has(String(plan.slug).toLowerCase())) {
-    throw {
-      statusCode: 402,
-      message:
-        'AI Clerk requires a Premium, Team or Custom plan. Upgrade to unlock it.',
-      code: 'AI_PREMIUM_REQUIRED',
-    };
   }
 }
 
@@ -447,6 +410,11 @@ async function analyseDocument(caseId, userId, documentId) {
     fileName: doc.fileName,
     docKey: doc.docKey,
     mimeType,
+    // Caller stitches the analysed file onto the saved CaseUpdate
+    // as an attachment so the timeline carries both the AI narrative
+    // and a tap-to-download copy of the source doc.
+    storagePath: doc.storagePath || null,
+    size: typeof doc.size === 'number' ? doc.size : null,
   };
 }
 

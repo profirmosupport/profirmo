@@ -34,10 +34,17 @@ export async function aiPrompt(caseId, instruction) {
   return unwrap(res);
 }
 
-export async function saveAiResponseAsUpdate(caseId, { title, body }) {
+export async function saveAiResponseAsUpdate(
+  caseId,
+  { title, body, attachments } = {}
+) {
+  const payload = { title, body };
+  if (Array.isArray(attachments) && attachments.length > 0) {
+    payload.attachments = attachments;
+  }
   const res = await post(
     `/api/cases/${encodeURIComponent(caseId)}/ai/save-as-update`,
-    { title, body }
+    payload
   );
   return unwrap(res);
 }

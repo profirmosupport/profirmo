@@ -461,13 +461,37 @@ const aiPrompt = asyncHandler(async (req, res) => {
 });
 
 /**
- * Save an AI Clerk response (typically from /ai/prompt) as a
- * CaseUpdate so it lives on the case timeline. Body: { title?, body }.
+ * Save an AI Clerk response (typically from /ai/prompt or
+ * /ai/analyse-*) as a CaseUpdate so it lives on the case timeline.
+ * Body: { title?, body, attachments? }.
+ *
+ * When the source was a document analysis we forward the
+ * originating file as an attachment so the timeline entry carries
+ * both the AI narrative AND a tap-to-download copy of what was
+ * analysed. The attachment auth check in
+ * /api/cases/:id/attachments/stream picks the key up from the
+ * update's `attachments[].url` so cross-case leaks aren't possible.
  */
 const aiSaveAsUpdate = asyncHandler(async (req, res) => {
+  const body = req.body || {};
+  const rawAttachments = Array.isArray(body.attachments) ? body.attachments : [];
+  const attachments = rawAttachments
+    .map((a) => {
+      if (!a || typeof a !== 'object') return null;
+      const url = a.url || a.storagePath || a.key;
+      if (!url) return null;
+      return {
+        url: String(url),
+        name: a.name || a.fileName || null,
+        type: a.type || a.mimeType || null,
+        size: typeof a.size === 'number' ? a.size : null,
+      };
+    })
+    .filter(Boolean);
   const row = await caseService.addUpdate(req.params.id, req.user, {
-    title: (req.body && req.body.title) || 'AI Clerk draft',
-    body: (req.body && req.body.body) || '',
+    title: body.title || 'AI Clerk draft',
+    body: body.body || '',
+    attachments,
   });
   return successResponse(res, 201, 'Saved as case update', row);
 });

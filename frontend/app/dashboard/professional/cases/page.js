@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Briefcase, Plus, RefreshCw, Eye, Building2 } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import Card from '@/components/common/Card';
@@ -8,6 +8,11 @@ import Button from '@/components/common/Button';
 import Badge from '@/components/common/Badge';
 import EmptyState from '@/components/common/EmptyState';
 import AddCaseModal from '@/components/cases/AddCaseModal';
+import CasesFilterBar, {
+  emptyFilter,
+  applyCaseFilters,
+  isFilterActive,
+} from '@/components/cases/CasesFilterBar';
 import QuotaBanner from '@/components/common/QuotaBanner';
 import caseService from '@/services/caseService';
 import { getMyUsage } from '@/services/subscriptionService';
@@ -159,6 +164,46 @@ export default function ProfessionalCasesPage() {
     load();
   }, [load]);
 
+  // Client-side search + filters. The Kanban + table both read from
+  // `filteredCases` so a filter narrows both views consistently.
+  const [filter, setFilter] = useState(emptyFilter);
+  const filteredCases = useMemo(
+    () => applyCaseFilters(cases, filter),
+    [cases, filter]
+  );
+
+  // Table / Kanban switch — extracted so both header variants (the
+  // QuotaBanner actions slot and the no-subscription fallback row)
+  // can drop it inline next to the Refresh button without duplicating
+  // markup. Hidden when there's nothing to show.
+  const showViewToggle = !loading && !error && cases.length > 0;
+  const viewToggle = showViewToggle ? (
+    <div className="inline-flex overflow-hidden rounded-lg border border-slate-200">
+      <button
+        type="button"
+        onClick={() => setViewMode('table')}
+        className={`px-3 py-1.5 text-xs font-medium transition ${
+          viewMode === 'table'
+            ? 'bg-slate-900 text-white'
+            : 'bg-white text-slate-600 hover:bg-slate-50'
+        }`}
+      >
+        Table
+      </button>
+      <button
+        type="button"
+        onClick={() => setViewMode('kanban')}
+        className={`px-3 py-1.5 text-xs font-medium transition ${
+          viewMode === 'kanban'
+            ? 'bg-slate-900 text-white'
+            : 'bg-white text-slate-600 hover:bg-slate-50'
+        }`}
+      >
+        Kanban
+      </button>
+    </div>
+  ) : null;
+
   return (
     <DashboardLayout
       role={ROLES.PROFESSIONAL}
@@ -190,6 +235,7 @@ export default function ProfessionalCasesPage() {
                   <RefreshCw size={15} />
                   Refresh
                 </Button>
+                {viewToggle}
                 <Button
                   size="sm"
                   onClick={() => setAddOpen(true)}
@@ -223,6 +269,7 @@ export default function ProfessionalCasesPage() {
                 <RefreshCw size={15} />
                 Refresh
               </Button>
+              {viewToggle}
               <Button size="sm" onClick={() => setAddOpen(true)}>
                 <Plus size={15} />
                 New case
@@ -231,38 +278,17 @@ export default function ProfessionalCasesPage() {
           </div>
         )}
 
-        {/* View-mode toggle — sits between the QuotaBanner (or simple
-            toolbar) and the list/board so it stays visible regardless
-            of which header variant rendered above. Earlier we tucked
-            this inside one branch and it disappeared whenever a
-            subscription/usage block rendered. */}
+        {/* Search + filter bar — narrows both the Kanban and the
+            table to the same matching subset. Hidden until at least
+            one case exists so the empty-state CTA above stays the
+            primary action when the dashboard is brand new. */}
         {!loading && !error && cases.length > 0 && (
-          <div className="flex items-center justify-end">
-            <div className="inline-flex overflow-hidden rounded-lg border border-slate-200">
-              <button
-                type="button"
-                onClick={() => setViewMode('table')}
-                className={`px-3 py-1.5 text-xs font-medium transition ${
-                  viewMode === 'table'
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-white text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                Table
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('kanban')}
-                className={`px-3 py-1.5 text-xs font-medium transition ${
-                  viewMode === 'kanban'
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-white text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                Kanban
-              </button>
-            </div>
-          </div>
+          <CasesFilterBar
+            value={filter}
+            onChange={setFilter}
+            totalCount={cases.length}
+            matchCount={filteredCases.length}
+          />
         )}
 
         {loading ? (
@@ -293,9 +319,20 @@ export default function ProfessionalCasesPage() {
               </Button>
             }
           />
+        ) : filteredCases.length === 0 && isFilterActive(filter) ? (
+          <EmptyState
+            icon={<Briefcase size={24} />}
+            title="No cases match these filters"
+            description="Try a different search term or clear the filters."
+            action={
+              <Button size="sm" variant="outline" onClick={() => setFilter(emptyFilter())}>
+                Clear filters
+              </Button>
+            }
+          />
         ) : viewMode === 'kanban' ? (
           <CasesKanban
-            cases={cases}
+            cases={filteredCases}
             onMoveCase={async (caseId, nextStage) => {
               // Optimistic update — the card lands in the new column
               // before the network call returns. On failure we revert
@@ -335,7 +372,7 @@ export default function ProfessionalCasesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {cases.map((c) => {
+                {filteredCases.map((c) => {
                   // A case with 2+ assignees is a firm case per the
                   // current spec — surface a small badge inline with the
                   // title so the pro can tell at a glance which of their
@@ -436,6 +473,7 @@ export default function ProfessionalCasesPage() {
           firmId: firmIdForCreate || undefined,
         }}
       />
+
     </DashboardLayout>
   );
 }

@@ -30,6 +30,25 @@ const PAYMENT_STATUS_VARIANT = {
   refunded: 'gray',
 };
 
+// Firm-level approval / lifecycle status, surfaced as a header chip
+// next to the firm name. The backend exposes a few canonical strings
+// (PENDING_APPROVAL / ACTIVE / REJECTED / MODIFICATIONS_REQUESTED /
+// SUSPENDED) — we map each to a friendly label + Badge variant.
+const FIRM_STATUS_LABEL = {
+  ACTIVE: 'Active',
+  PENDING_APPROVAL: 'Pending approval',
+  MODIFICATIONS_REQUESTED: 'Changes requested',
+  REJECTED: 'Rejected',
+  SUSPENDED: 'Suspended',
+};
+const FIRM_STATUS_VARIANT = {
+  ACTIVE: 'green',
+  PENDING_APPROVAL: 'amber',
+  MODIFICATIONS_REQUESTED: 'amber',
+  REJECTED: 'red',
+  SUSPENDED: 'red',
+};
+
 export default function FirmDashboardPage() {
   const { t } = useLanguage();
   const { user } = useAuth();
@@ -127,14 +146,33 @@ export default function FirmDashboardPage() {
         ) / reviewsCount
       : 0;
 
+  const firmStatusKey =
+    firm && firm.status ? String(firm.status).toUpperCase() : null;
+  const firmStatusLabel = firmStatusKey
+    ? FIRM_STATUS_LABEL[firmStatusKey] || firmStatusKey
+    : null;
+  const firmStatusVariant = firmStatusKey
+    ? FIRM_STATUS_VARIANT[firmStatusKey] || 'gray'
+    : 'gray';
+  const firmNameText =
+    firm && firm.firmName
+      ? t('dashFirm.titleNamed', { name: firm.firmName })
+      : t('dashFirm.title');
+  const headerTitle = firmStatusLabel ? (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      <span className="truncate">{firmNameText}</span>
+      <Badge variant={firmStatusVariant} className="shrink-0 text-[10px] uppercase tracking-wide">
+        {firmStatusLabel}
+      </Badge>
+    </span>
+  ) : (
+    firmNameText
+  );
+
   return (
     <DashboardLayout
       role={ROLES.FIRM_ADMIN}
-      title={
-        firm && firm.firmName
-          ? t('dashFirm.titleNamed', { name: firm.firmName })
-          : t('dashFirm.title')
-      }
+      title={headerTitle}
       subtitle={t('dashFirm.subtitle')}
     >
       <div className="space-y-8">

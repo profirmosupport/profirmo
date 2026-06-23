@@ -1,10 +1,11 @@
 'use client';
 
-// CaseAiClerk — floating premium-only AI assistant on the case
-// detail page. Visible only to pros whose active plan has slug
-// premium / team / custom; non-premium pros see nothing (so the
-// upsell happens on the subscription page, not as a teaser on every
-// case). Backend re-checks the gate so a network call can't bypass.
+// CaseAiClerk — floating AI assistant on the case detail page.
+// The actual capability gate is the admin-configured Claude API
+// key — when no key is set the backend returns 503 and we surface
+// that error inline. (Earlier iterations hid the launcher behind a
+// premium plan; that was rolled back so the only cost dial is the
+// admin's API key.)
 //
 // Visual design: gradient bot button with a pulsing aura that
 // breathes (CSS animation), a rotating tagline next to it cycling
@@ -17,7 +18,7 @@
 //   4. Analyse a document (pick from the case's client docs;
 //      backend pulls from S3 + sends to Claude as a doc block)
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Bot,
   Sparkles,
@@ -39,11 +40,7 @@ import {
   analyseDocument,
   analyseUploadedDocument,
 } from '@/services/caseAiService';
-import { getMyUsage } from '@/services/subscriptionService';
-
-// Plans that unlock the AI Clerk. Mirrors the PAID_SLUGS set in
-// caseAiClerkService.assertPremium on the backend.
-const PAID_PLAN_SLUGS = new Set(['premium', 'team', 'custom']);
+import { uploadFile } from '@/services/fileService';
 
 // Taglines rotated next to the button to advertise what the clerk
 // can do for the pro. Short imperative lines pair well with the
@@ -56,8 +53,6 @@ const TAGLINES = [
 ];
 
 export default function CaseAiClerk({ caseId, onChange }) {
-  const [planSlug, setPlanSlug] = useState(null);
-  const [planLoaded, setPlanLoaded] = useState(false);
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState(null);
   const [result, setResult] = useState('');
@@ -75,31 +70,18 @@ export default function CaseAiClerk({ caseId, onChange }) {
   // client's document bucket.
   const uploadInputRef = useRef(null);
 
+  // When the user analyses a document we remember enough about the
+  // source to attach it to the saved CaseUpdate. Two shapes:
+  //   { kind: 'client-doc', storagePath, fileName, mimeType, size }
+  //   { kind: 'upload',     file (File), fileName, mimeType, size }
+  // For the 'upload' kind we defer the actual S3 write until the user
+  // clicks Save-as-update — we don't want to keep a file the user
+  // never persists.
+  const [analyseSource, setAnalyseSource] = useState(null);
+
   // Rotating tagline index.
   const [tagIndex, setTagIndex] = useState(0);
   const tickRef = useRef(null);
-
-  // Fetch the user's plan once on mount. Failures default to
-  // "not premium" so the button stays hidden — fail-closed is safer
-  // than fail-open for a paid feature.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const usage = await getMyUsage();
-        if (!cancelled) {
-          setPlanSlug(usage && usage.planSlug ? String(usage.planSlug).toLowerCase() : null);
-        }
-      } catch {
-        if (!cancelled) setPlanSlug(null);
-      } finally {
-        if (!cancelled) setPlanLoaded(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Rotate tagline every 2.4s while the launcher is collapsed.
   useEffect(() => {
@@ -112,15 +94,6 @@ export default function CaseAiClerk({ caseId, onChange }) {
     };
   }, [open]);
 
-  const isPremium = useMemo(
-    () => planSlug && PAID_PLAN_SLUGS.has(planSlug),
-    [planSlug]
-  );
-
-  // Hide entirely until we know the plan AND the user IS premium.
-  // Fail-closed: non-premium / unknown sees nothing.
-  if (!planLoaded || !isPremium) return null;
-
   function reset() {
     setMode(null);
     setResult('');
@@ -128,6 +101,7 @@ export default function CaseAiClerk({ caseId, onChange }) {
     setInstruction('');
     setError('');
     setSavedAt(null);
+    setAnalyseSource(null);
   }
 
   async function runSummary() {
@@ -202,10 +176,20 @@ export default function CaseAiClerk({ caseId, onChange }) {
     setBusy(true);
     setError('');
     setResult('');
+    setAnalyseSource(null);
     try {
       const out = await analyseDocument(caseId, doc.id);
       setResult(out.analysis || '');
       setResultMode('analyse');
+      // Capture the storage key + display metadata so "Save as
+      // update" can stitch the file onto the new timeline entry.
+      setAnalyseSource({
+        kind: 'client-doc',
+        storagePath: out.storagePath || doc.storagePath || null,
+        fileName: doc.fileName || doc.label || doc.docKey || 'Document',
+        mimeType: doc.mimeType || out.mimeType || null,
+        size: typeof doc.size === 'number' ? doc.size : null,
+      });
     } catch (err) {
       setError(err.message || 'Document analysis failed.');
     } finally {
@@ -221,10 +205,20 @@ export default function CaseAiClerk({ caseId, onChange }) {
     setBusy(true);
     setError('');
     setResult('');
+    setAnalyseSource(null);
     try {
       const out = await analyseUploadedDocument(caseId, file);
       setResult(out.analysis || '');
       setResultMode('analyse');
+      // Hold onto the File blob so we can upload it to S3 only when
+      // the pro actually saves the analysis as an update.
+      setAnalyseSource({
+        kind: 'upload',
+        file,
+        fileName: file.name || 'Upload',
+        mimeType: file.type || null,
+        size: typeof file.size === 'number' ? file.size : null,
+      });
     } catch (err) {
       setError(err.message || 'Document analysis failed.');
     } finally {
@@ -236,11 +230,49 @@ export default function CaseAiClerk({ caseId, onChange }) {
     setBusy(true);
     setError('');
     try {
+      let attachments;
+      if (analyseSource && analyseSource.kind === 'client-doc' && analyseSource.storagePath) {
+        attachments = [
+          {
+            url: analyseSource.storagePath,
+            name: analyseSource.fileName,
+            type: analyseSource.mimeType,
+            size: analyseSource.size,
+          },
+        ];
+      } else if (analyseSource && analyseSource.kind === 'upload' && analyseSource.file) {
+        // Persist the uploaded file under the case's attachment
+        // prefix only NOW — keeps S3 clean of files the pro looked
+        // at but didn't keep.
+        const stored = await uploadFile(analyseSource.file, 'case_note', { caseId });
+        const key = stored && (stored.storedPath || stored.path || stored.url || stored.key);
+        if (key) {
+          attachments = [
+            {
+              url: key,
+              name: analyseSource.fileName,
+              type: analyseSource.mimeType,
+              size: analyseSource.size,
+            },
+          ];
+        }
+      }
+      const saveTitle =
+        resultMode === 'analyse'
+          ? 'AI document analysis'
+          : resultMode === 'next'
+            ? 'AI suggested next steps'
+            : 'AI Clerk draft';
       await saveAiResponseAsUpdate(caseId, {
-        title: resultMode === 'analyse' ? 'AI document analysis' : 'AI Clerk draft',
+        title: saveTitle,
         body: result,
+        attachments,
       });
       setSavedAt(new Date());
+      // After save, drop the source — the file is now persisted
+      // against the update, so a second save would create a
+      // duplicate attachment.
+      setAnalyseSource(null);
       if (typeof onChange === 'function') onChange();
     } catch (err) {
       setError(err.message || 'Save failed.');
@@ -466,7 +498,9 @@ export default function CaseAiClerk({ caseId, onChange }) {
                 <pre className="whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px] leading-relaxed text-slate-800">
                   {result}
                 </pre>
-                {(resultMode === 'help' || resultMode === 'analyse') && (
+                {(resultMode === 'help' ||
+                  resultMode === 'analyse' ||
+                  resultMode === 'next') && (
                   <div className="flex items-center justify-end gap-2">
                     {savedAt && (
                       <span className="text-[11px] text-emerald-700">

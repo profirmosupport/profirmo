@@ -25,6 +25,8 @@ import {
   AlertCircle,
   Loader2,
   Sparkles,
+  LogOut,
+  ArrowLeft,
 } from 'lucide-react';
 import Card from '@/components/common/Card';
 import Button from '@/components/common/Button';
@@ -460,18 +462,50 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
         ? [data.client]
         : [];
 
+  // "Back" target — firm-admin viewers come from /dashboard/firm/cases,
+  // everyone else from the per-pro / client list. Falls back to
+  // router.back() so a direct deep-link still has a sensible escape
+  // hatch.
+  const backHref = viewedAsFirmAdmin
+    ? '/dashboard/firm/cases'
+    : isClient
+      ? '/dashboard/client/cases'
+      : '/dashboard/professional/cases';
+
   return (
-    <div className="space-y-6">
+    // pb-24 keeps the floating AI Clerk launcher at the bottom-right
+    // from overlapping the danger-zone card on scroll-to-bottom.
+    <div className="space-y-6 pb-24">
+      {/* Back link — sits above the stage tracker so the pro can
+          return to the list without hunting for the breadcrumb in the
+          dashboard chrome. Uses a Link-style anchor rather than a
+          history-back so a refreshed tab still has a working escape. */}
+      <button
+        type="button"
+        onClick={() => router.push(backHref)}
+        className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-amber-700"
+      >
+        <ArrowLeft size={13} />
+        Back to cases
+      </button>
+
       {/* Stage tracker — top of the page. The shared lifecycle (intake
           → … → closed) is the first thing a pro should see when they
           open a case. Drives the Kanban board on /cases too. */}
       <CaseStageTracker caseRow={data} onUpdated={loadCase} />
 
       {/* Floating AI Clerk launcher — only for the professional.
-          Premium-gating happens inside the component (it self-fetches
-          the plan + hides itself for non-premium pros). */}
+          The clerk's capability gate lives in the admin's Claude API
+          key, not the user's plan. After saving a draft as an update
+          we reload BOTH the case and the timeline so the new entry
+          surfaces immediately. */}
       {!isClient && data && (
-        <CaseAiClerk caseId={caseId} onChange={loadCase} />
+        <CaseAiClerk
+          caseId={caseId}
+          onChange={async () => {
+            await Promise.all([loadCase(), loadUpdates()]);
+          }}
+        />
       )}
 
       {/* Header */}
@@ -1156,6 +1190,46 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
         const proCanLeave = !isClient && isFirmShared;
         const proCanDelete = !isClient && !isFirmShared;
         if (!clientCanDelete && !proCanLeave && !proCanDelete) return null;
+        // Leave-case sits in its own amber-toned card — it's a
+        // step-off, not a destructive op, so we deliberately separate
+        // it visually from the red Danger zone below.
+        if (proCanLeave) {
+          const otherCount = assignees.length - 1;
+          return (
+            <Card className="border-amber-200 bg-gradient-to-br from-amber-50/60 to-white">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex gap-3">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-amber-100 text-amber-700">
+                    <LogOut size={16} />
+                  </span>
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold text-amber-900">
+                      Leave this case
+                    </h3>
+                    <p className="mt-0.5 text-xs text-slate-600">
+                      Shared with{' '}
+                      <span className="font-semibold text-slate-800">
+                        {otherCount} other professional{otherCount === 1 ? '' : 's'}
+                      </span>{' '}
+                      in your firm. Stepping off keeps the case intact for
+                      the rest of the team. To delete it entirely, every
+                      other professional needs to leave first.
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={openLeaveCase}
+                  className="border-amber-300 bg-white text-amber-800 hover:border-amber-400 hover:bg-amber-50"
+                >
+                  <LogOut size={14} />
+                  Leave case
+                </Button>
+              </div>
+            </Card>
+          );
+        }
         return (
           <Card className="border-red-200">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -1164,25 +1238,17 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                 <p className="mt-0.5 text-xs text-slate-500">
                   {clientCanDelete
                     ? 'Deleting this case removes every note and update you added. No professional is assigned yet, so this can be done from your side. This cannot be undone.'
-                    : proCanLeave
-                      ? `This case is shared with ${assignees.length - 1} other professional${assignees.length - 1 === 1 ? '' : 's'} in your firm. You can step off it any time — the case stays with the rest of the team. To delete the case entirely, every other professional needs to leave first.`
-                      : 'Deleting the case removes every note, update, attachment, and activity-log entry. This cannot be undone.'}
+                    : 'Deleting the case removes every note, update, attachment, and activity-log entry. This cannot be undone.'}
                 </p>
               </div>
-              {proCanLeave ? (
-                <Button variant="outline" size="sm" onClick={openLeaveCase}>
-                  Leave case
-                </Button>
-              ) : (
-                <Button
-                  variant="danger"
-                  size="sm"
-                  onClick={openDeleteCase}
-                >
-                  <Trash2 size={14} />
-                  Delete case
-                </Button>
-              )}
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={openDeleteCase}
+              >
+                <Trash2 size={14} />
+                Delete case
+              </Button>
             </div>
           </Card>
         );
@@ -1324,6 +1390,7 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
           description: data.description,
           priority: data.priority,
           caseNumber: data.caseNumber,
+          cnr: data.cnr,
           courtName: data.courtName,
           opposingParty: data.opposingParty,
           nextHearingDate: data.nextHearingDate

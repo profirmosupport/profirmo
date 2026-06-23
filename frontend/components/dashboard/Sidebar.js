@@ -535,6 +535,22 @@ export default function Sidebar({ role, collapsed = false, onToggleCollapsed }) 
       </div>
 
       <nav className={`flex-1 space-y-1 overflow-y-auto py-4 ${collapsed ? 'px-2' : 'px-3'}`}>
+        {/* Firm-admin users sit on a separate dashboard — give them a
+            one-tap return to their personal/professional dashboard so
+            they don't have to navigate via the global site root. */}
+        {role === ROLES.FIRM_ADMIN && (
+          <Link
+            href="/dashboard/professional"
+            title={collapsed ? 'Personal dashboard' : undefined}
+            className={[
+              'mb-3 flex items-center rounded-lg border border-amber-200 bg-amber-50/70 text-sm font-semibold text-amber-800 transition hover:border-amber-300 hover:bg-amber-100',
+              collapsed ? 'justify-center px-2 py-2.5' : 'gap-2 px-3 py-2',
+            ].join(' ')}
+          >
+            <ArrowLeft size={15} />
+            {!collapsed && <span>Personal dashboard</span>}
+          </Link>
+        )}
         {!collapsed && (
           <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
             {t('dash.nav.menu')}

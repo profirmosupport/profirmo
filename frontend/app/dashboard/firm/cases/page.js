@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Briefcase,
@@ -9,7 +9,7 @@ import {
   Eye,
   MoreVertical,
   Users,
-  CircleDashed,
+  ListChecks,
   ExternalLink,
 } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
@@ -21,6 +21,11 @@ import EmptyState from '@/components/common/EmptyState';
 import Avatar from '@/components/common/Avatar';
 import RowMenu from '@/components/common/RowMenu';
 import AddCaseModal from '@/components/cases/AddCaseModal';
+import CasesFilterBar, {
+  emptyFilter,
+  applyCaseFilters,
+  isFilterActive,
+} from '@/components/cases/CasesFilterBar';
 import QuotaBanner from '@/components/common/QuotaBanner';
 import caseService from '@/services/caseService';
 import { getLawFirm } from '@/services/profileService';
@@ -35,23 +40,31 @@ const PRIORITY_VARIANT = {
   urgent: 'red',
 };
 
-const STATUS_VARIANT = {
-  open: 'blue',
-  'in-progress': 'amber',
-  closed: 'green',
-};
-
-const STATUS_LABEL = {
-  open: 'Open',
-  'in-progress': 'In progress',
+// Stage replaces the older `status` column on the firm cases table —
+// keeps the firm view aligned with the per-pro cases page and the
+// case-detail stage tracker (intake → … → closed). The raw stage list
+// is mirrored from backend/src/config/caseStages.js; canonical labels
+// + an explicit option list live here so the menu doesn't need an
+// extra API round-trip.
+const STAGE_ORDER = [
+  'intake',
+  'preparation',
+  'filed',
+  'awaiting_response',
+  'hearing',
+  'closing',
+  'closed',
+];
+const STAGE_LABEL = {
+  intake: 'Intake',
+  preparation: 'Preparation',
+  filed: 'Filed',
+  awaiting_response: 'Awaiting Response',
+  hearing: 'Hearing',
+  closing: 'Closing',
   closed: 'Closed',
 };
-
-const STATUS_OPTIONS = [
-  { value: 'open', label: 'Open' },
-  { value: 'in-progress', label: 'In progress' },
-  { value: 'closed', label: 'Closed' },
-];
+const STAGE_OPTIONS = STAGE_ORDER.map((s) => ({ value: s, label: STAGE_LABEL[s] }));
 
 function ListSkeleton() {
   return (
@@ -66,15 +79,15 @@ function ListSkeleton() {
   );
 }
 
-function CaseActionsMenu({ row, onView, onReassign, onChangeStatus }) {
-  // Nested "Change status" submenu state. The parent RowMenu handles
-  // open/close, click-outside and Esc; we just track which inner row is
-  // expanded.
-  const [statusOpen, setStatusOpen] = useState(false);
+function CaseActionsMenu({ row, onView, onReassign, onChangeStage }) {
+  // Nested "Change stage" submenu state. The parent RowMenu handles
+  // open/close, click-outside and Esc; we just track which inner row
+  // is expanded.
+  const [stageOpen, setStageOpen] = useState(false);
 
   return (
     <RowMenu
-      onOpen={() => setStatusOpen(false)}
+      onOpen={() => setStageOpen(false)}
       trigger={
         <button
           type="button"
@@ -108,32 +121,32 @@ function CaseActionsMenu({ row, onView, onReassign, onChangeStatus }) {
             // Stop the click from bubbling — RowMenu's auto-close would
             // otherwise dismiss the whole popover.
             e.stopPropagation();
-            setStatusOpen((v) => !v);
+            setStageOpen((v) => !v);
           }}
           className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
         >
           <span className="flex items-center gap-2">
-            <CircleDashed size={14} /> Change status
+            <ListChecks size={14} /> Change stage
           </span>
           <span className="text-xs text-slate-400">
-            {STATUS_LABEL[row.status] || row.status || '—'}
+            {STAGE_LABEL[row.stage] || row.stage || '—'}
           </span>
         </button>
-        {statusOpen && (
+        {stageOpen && (
           <div className="border-t border-slate-100 bg-slate-50">
-            {STATUS_OPTIONS.map((opt) => (
+            {STAGE_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
                 type="button"
                 onClick={() => {
-                  setStatusOpen(false);
-                  onChangeStatus(opt.value);
+                  setStageOpen(false);
+                  onChangeStage(opt.value);
                 }}
-                disabled={row.status === opt.value}
+                disabled={row.stage === opt.value}
                 className="flex w-full items-center justify-between px-3 py-2 text-left text-xs text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:text-slate-400"
               >
                 <span>{opt.label}</span>
-                {row.status === opt.value && (
+                {row.stage === opt.value && (
                   <span className="text-[10px] uppercase tracking-wide text-amber-600">
                     Current
                   </span>
@@ -180,6 +193,14 @@ export default function FirmCasesPage() {
 
   const [busyId, setBusyId] = useState(null);
   const [actionError, setActionError] = useState('');
+
+  // Client-side search + filters. Pure derived state — no debounce
+  // needed at firm-list scale (few hundred rows at most).
+  const [filter, setFilter] = useState(emptyFilter);
+  const filteredItems = useMemo(
+    () => applyCaseFilters(items, filter),
+    [items, filter]
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -310,15 +331,19 @@ export default function FirmCasesPage() {
     }
   }
 
-  async function changeStatus(row, status) {
-    if (!row || row.status === status) return;
+  async function changeStage(row, stage) {
+    if (!row || row.stage === stage) return;
     setBusyId(row.id);
     setActionError('');
+    // Optimistic — the badge flips immediately; on failure we revert
+    // and surface the error in the top-of-page banner.
+    const prevItems = items;
+    setItems((curr) => curr.map((c) => (c.id === row.id ? { ...c, stage } : c)));
     try {
-      await caseService.update(row.id, { status });
-      await load();
+      await caseService.setStage(row.id, { stage });
     } catch (err) {
-      setActionError(err.message || 'Could not update status.');
+      setActionError(err.message || 'Could not update stage.');
+      setItems(prevItems);
     } finally {
       setBusyId(null);
     }
@@ -405,6 +430,15 @@ export default function FirmCasesPage() {
           </Card>
         )}
 
+        {!loading && !error && firmId && items.length > 0 ? (
+          <CasesFilterBar
+            value={filter}
+            onChange={setFilter}
+            totalCount={items.length}
+            matchCount={filteredItems.length}
+          />
+        ) : null}
+
         {loading ? (
           <ListSkeleton />
         ) : error ? (
@@ -439,6 +473,17 @@ export default function FirmCasesPage() {
               </Button>
             }
           />
+        ) : filteredItems.length === 0 && isFilterActive(filter) ? (
+          <EmptyState
+            icon={<Briefcase size={24} />}
+            title="No cases match these filters"
+            description="Try a different search term or clear the filters."
+            action={
+              <Button size="sm" variant="outline" onClick={() => setFilter(emptyFilter())}>
+                Clear filters
+              </Button>
+            }
+          />
         ) : (
           <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
             <table className="w-full min-w-[760px] text-left text-sm">
@@ -449,7 +494,7 @@ export default function FirmCasesPage() {
                   <th className="px-4 py-3 font-semibold">Client</th>
                   <th className="px-4 py-3 font-semibold">Assignee</th>
                   <th className="px-4 py-3 font-semibold">Priority</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
+                  <th className="px-4 py-3 font-semibold">Stage</th>
                   <th className="px-4 py-3 font-semibold">Next hearing</th>
                   <th className="px-4 py-3 font-semibold">Created</th>
                   <th className="px-4 py-3 font-semibold text-right">
@@ -458,7 +503,7 @@ export default function FirmCasesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {items.map((c) => (
+                {filteredItems.map((c) => (
                   <tr key={c.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3">
                       <p className="font-medium text-slate-800">
@@ -525,9 +570,13 @@ export default function FirmCasesPage() {
                       </Badge>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge variant={STATUS_VARIANT[c.status] || 'gray'}>
-                        {STATUS_LABEL[c.status] || c.status || 'Open'}
-                      </Badge>
+                      {c.stage ? (
+                        <Badge variant="violet">
+                          {STAGE_LABEL[c.stage] || c.stage}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-slate-400">— Not set —</span>
+                      )}
                       {busyId === c.id && (
                         <span className="ml-2 text-xs text-slate-400">
                           Saving…
@@ -548,7 +597,7 @@ export default function FirmCasesPage() {
                             router.push(`/dashboard/firm/cases/${c.id}`)
                           }
                           onReassign={() => openReassign(c)}
-                          onChangeStatus={(s) => changeStatus(c, s)}
+                          onChangeStage={(s) => changeStage(c, s)}
                         />
                       </div>
                     </td>

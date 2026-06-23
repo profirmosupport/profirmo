@@ -14,7 +14,17 @@
 // submits PATCH /api/cases/:id instead of POST /api/cases.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, X, ChevronDown, Users } from 'lucide-react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  ChevronDown,
+  Gavel,
+  Loader2,
+  ScanSearch,
+  Search,
+  Users,
+  X,
+} from 'lucide-react';
 import Modal from '@/components/common/Modal';
 import Button from '@/components/common/Button';
 import PlanLimitBanner from '@/components/common/PlanLimitBanner';
@@ -24,6 +34,11 @@ import Avatar from '@/components/common/Avatar';
 import caseService from '@/services/caseService';
 import clientService from '@/services/clientService';
 import { getLawFirmClients } from '@/services/profileService';
+import {
+  getCaseByCnr,
+  getImportedCase,
+  importCaseFromEcourts,
+} from '@/services/ecourtsService';
 
 const PRIORITY_OPTIONS = [
   { value: 'low', label: 'Low' },
@@ -85,12 +100,29 @@ export default function AddCaseModal({
   const [clients, setClients] = useState([]);
   const [clientsLoading, setClientsLoading] = useState(false);
 
+  // CNR-lookup state — only relevant in CREATE mode. When `lookup` is
+  // set, the form's other fields are prefilled from the upstream
+  // E-Courts blob and `submit()` routes through the import endpoint
+  // (so the eciSnapshot is saved + source='ecourts') instead of the
+  // plain create endpoint.
+  const [lookupBusy, setLookupBusy] = useState(false);
+  const [lookupError, setLookupError] = useState('');
+  const [lookup, setLookup] = useState(null);
+  const [existingCase, setExistingCase] = useState({
+    imported: false,
+    caseId: null,
+  });
+
   // Reset whenever the modal is (re)opened with new defaults.
   useEffect(() => {
     if (open) {
       setForm(emptyForm(defaults));
       setError('');
       setSubmitting(false);
+      setLookupBusy(false);
+      setLookupError('');
+      setLookup(null);
+      setExistingCase({ imported: false, caseId: null });
     }
   }, [open, defaults]);
 
@@ -260,6 +292,79 @@ export default function AddCaseModal({
     update(e.target.name, e.target.value);
   }
 
+  // CNR lookup — fetches the upstream E-Courts blob and prefills the
+  // form. Also checks whether the same CNR is already saved on this
+  // user's dashboard, so we can offer "Open existing" instead of a
+  // duplicate import.
+  async function runCnrLookup() {
+    if (lookupBusy) return;
+    const trimmed = form.cnr.trim().toUpperCase();
+    if (!trimmed) {
+      setLookupError('Enter a CNR to look up.');
+      return;
+    }
+    setLookupBusy(true);
+    setLookupError('');
+    setLookup(null);
+    try {
+      const [detail, mine] = await Promise.all([
+        getCaseByCnr(trimmed),
+        getImportedCase(trimmed).catch(() => ({
+          imported: false,
+          caseId: null,
+        })),
+      ]);
+      const court = (detail && detail.courtCaseData) || null;
+      if (!court) {
+        setLookupError(
+          'No case found for this CNR on E-Courts. Double-check the number and try again.'
+        );
+        return;
+      }
+      setLookup(detail);
+      setExistingCase(mine || { imported: false, caseId: null });
+      // Prefill form fields from the upstream blob — the pro can still
+      // tweak any of them before saving (overrides ride along).
+      const petitioner = (court.petitioners || []).filter(Boolean)[0] || '';
+      const respondent = (court.respondents || []).filter(Boolean)[0] || '';
+      const title =
+        petitioner && respondent
+          ? `${petitioner} vs ${respondent}`
+          : petitioner || court.cnr || '';
+      const acts = Array.isArray(court.actsAndSections)
+        ? court.actsAndSections.filter(Boolean).join(', ')
+        : '';
+      const nextHearing = court.nextHearingDate
+        ? String(court.nextHearingDate).slice(0, 10)
+        : '';
+      setForm((f) => ({
+        ...f,
+        cnr: trimmed,
+        title: f.title || title,
+        category:
+          f.category || court.judicialSection || court.caseCategory || 'Litigation',
+        description: f.description || acts,
+        caseNumber: f.caseNumber || court.caseNumber || court.filingNumber || '',
+        courtName: f.courtName || court.courtName || court.courtCode || '',
+        opposingParty: f.opposingParty || respondent,
+        nextHearingDate: f.nextHearingDate || nextHearing,
+      }));
+    } catch (err) {
+      setLookupError(
+        err.message ||
+          'Could not fetch this case from E-Courts. Try again in a moment.'
+      );
+    } finally {
+      setLookupBusy(false);
+    }
+  }
+
+  function clearLookup() {
+    setLookup(null);
+    setExistingCase({ imported: false, caseId: null });
+    setLookupError('');
+  }
+
   async function submit(e) {
     if (e && e.preventDefault) e.preventDefault();
     if (submitting) return;
@@ -318,6 +423,28 @@ export default function AddCaseModal({
       if (isEdit) {
         const updated = await caseService.update(defaults.id, payload);
         if (typeof onUpdated === 'function') onUpdated(updated);
+      } else if (lookup) {
+        // CNR was successfully looked up — route through the import
+        // endpoint so the case row carries the full eciSnapshot +
+        // source='ecourts' (enabling future one-click sync). The
+        // pro's edits to the prefilled fields ride along as overrides.
+        const result = await importCaseFromEcourts(
+          form.cnr.trim().toUpperCase(),
+          {
+            clientIds: form.clientIds,
+            overrides: {
+              title: payload.title,
+              category: payload.category,
+              description: payload.description,
+              priority: payload.priority,
+              caseNumber: payload.caseNumber,
+              courtName: payload.courtName,
+              opposingParty: payload.opposingParty,
+              nextHearingDate: payload.nextHearingDate,
+            },
+          }
+        );
+        if (typeof onCreated === 'function') onCreated(result && result.case);
       } else {
         const created = await caseService.create(payload);
         if (typeof onCreated === 'function') onCreated(created);
@@ -378,6 +505,93 @@ export default function AddCaseModal({
       }
     >
       <form onSubmit={submit} className="space-y-3">
+        {/* --- CNR lookup banner (create-only) -----------------------------
+            Litigators almost always want to start a new case from a CNR
+            because it pulls parties, court, hearings + orders straight
+            from E-Courts. The banner lets them paste a 16-char CNR,
+            click "Look up", and have the rest of the form pre-fill —
+            or skip and fill in manually. */}
+        {!isEdit ? (
+          <div className="rounded-xl border border-amber-200 bg-gradient-to-r from-amber-50/80 via-white to-amber-50/80 p-3 sm:p-4">
+            <div className="flex items-start gap-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-amber-100 text-amber-800">
+                <ScanSearch size={16} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-slate-900">
+                  Have a CNR? Pull case details from E-Courts
+                </p>
+                <p className="mt-0.5 text-[11px] text-slate-500">
+                  We pre-fill the parties, court, hearings & orders. You
+                  can also skip and enter the case details manually.
+                </p>
+                <div className="mt-3 flex flex-wrap items-stretch gap-2">
+                  <input
+                    type="text"
+                    name="cnr"
+                    value={form.cnr}
+                    onChange={(e) => {
+                      // If the user edits the CNR after a successful
+                      // lookup, treat it as a new search — clear the
+                      // snapshot so submit() falls back to plain create.
+                      if (lookup) clearLookup();
+                      update('cnr', e.target.value);
+                    }}
+                    placeholder="e.g. SCIN010229632021"
+                    autoComplete="off"
+                    className="min-w-[12rem] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-mono uppercase tracking-wide text-slate-800 placeholder:font-sans placeholder:normal-case placeholder:tracking-normal placeholder-slate-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        runCnrLookup();
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    onClick={runCnrLookup}
+                    disabled={lookupBusy || !form.cnr.trim()}
+                  >
+                    {lookupBusy ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        Looking up…
+                      </>
+                    ) : (
+                      <>
+                        <ScanSearch size={14} />
+                        Look up
+                      </>
+                    )}
+                  </Button>
+                </div>
+                {lookupError ? (
+                  <p className="mt-2 inline-flex items-start gap-1.5 rounded-md bg-red-50 px-2.5 py-1.5 text-xs text-red-700">
+                    <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                    {lookupError}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+
+            {/* Snapshot once we have a successful lookup. */}
+            {lookup && lookup.courtCaseData ? (
+              <CnrSnapshot
+                court={lookup.courtCaseData}
+                existing={existingCase}
+                onClear={() => {
+                  clearLookup();
+                  // Also reset the form back to empty so the pro can
+                  // start over with a fresh manual entry.
+                  setForm((f) => emptyForm({ ...defaults, cnr: '' }));
+                }}
+              />
+            ) : null}
+          </div>
+        ) : null}
+
         {/* --- Client multi-select ----------------------------------------- */}
         <div ref={clientRef} className="relative">
           <label
@@ -520,14 +734,19 @@ export default function AddCaseModal({
           />
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Input
-            label="CNR (E-Courts)"
-            name="cnr"
-            value={form.cnr}
-            onChange={handleChange}
-            placeholder="e.g. DLCT01-001234-2024"
-            hint="Adding a CNR unlocks one-click sync of hearings & orders from E-Courts India."
-          />
+          {/* In edit mode the CNR sits inline with other case
+              metadata. In create mode it lives in the CNR-lookup
+              banner at the top of the form (see above). */}
+          {isEdit ? (
+            <Input
+              label="CNR (E-Courts)"
+              name="cnr"
+              value={form.cnr}
+              onChange={handleChange}
+              placeholder="e.g. DLCT01-001234-2024"
+              hint="Adding a CNR unlocks one-click sync of hearings & orders from E-Courts India."
+            />
+          ) : null}
           <Input
             label="Court name"
             name="courtName"
@@ -683,5 +902,119 @@ export default function AddCaseModal({
         {error && <p className="text-xs text-red-600">{error}</p>}
       </form>
     </Modal>
+  );
+}
+
+function fmtIndianDate(iso) {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  } catch {
+    return String(iso);
+  }
+}
+
+function SnapshotFact({ label, value }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+        {label}
+      </span>
+      <span className="text-[12px] font-semibold text-slate-800">
+        {value || '—'}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * CnrSnapshot — preview card rendered inside the CNR lookup banner
+ * after a successful upstream fetch. Shows the key facts so the pro
+ * can confirm they have the right case before saving, and surfaces a
+ * "you already have this case" link when the CNR is already on the
+ * dashboard.
+ */
+function CnrSnapshot({ court, existing, onClear }) {
+  const petitioners = (court.petitioners || []).filter(Boolean);
+  const respondents = (court.respondents || []).filter(Boolean);
+  const judges = (court.judges || []).filter(Boolean);
+  return (
+    <div className="mt-3 rounded-lg border border-amber-200 bg-white/80 p-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-sm font-semibold text-slate-900">
+          {petitioners[0] || court.cnr}
+          {respondents[0] ? (
+            <span className="font-normal text-slate-400"> vs </span>
+          ) : null}
+          {respondents[0] ? (
+            <span className="text-slate-800">{respondents[0]}</span>
+          ) : null}
+        </p>
+        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ring-1 ring-inset ring-amber-200">
+          {court.caseStatus || 'Unknown'}
+        </span>
+      </div>
+      <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 sm:grid-cols-4">
+        <SnapshotFact label="Case type" value={court.caseType} />
+        <SnapshotFact label="Case number" value={court.caseNumber} />
+        <SnapshotFact
+          label="Court"
+          value={court.courtName || court.courtCode}
+        />
+        <SnapshotFact
+          label="District / State"
+          value={[court.district, court.state].filter(Boolean).join(', ')}
+        />
+        <SnapshotFact label="Filed" value={fmtIndianDate(court.filingDate)} />
+        <SnapshotFact label="Decision" value={fmtIndianDate(court.decisionDate)} />
+        <SnapshotFact
+          label="Next hearing"
+          value={fmtIndianDate(court.nextHearingDate)}
+        />
+        <SnapshotFact
+          label="Acts & sections"
+          value={
+            Array.isArray(court.actsAndSections) &&
+            court.actsAndSections.length > 0
+              ? court.actsAndSections.slice(0, 2).join(', ') +
+                (court.actsAndSections.length > 2 ? '…' : '')
+              : null
+          }
+        />
+      </dl>
+      {judges.length > 0 ? (
+        <p className="mt-2 inline-flex items-center gap-1 text-[11px] text-slate-500">
+          <Gavel size={11} className="text-slate-400" />
+          {judges.slice(0, 2).join(', ')}
+          {judges.length > 2 ? ` +${judges.length - 2} more` : ''}
+        </p>
+      ) : null}
+
+      {existing && existing.imported && existing.caseId ? (
+        <a
+          href={`/dashboard/professional/cases/${existing.caseId}`}
+          className="mt-3 flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 transition hover:bg-emerald-100"
+        >
+          <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+          <span>
+            <span className="font-semibold">You already have this case.</span>{' '}
+            Click to open it instead of saving a duplicate.
+          </span>
+        </a>
+      ) : (
+        <button
+          type="button"
+          onClick={onClear}
+          className="mt-3 inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800"
+        >
+          <X size={11} />
+          Clear &amp; enter manually
+        </button>
+      )}
+    </div>
   );
 }

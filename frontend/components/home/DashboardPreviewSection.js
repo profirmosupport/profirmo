@@ -33,8 +33,21 @@ import {
   TrendingUp,
   Star,
   IndianRupee,
+  Bot,
+  Sparkles,
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useLanguage } from '@/components/LanguageProvider';
+
+// Capabilities cycled by the marketing AI-Clerk callout. Kept short
+// and imperative so they read big-and-bold on the home page.
+const AI_CLERK_TAGLINES = [
+  'Summarise this case',
+  'Suggest the next step',
+  'Draft a notice reply',
+  'Analyse a document',
+  'OCR a scanned PDF',
+];
 
 const SIDEBAR = [
   { icon: LayoutDashboard, label: 'Overview', active: true },
@@ -155,6 +168,16 @@ const FEATURES = [
 
 export default function DashboardPreviewSection() {
   const { t } = useLanguage();
+  // Rotating tagline for the marketing AI Clerk callout. Cycles every
+  // 2s so the headline reads like a flipboard advertising what the
+  // clerk can do, drawing the eye to the in-product feature.
+  const [aiTagIndex, setAiTagIndex] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => {
+      setAiTagIndex((i) => (i + 1) % AI_CLERK_TAGLINES.length);
+    }, 2000);
+    return () => clearInterval(id);
+  }, []);
 
   return (
     <section className="relative overflow-hidden bg-slate-950 py-20 sm:py-28">
@@ -183,6 +206,40 @@ export default function DashboardPreviewSection() {
 
         {/* Browser-frame mock */}
         <div className="relative mx-auto mt-14 max-w-6xl overflow-hidden rounded-3xl border border-white/10 bg-white shadow-2xl shadow-indigo-900/40">
+          {/* AI Clerk callout — bottom-left of the dashboard frame.
+              Marketing surface that mirrors the live floating launcher
+              (gradient bot + breathing aura) but blown up and named so
+              the home-page visitor immediately registers the feature.
+              The capability tagline cycles every 2s with a fade so it
+              reads like a flipboard. Decorative — pointer-events-none. */}
+          <div className="pointer-events-none absolute bottom-5 left-5 z-20 flex items-center gap-3 sm:gap-4">
+            <span className="relative inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 text-white shadow-2xl shadow-indigo-900/40 ring-4 ring-white sm:h-20 sm:w-20">
+              <span className="absolute inset-0 -z-0 animate-ping rounded-2xl bg-violet-400/40" />
+              <span className="absolute inset-0 -z-0 animate-pulse rounded-2xl bg-fuchsia-400/20" />
+              <Bot size={32} className="relative z-10 sm:hidden" />
+              <Bot size={40} className="relative z-10 hidden sm:block" />
+            </span>
+            <div className="flex flex-col gap-1 rounded-2xl bg-white/95 px-4 py-2.5 shadow-xl ring-1 ring-indigo-100 backdrop-blur sm:px-5 sm:py-3">
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-fuchsia-600 sm:text-xs">
+                <Sparkles size={12} className="text-fuchsia-500" />
+                AI Clerk
+              </span>
+              <span
+                key={aiTagIndex}
+                className="bg-gradient-to-r from-indigo-700 via-violet-700 to-fuchsia-700 bg-clip-text text-base font-extrabold leading-tight text-transparent sm:text-xl"
+                style={{ animation: 'aiClerkPromoFade 320ms ease-out' }}
+              >
+                {AI_CLERK_TAGLINES[aiTagIndex]}
+              </span>
+            </div>
+            <style jsx>{`
+              @keyframes aiClerkPromoFade {
+                from { opacity: 0; transform: translateY(4px); }
+                to   { opacity: 1; transform: translateY(0); }
+              }
+            `}</style>
+          </div>
+
           {/* Window chrome */}
           <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2.5">
             <div className="flex items-center gap-1.5">
