@@ -105,6 +105,23 @@ async function uploadOne(actorUserId, clientUserId, file, meta = {}) {
   if (!file || !file.path) {
     throw { statusCode: 422, message: 'No file received.' };
   }
+  // Hard 1 MB per-file cap for the client document store. Bank
+  // statements / Form 16 / etc. should be export-PDFs, not scanned
+  // images — keeps S3 cost predictable and the consent screen
+  // friendly. Caller can split into multiple uploads for the same
+  // doc + FY combo if they need to.
+  const ONE_MB = 1 * 1024 * 1024;
+  if (file.size && file.size > ONE_MB) {
+    try {
+      fs.unlinkSync(file.path);
+    } catch {
+      /* ignore */
+    }
+    throw {
+      statusCode: 413,
+      message: `File too large — keep each upload under 1 MB. "${file.originalname}" was ${(file.size / 1024 / 1024).toFixed(2)} MB.`,
+    };
+  }
   // Read the file from the temp path multer wrote it to; storageService
   // accepts a buffer.
   const buffer = fs.readFileSync(file.path);
@@ -123,6 +140,14 @@ async function uploadOne(actorUserId, clientUserId, file, meta = {}) {
   } catch {
     /* swallow */
   }
+  // Validate financialYear when present — expected format 'YYYY-YY',
+  // e.g. '2025-26'. Anything else is dropped so the DB stays clean.
+  let financialYear = null;
+  if (meta.financialYear) {
+    const fy = String(meta.financialYear).trim();
+    if (/^\d{4}-\d{2}$/.test(fy)) financialYear = fy;
+  }
+
   const row = await ClientDocument.create({
     clientUserId,
     uploaderUserId: actorUserId,
@@ -133,6 +158,7 @@ async function uploadOne(actorUserId, clientUserId, file, meta = {}) {
     mimeType: file.mimetype || null,
     size: file.size || null,
     notes: meta.notes ? String(meta.notes).slice(0, 5000) : null,
+    financialYear,
   });
   return row.get({ plain: true });
 }

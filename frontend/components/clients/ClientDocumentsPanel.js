@@ -37,6 +37,34 @@ const CAT_LABEL = {
   compliance: 'Statutory',
 };
 
+const ONE_MB = 1 * 1024 * 1024;
+
+/**
+ * Build the list of selectable financial years for the FY picker.
+ * Indian FY runs Apr-Mar, so during Jan-Mar the "current" FY started
+ * the previous calendar year. We surface the last 3 + current + next
+ * so a pro can backfill prior years (Bank statements for 2022-23
+ * still get filed for old clients) without an unbounded dropdown.
+ */
+function fyOptions(now = new Date()) {
+  const month = now.getMonth(); // 0=Jan
+  const year = now.getFullYear();
+  const fyStart = month >= 3 ? year : year - 1;
+  const out = [];
+  for (let off = -3; off <= 1; off += 1) {
+    const start = fyStart + off;
+    const end = start + 1;
+    const label = `FY ${start}-${String(end).slice(-2)}`;
+    const value = `${start}-${String(end).slice(-2)}`;
+    out.push({ value, label });
+  }
+  return out.reverse(); // newest first
+}
+
+function currentFyValue() {
+  return fyOptions()[0].value;
+}
+
 function fmtSize(bytes) {
   if (!bytes && bytes !== 0) return '';
   if (bytes < 1024) return `${bytes} B`;
@@ -50,6 +78,10 @@ export default function ClientDocumentsPanel({ clientUserId, requirements }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [uploadingKey, setUploadingKey] = useState(null);
+  // Per-row FY selection — financial-category rows show a dropdown
+  // that defaults to the current FY. Keyed by docKey so the user can
+  // upload different rows under different years if needed.
+  const [fyByKey, setFyByKey] = useState({});
 
   const load = useCallback(async () => {
     if (!clientUserId) return;
@@ -82,12 +114,22 @@ export default function ClientDocumentsPanel({ clientUserId, requirements }) {
     return map;
   }, [docs]);
 
-  async function handleUpload(docKey, label, file) {
+  async function handleUpload(docKey, label, file, category) {
     if (!file) return;
+    if (file.size > ONE_MB) {
+      setError(
+        `Keep each file under 1 MB. "${file.name}" is ${(file.size / 1024 / 1024).toFixed(2)} MB.`
+      );
+      return;
+    }
     setUploadingKey(docKey);
     setError('');
     try {
-      await uploadDocument(clientUserId, file, { docKey, label });
+      const meta = { docKey, label };
+      if (category === 'financial') {
+        meta.financialYear = fyByKey[docKey] || currentFyValue();
+      }
+      await uploadDocument(clientUserId, file, meta);
       await load();
     } catch (err) {
       setError(err.message || 'Upload failed.');
@@ -181,6 +223,32 @@ export default function ClientDocumentsPanel({ clientUserId, requirements }) {
                 <ul className="space-y-2">
                   {byCat.get(cat).map((d) => {
                     const uploaded = docsByKey.get(d.key) || [];
+                    const isFinancial = cat === 'financial';
+                    const selectedFy =
+                      fyByKey[d.key] || currentFyValue();
+                    // Group uploaded files by FY for financial rows;
+                    // non-financial rows stay flat.
+                    const groups = (() => {
+                      if (!isFinancial) return [{ key: '__flat__', label: null, files: uploaded }];
+                      const m = new Map();
+                      for (const u of uploaded) {
+                        const k = u.financialYear || '__unset__';
+                        if (!m.has(k)) m.set(k, []);
+                        m.get(k).push(u);
+                      }
+                      // Sort keys: real FYs newest first, '__unset__' last.
+                      const keys = [...m.keys()].sort((a, b) => {
+                        if (a === '__unset__') return 1;
+                        if (b === '__unset__') return -1;
+                        return b.localeCompare(a);
+                      });
+                      return keys.map((k) => ({
+                        key: k,
+                        label:
+                          k === '__unset__' ? '(no FY tagged)' : `FY ${k}`,
+                        files: m.get(k),
+                      }));
+                    })();
                     return (
                       <li
                         key={d.key}
@@ -211,49 +279,81 @@ export default function ClientDocumentsPanel({ clientUserId, requirements }) {
                               </p>
                             )}
                           </div>
-                          <UploadButton
-                            disabled={uploadingKey === d.key}
-                            isUploading={uploadingKey === d.key}
-                            onFile={(f) => handleUpload(d.key, d.label, f)}
-                          />
+                          <div className="flex items-center gap-1.5">
+                            {isFinancial && (
+                              <select
+                                value={selectedFy}
+                                onChange={(e) =>
+                                  setFyByKey((prev) => ({
+                                    ...prev,
+                                    [d.key]: e.target.value,
+                                  }))
+                                }
+                                className="rounded border border-slate-300 bg-white px-1.5 py-1 text-[11px] text-slate-700"
+                                title="Financial year for the next upload"
+                              >
+                                {fyOptions().map((o) => (
+                                  <option key={o.value} value={o.value}>
+                                    {o.label}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                            <UploadButton
+                              disabled={uploadingKey === d.key}
+                              isUploading={uploadingKey === d.key}
+                              onFile={(f) => handleUpload(d.key, d.label, f, cat)}
+                            />
+                          </div>
                         </div>
 
                         {uploaded.length > 0 && (
-                          <ul className="mt-2 space-y-1">
-                            {uploaded.map((u) => (
-                              <li
-                                key={u.id}
-                                className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-100 bg-slate-50 px-2 py-1.5 text-xs"
-                              >
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate font-medium text-slate-700">
-                                    {u.fileName || '(file)'}
+                          <div className="mt-2 space-y-2">
+                            {groups.map((g) => (
+                              <div key={g.key}>
+                                {g.label && (
+                                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                                    {g.label}
                                   </p>
-                                  <p className="text-[10px] text-slate-500">
-                                    {u.mimeType} · {fmtSize(u.size)}
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleView(u)}
-                                    className="rounded p-1 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
-                                    title="Open"
-                                  >
-                                    <ExternalLink size={13} />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDelete(u)}
-                                    className="rounded p-1 text-slate-500 hover:bg-red-50 hover:text-red-600"
-                                    title="Delete"
-                                  >
-                                    <Trash2 size={13} />
-                                  </button>
-                                </div>
-                              </li>
+                                )}
+                                <ul className="space-y-1">
+                                  {g.files.map((u) => (
+                                    <li
+                                      key={u.id}
+                                      className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-100 bg-slate-50 px-2 py-1.5 text-xs"
+                                    >
+                                      <div className="min-w-0 flex-1">
+                                        <p className="truncate font-medium text-slate-700">
+                                          {u.fileName || '(file)'}
+                                        </p>
+                                        <p className="text-[10px] text-slate-500">
+                                          {u.mimeType} · {fmtSize(u.size)}
+                                        </p>
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleView(u)}
+                                          className="rounded p-1 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+                                          title="Open"
+                                        >
+                                          <ExternalLink size={13} />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDelete(u)}
+                                          className="rounded p-1 text-slate-500 hover:bg-red-50 hover:text-red-600"
+                                          title="Delete"
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      </div>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
                             ))}
-                          </ul>
+                          </div>
                         )}
                       </li>
                     );

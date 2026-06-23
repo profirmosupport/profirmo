@@ -21,6 +21,7 @@ const upload = asyncHandler(async (req, res) => {
       docKey: req.body && req.body.docKey,
       label: req.body && req.body.label,
       notes: req.body && req.body.notes,
+      financialYear: req.body && req.body.financialYear,
     }
   );
   return successResponse(res, 201, 'Document uploaded', row);

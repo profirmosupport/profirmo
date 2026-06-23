@@ -384,6 +384,10 @@ async function runMigrations() {
     ['stage', 'VARCHAR(60) NULL'],
     ['stageUpdatedAt', 'DATETIME NULL'],
     ['googleHearingEventId', 'VARCHAR(128) NULL'],
+    // AI Clerk persisted summary
+    ['aiSummary', 'TEXT NULL'],
+    ['aiSummaryUpdatedAt', 'DATETIME NULL'],
+    ['aiSummaryByUserId', 'VARCHAR(64) NULL'],
   ];
   for (const [col, type] of CASE_STAGE_COLUMNS) {
     try {

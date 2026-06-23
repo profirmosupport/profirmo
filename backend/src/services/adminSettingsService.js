@@ -345,6 +345,32 @@ const SETTINGS = {
     coerce: stringCoerce,
     format: stringCoerce,
   },
+
+  // --- AI / Anthropic Claude --------------------------------------
+  // Drives the per-case AI Clerk (summarise / suggest next step /
+  // free-prompt help). Key is stored plaintext + masked on admin GET
+  // by `secret: true` — same model as the AWS S3 + Gmail credentials.
+  claude_api_key: {
+    label: 'Claude (Anthropic) API key',
+    description:
+      'Anthropic console key (starts with sk-ant-…). Used by the per-case AI Clerk for summary, next-step suggestions and prompt-based help. Stored plaintext; masked in the admin UI via `secret: true`.',
+    defaultGetter: () => process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY || '',
+    type: 'string',
+    group: 'AI / Anthropic',
+    secret: true,
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  claude_model: {
+    label: 'Claude model',
+    description:
+      'Model identifier passed to /v1/messages. Default: claude-sonnet-4-6 (good balance of cost + capability). Switch to claude-opus-4-7 for harder analytical tasks or claude-haiku-4-5-20251001 for cheaper drafts.',
+    defaultGetter: () => process.env.CLAUDE_MODEL || 'claude-sonnet-4-6',
+    type: 'string',
+    group: 'AI / Anthropic',
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
 };
 
 const KNOWN_KEYS = Object.keys(SETTINGS);

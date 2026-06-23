@@ -32,6 +32,11 @@ const ClientDocument = sequelize.define(
     // 'form16'). 'other' for ad-hoc uploads not in the catalog.
     docKey: { type: DataTypes.STRING(60), allowNull: false },
     label: { type: DataTypes.STRING(200), allowNull: true },
+    // Indian financial year the document pertains to, e.g. '2025-26'.
+    // Only meaningful for financial-category docs (bank statements,
+    // Form 16, capital-gains statements, etc.) — null for KYC /
+    // registration docs that aren't year-bound.
+    financialYear: { type: DataTypes.STRING(12), allowNull: true },
     // Storage layer (storageService) — stores a path/key, not a full
     // URL, so we can swap drivers (local ↔ S3) without rewriting rows.
     storagePath: { type: DataTypes.STRING(255), allowNull: false },
@@ -49,6 +54,7 @@ const ClientDocument = sequelize.define(
       { fields: ['clientUserId'] },
       { fields: ['clientUserId', 'docKey'] },
       { fields: ['uploaderUserId'] },
+      { fields: ['clientUserId', 'docKey', 'financialYear'] },
     ],
   }
 );

@@ -2,6 +2,7 @@ const caseService = require('../services/caseService');
 const storageService = require('../services/storageService');
 const gates = require('../services/subscriptionGateService');
 const permissionService = require('../services/permissionService');
+const aiClerkService = require('../services/caseAiClerkService');
 const { ACTIONS: PERM } = require('../config/permissions');
 const asyncHandler = require('../utils/asyncHandler');
 const {
@@ -430,6 +431,38 @@ const streamAttachment = require('../utils/asyncHandler')(async (req, res) => {
   return res.end(buf);
 });
 
+// --- AI Clerk -------------------------------------------------------
+
+const aiSummarize = asyncHandler(async (req, res) => {
+  const out = await aiClerkService.summarize(req.params.id, req.user.id);
+  return successResponse(res, 200, 'Case summarised', out);
+});
+
+const aiSuggestNextStep = asyncHandler(async (req, res) => {
+  const out = await aiClerkService.suggestNextStep(req.params.id);
+  return successResponse(res, 200, 'Next-step suggestions', out);
+});
+
+const aiPrompt = asyncHandler(async (req, res) => {
+  const out = await aiClerkService.prompt(
+    req.params.id,
+    (req.body && req.body.instruction) || ''
+  );
+  return successResponse(res, 200, 'AI Clerk response', out);
+});
+
+/**
+ * Save an AI Clerk response (typically from /ai/prompt) as a
+ * CaseUpdate so it lives on the case timeline. Body: { title?, body }.
+ */
+const aiSaveAsUpdate = asyncHandler(async (req, res) => {
+  const row = await caseService.addUpdate(req.params.id, req.user, {
+    title: (req.body && req.body.title) || 'AI Clerk draft',
+    body: (req.body && req.body.body) || '',
+  });
+  return successResponse(res, 201, 'Saved as case update', row);
+});
+
 module.exports = {
   listCases,
   getCase,
@@ -454,4 +487,8 @@ module.exports = {
   editCaseUpdate,
   getAttachmentUrl,
   streamAttachment,
+  aiSummarize,
+  aiSuggestNextStep,
+  aiPrompt,
+  aiSaveAsUpdate,
 };

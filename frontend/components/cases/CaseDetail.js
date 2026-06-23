@@ -38,6 +38,7 @@ import CaseAttachmentLink from '@/components/cases/CaseAttachmentLink';
 import CaseAttachmentList from '@/components/cases/CaseAttachmentList';
 import CaseStageTracker from '@/components/cases/CaseStageTracker';
 import CaseGmailMessages from '@/components/cases/CaseGmailMessages';
+import CaseAiClerk from '@/components/cases/CaseAiClerk';
 import caseService from '@/services/caseService';
 import { getLawFirm } from '@/services/profileService';
 import { syncCaseFromEcourts } from '@/services/ecourtsService';
@@ -433,6 +434,35 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
           → … → closed) is the first thing a pro should see when they
           open a case. Drives the Kanban board on /cases too. */}
       <CaseStageTracker caseRow={data} onUpdated={loadCase} />
+
+      {/* AI Clerk persisted summary — surfaced as a card so it sits
+          right under the stage stepper. Visible to both client + pro
+          (whoever has access to the case), but only the pro can
+          regenerate it via the floating AI Clerk button. */}
+      {data && data.aiSummary && (
+        <Card>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">
+                AI Clerk summary
+              </p>
+              <p className="text-[11px] text-slate-400">
+                {data.aiSummaryUpdatedAt
+                  ? `Updated ${new Date(data.aiSummaryUpdatedAt).toLocaleString()}`
+                  : ''}
+              </p>
+            </div>
+          </div>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+            {data.aiSummary}
+          </p>
+        </Card>
+      )}
+
+      {/* Floating AI Clerk launcher — only for the professional. */}
+      {!isClient && data && (
+        <CaseAiClerk caseId={caseId} onChange={loadCase} />
+      )}
 
       {/* Header */}
       <Card>

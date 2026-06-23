@@ -42,6 +42,14 @@ router.post(
 router.get('/:id', caseController.getCase);
 router.patch('/:id', caseController.updateCase);
 router.patch('/:id/stage', caseController.updateCaseStage);
+
+// AI Clerk — per-case Claude-powered helpers. All four authenticate
+// + go through caseService.userCanAccessCase implicitly via the
+// services they call.
+router.post('/:id/ai/summarize', caseController.aiSummarize);
+router.post('/:id/ai/suggest-next-step', caseController.aiSuggestNextStep);
+router.post('/:id/ai/prompt', caseController.aiPrompt);
+router.post('/:id/ai/save-as-update', caseController.aiSaveAsUpdate);
 // Delete case — RBAC happens inside the controller because clients
 // have a self-serve carve-out (own unassigned case) that the firm
 // permission middleware can't model cleanly.

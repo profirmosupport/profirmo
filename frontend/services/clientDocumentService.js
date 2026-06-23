@@ -31,6 +31,7 @@ export async function uploadDocument(clientUserId, file, meta = {}) {
   if (meta.docKey) fd.append('docKey', meta.docKey);
   if (meta.label) fd.append('label', meta.label);
   if (meta.notes) fd.append('notes', meta.notes);
+  if (meta.financialYear) fd.append('financialYear', meta.financialYear);
 
   const token = getAccessToken();
   const resp = await fetch(
