@@ -96,6 +96,37 @@ function isNoRetryPath(path) {
   return AUTH_NO_RETRY.some((p) => path.startsWith(p));
 }
 
+// --- Refresh-call coalescing ----------------------------------------
+// Multiple concurrent callers (AuthProvider mount + an in-flight API
+// call that 401s + a separate visibility-change wake-up) can all
+// race against /api/auth/refresh. Each call rotates the refresh
+// cookie server-side, so the slower racers end up holding a stale
+// cookie and fail — which then triggers onAuthExpired and a spurious
+// "logout" redirect on hard refresh. Coalesce: any call to the
+// refresh endpoint shares the single in-flight promise, so the
+// cookie rotates exactly once per logical refresh.
+let inflightRefreshPromise = null;
+
+async function refreshOnce() {
+  if (inflightRefreshPromise) return inflightRefreshPromise;
+  inflightRefreshPromise = rawRequest('/api/auth/refresh', {
+    method: 'POST',
+  }).finally(() => {
+    inflightRefreshPromise = null;
+  });
+  return inflightRefreshPromise;
+}
+
+/**
+ * Public entry point for callers (e.g. AuthProvider on mount) who
+ * want to deliberately kick off a refresh. Uses the same coalescer
+ * so they don't race the 401-retry path.
+ */
+export async function refreshSession() {
+  const res = await refreshOnce();
+  return (res && res.data) || res || {};
+}
+
 /**
  * Perform a single raw HTTP request (no refresh logic).
  */
@@ -182,12 +213,12 @@ export async function apiRequest(path, options = {}) {
 
     if (!canRetry) throw error;
 
-    // Attempt a single silent refresh.
+    // Attempt a single silent refresh — coalesced so concurrent
+    // 401s share one network round trip rather than each rotating
+    // the refresh cookie.
     let refreshData;
     try {
-      const refreshRes = await rawRequest('/api/auth/refresh', {
-        method: 'POST',
-      });
+      const refreshRes = await refreshOnce();
       refreshData = (refreshRes && refreshRes.data) || refreshRes || {};
     } catch (refreshError) {
       // Refresh failed — the session is gone.

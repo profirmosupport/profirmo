@@ -2,7 +2,7 @@
 // Every call returns the parsed `data` object from the API envelope
 // `{ success, message, data }`.
 
-import { get, post } from '@/services/api';
+import { get, post, refreshSession } from '@/services/api';
 
 const ENDPOINTS = {
   login: '/api/auth/login',
@@ -182,8 +182,11 @@ export async function claimAccount({ token, password, fullName }) {
  * @returns {Promise<{accessToken,token,user}>}
  */
 export async function refresh() {
-  const res = await post(ENDPOINTS.refresh);
-  return unwrap(res);
+  // Route through api.js's singleton refresher so a mount-time
+  // refresh and an in-flight 401-retry don't race against each
+  // other rotating the refresh cookie (which caused spurious
+  // sign-outs on hard page refresh).
+  return refreshSession();
 }
 
 /**
