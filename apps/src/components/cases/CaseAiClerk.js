@@ -583,12 +583,32 @@ function resultTitle(resultMode) {
   }
 }
 
+// Pulls the human-readable narrative out of every AI Clerk response
+// envelope. The four backend endpoints each wrap Claude's text in a
+// different field — summarize→{summary}, suggest-next-step→{suggestion},
+// prompt→{response}, analyse-document / analyse-uploaded→{analysis} —
+// so we sniff for each before falling back. Returns an empty string
+// (never a JSON dump) so the result pane stays readable.
 function extractText(payload) {
   if (!payload) return '';
-  if (typeof payload === 'string') return payload;
-  if (typeof payload.text === 'string') return payload.text;
-  if (typeof payload.body === 'string') return payload.body;
-  if (typeof payload.summary === 'string') return payload.summary;
+  if (typeof payload === 'string') return cleanText(payload);
+  // Direct string fields, in priority order matching the backend
+  // response envelopes documented above.
+  const stringFields = [
+    'analysis',
+    'summary',
+    'suggestion',
+    'response',
+    'text',
+    'body',
+    'message',
+    'output',
+  ];
+  for (const k of stringFields) {
+    if (typeof payload[k] === 'string' && payload[k].trim()) {
+      return cleanText(payload[k]);
+    }
+  }
   if (Array.isArray(payload.steps)) {
     return payload.steps
       .map((s, i) => {
@@ -601,10 +621,36 @@ function extractText(payload) {
   if (Array.isArray(payload)) {
     return payload
       .map((s) => (typeof s === 'string' ? s : s.text || s.body || ''))
-      .join('\n\n');
+      .join('\n\n')
+      .trim();
   }
-  // Fall back to JSON so the user at least sees something.
-  return JSON.stringify(payload, null, 2);
+  // Nested envelopes (e.g. data: { analysis: '...' }) — drill one
+  // level so we still avoid the raw-JSON dump.
+  if (payload.data) {
+    const nested = extractText(payload.data);
+    if (nested) return nested;
+  }
+  return '';
+}
+
+// Strip out the lightweight markdown Claude returns (asterisks for
+// bold, hashes for headings, leading dashes for bullets) and normalise
+// blank-line gaps. The mobile result pane renders plain Text so the
+// raw `**bold**` markers would otherwise leak through.
+function cleanText(s) {
+  return String(s)
+    .replace(/\r\n/g, '\n')
+    // Drop markdown emphasis markers (**bold**, *italic*, `code`).
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1$2')
+    .replace(/`([^`\n]+)`/g, '$1')
+    // ATX headings → leading bullet so the section still reads.
+    .replace(/^#{1,6}\s+/gm, '• ')
+    // Convert dash / asterisk bullets to a clean bullet glyph.
+    .replace(/^[\s]*[-*]\s+/gm, '• ')
+    // Collapse 3+ blank lines.
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 const styles = StyleSheet.create({
