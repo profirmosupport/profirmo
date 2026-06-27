@@ -288,7 +288,21 @@
       "Bash(npx --no eslint components/cases/CaseAiClerk.js)",
       "Bash(ssh -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@13.235.85.94 'cd /var/www/profirmo && git log -1 --oneline; echo \"---pm2---\"; pm2 list --no-color 2>&1 | head -25; echo \"---ls frontend---\"; ls -d frontend frontend/.next 2>/dev/null; echo \"---node---\"; node --version')",
       "Bash(grep -rnE \"API_BASE_URL\\\\s*\\\\}\\\\s*from\\\\s*'@/services/api'|\\\\\\\\\\\\$\\\\\\\\{API_BASE_URL\\\\\\\\}|API_BASE_URL,\" services/)",
-      "Bash(npx --no eslint services/caseAiService.js services/complianceService.js services/clientDocumentService.js services/ecourtsService.js services/gmailIntegrationService.js)"
+      "Bash(npx --no eslint services/caseAiService.js services/complianceService.js services/clientDocumentService.js services/ecourtsService.js services/gmailIntegrationService.js)",
+      "Bash(lsof -nP -iTCP:3000)",
+      "Bash(lsof -nP -iTCP:5001)",
+      "Bash(ps -p 4591 -o pid,ppid,command)",
+      "Bash(curl -sS -X OPTIONS -H \"Origin: http://localhost:3000\" -H \"Access-Control-Request-Method: GET\" -H \"Access-Control-Request-Headers: authorization,content-type\" -i https://proapi.profirmo.com/api/auth/me)",
+      "Bash(curl -sS -o /dev/null -w \"frontend / : %{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(lsof -nP -iTCP:8081 -sTCP:LISTEN)",
+      "Bash(nohup npx --no expo start --tunnel)",
+      "Bash(disown)",
+      "Bash(echo \"started pid=$!\")",
+      "Bash(curl -sS http://localhost:8081/_expo/link)",
+      "Bash(curl -sS http://localhost:8081/_expo/runtime)",
+      "Bash(curl -sS -H \"Expo-Platform: ios\" http://localhost:8081/)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('extra.expoGo:', d.get\\('extra',{}\\).get\\('expoGo',{}\\).get\\('developer',{}\\)\\); print\\('hostUri:', d.get\\('extra',{}\\).get\\('expoClient',{}\\).get\\('hostUri'\\)\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\('extra',{}\\).get\\('expoClient',{}\\).get\\('hostUri',''\\)\\)\")"
     ],
     "additionalDirectories": [
       "/Users/vishalchauhan/code/profirmo/frontend/app/services",

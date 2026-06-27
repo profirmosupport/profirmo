@@ -8,7 +8,7 @@
 //   3. Entry point to per-client profile setup (the rule generator
 //      needs an entity-type + GSTIN to produce useful rows).
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Receipt,
   RefreshCw,
@@ -16,6 +16,9 @@ import {
   XCircle,
   AlertTriangle,
   Trash2,
+  Search,
+  ChevronDown,
+  X,
 } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import Card from '@/components/common/Card';
@@ -28,6 +31,7 @@ import {
   getObligationAttachmentUrl,
   softDeleteObligation,
 } from '@/services/complianceService';
+import clientService from '@/services/clientService';
 import Modal from '@/components/common/Modal';
 import { ROLES } from '@/utils/constants';
 import { formatDate } from '@/utils/formatters';
@@ -59,6 +63,34 @@ export default function CompliancePage() {
   const [filter, setFilter] = useState('pending');
   const [busyId, setBusyId] = useState(null);
 
+  // Client picker — pre-loaded once on mount. Filtering is client-side
+  // because the obligations list endpoint doesn't yet accept a
+  // clientUserId query param and the schedule is small enough that
+  // narrowing in memory is instant.
+  const [clients, setClients] = useState([]);
+  const [selectedClientId, setSelectedClientId] = useState('');
+  const clientById = useMemo(() => {
+    const m = new Map();
+    for (const c of clients) m.set(c.id, c);
+    return m;
+  }, [clients]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await clientService.getAll({ limit: 500 });
+        const data = (res && res.data) || [];
+        if (active) setClients(Array.isArray(data) ? data : []);
+      } catch {
+        if (active) setClients([]);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -78,6 +110,13 @@ export default function CompliancePage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Narrow the visible list (and the KPI counts below) to the picked
+  // client so the page becomes a per-client view when one is chosen.
+  const visibleItems = useMemo(() => {
+    if (!selectedClientId) return items;
+    return items.filter((it) => it.clientUserId === selectedClientId);
+  }, [items, selectedClientId]);
 
   async function setStatus(item, status) {
     setBusyId(item.id);
@@ -99,10 +138,10 @@ export default function CompliancePage() {
   const [deleteItem, setDeleteItem] = useState(null);
 
   const today = todayIso();
-  const overdue = items.filter(
+  const overdue = visibleItems.filter(
     (i) => i.status === 'pending' && i.dueDate < today
   ).length;
-  const dueThisWeek = items.filter((i) => {
+  const dueThisWeek = visibleItems.filter((i) => {
     if (i.status !== 'pending') return false;
     const week = new Date();
     week.setDate(week.getDate() + 7);
@@ -139,10 +178,20 @@ export default function CompliancePage() {
               Total visible
             </p>
             <p className="mt-1 text-2xl font-semibold text-slate-800">
-              {items.length}
+              {visibleItems.length}
             </p>
           </Card>
         </div>
+
+        {/* Per-client filter — searchable dropdown. Pre-loads every
+            client the pro can see; client-side filter narrows the
+            obligation list and the KPI counts above without a
+            network round trip. */}
+        <ClientPicker
+          clients={clients}
+          value={selectedClientId}
+          onChange={setSelectedClientId}
+        />
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="inline-flex overflow-hidden rounded-lg border border-slate-200">
@@ -181,18 +230,30 @@ export default function CompliancePage() {
 
         {loading ? (
           <p className="text-sm text-slate-500">Loading obligations…</p>
-        ) : items.length === 0 ? (
+        ) : visibleItems.length === 0 ? (
           <Card>
             <div className="flex flex-col items-center gap-3 py-8 text-center">
               <Receipt size={28} className="text-slate-300" />
               <p className="text-sm font-medium text-slate-700">
-                No obligations to show.
+                {selectedClientId
+                  ? 'No obligations for this client under the current filter.'
+                  : 'No obligations to show.'}
               </p>
               <p className="max-w-md text-xs text-slate-500">
-                Open a client's profile, set their entity type + GSTIN, then
-                click <span className="font-semibold">Generate schedule</span>{' '}
-                to auto-create their upcoming filings. (UI for that is in v2 —
-                today the generator is invoked via the backend service.)
+                {selectedClientId ? (
+                  <>
+                    Try the <span className="font-semibold">All</span> tab, or
+                    clear the client filter to see the full schedule.
+                  </>
+                ) : (
+                  <>
+                    Open a client&apos;s profile, set their entity type + GSTIN,
+                    then click{' '}
+                    <span className="font-semibold">Generate schedule</span>{' '}
+                    to auto-create their upcoming filings. (UI for that is in v2
+                    — today the generator is invoked via the backend service.)
+                  </>
+                )}
               </p>
             </div>
           </Card>
@@ -212,9 +273,10 @@ export default function CompliancePage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {items.map((it) => {
+                {visibleItems.map((it) => {
                   const isOverdue =
                     it.status === 'pending' && it.dueDate < today;
+                  const client = clientById.get(it.clientUserId);
                   return (
                     <tr key={it.id} className="hover:bg-slate-50">
                       <td
@@ -237,8 +299,25 @@ export default function CompliancePage() {
                       <td className="px-4 py-3 text-slate-600">
                         {it.periodLabel}
                       </td>
-                      <td className="px-4 py-3 font-mono text-[11px] text-slate-500">
-                        {it.clientUserId}
+                      <td className="px-4 py-3 text-slate-600">
+                        {client ? (
+                          <div>
+                            <p className="font-medium text-slate-800">
+                              {client.name || client.email || client.phone || it.clientUserId}
+                            </p>
+                            {client.phone || client.email ? (
+                              <p className="text-[11px] text-slate-400">
+                                {[client.phone, client.email]
+                                  .filter(Boolean)
+                                  .join(' · ')}
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span className="font-mono text-[11px] text-slate-500">
+                            {it.clientUserId}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <Badge variant={STATUS_VARIANT[it.status] || 'gray'}>
@@ -509,5 +588,139 @@ function MarkDoneModal({ item, onClose, onDone }) {
         </div>
       )}
     </Modal>
+  );
+}
+
+/**
+ * ClientPicker — searchable dropdown for filtering the compliance
+ * schedule to one client at a time. Type to filter, click to pick,
+ * or hit the × in the selected pill to clear back to "all clients".
+ *
+ * Kept inline here because no other surface needs this exact shape;
+ * if a second use shows up we can promote it to components/common/.
+ */
+function ClientPicker({ clients, value, onChange }) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function onClick(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [open]);
+
+  const selected = useMemo(
+    () => (value ? clients.find((c) => c.id === value) || null : null),
+    [clients, value]
+  );
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return clients;
+    return clients.filter((c) =>
+      [c.name, c.email, c.phone]
+        .map((s) => String(s || '').toLowerCase())
+        .some((s) => s.includes(q))
+    );
+  }, [clients, query]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <label className="mb-1.5 block text-xs font-medium text-slate-600">
+        Filter by client
+      </label>
+      {selected ? (
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm">
+          <div className="min-w-0">
+            <p className="truncate font-semibold text-slate-800">
+              {selected.name || selected.email || selected.phone || selected.id}
+            </p>
+            <p className="truncate text-[11px] text-slate-500">
+              Showing only this client&apos;s compliance schedule.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              onChange('');
+              setQuery('');
+            }}
+            className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-slate-300 hover:text-slate-800"
+            title="Clear client filter"
+          >
+            <X size={11} />
+            Clear
+          </button>
+        </div>
+      ) : (
+        <div className="relative">
+          <Search
+            size={14}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+          />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            placeholder={
+              clients.length === 0
+                ? 'No clients linked to you yet'
+                : `Search ${clients.length} client${clients.length === 1 ? '' : 's'} by name, phone, or email…`
+            }
+            disabled={clients.length === 0}
+            className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-9 text-sm text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-slate-50"
+          />
+          <ChevronDown
+            size={14}
+            className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+          />
+        </div>
+      )}
+
+      {!selected && open && filtered.length > 0 && (
+        <ul
+          role="listbox"
+          className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg"
+        >
+          {filtered.slice(0, 50).map((c) => (
+            <li key={c.id}>
+              <button
+                type="button"
+                onClick={() => {
+                  onChange(c.id);
+                  setQuery('');
+                  setOpen(false);
+                }}
+                className="flex w-full items-center justify-between gap-2 border-b border-slate-100 px-3 py-2 text-left last:border-b-0 hover:bg-blue-50"
+              >
+                <span className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-800">
+                    {c.name || c.email || c.phone || c.id}
+                  </p>
+                  <p className="truncate text-[11px] text-slate-500">
+                    {[c.phone, c.email].filter(Boolean).join(' · ') || '—'}
+                  </p>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {!selected && open && filtered.length === 0 && query.trim() && (
+        <p className="absolute z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-center text-xs text-slate-500 shadow-lg">
+          No clients match &ldquo;{query}&rdquo;.
+        </p>
+      )}
+    </div>
   );
 }

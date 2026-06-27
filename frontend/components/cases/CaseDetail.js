@@ -510,8 +510,13 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
 
       {/* Header */}
       <Card>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
+        {/* `flex-wrap` + `flex-1 min-w-0` on the title block lets the
+            action buttons (Refresh, Sync from E-Courts, Edit, Delete)
+            drop to a new row whenever the title is long enough that
+            the right side would otherwise get squeezed. The title
+            keeps its natural soft-wrap inside `min-w-0`. */}
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1 basis-[18rem]">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-lg font-semibold text-slate-900">
                 {data.title || 'Untitled case'}
@@ -550,7 +555,7 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <Button
               variant="outline"
               size="sm"
