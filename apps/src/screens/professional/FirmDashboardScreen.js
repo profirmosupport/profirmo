@@ -46,6 +46,13 @@ import {
 import firmJoinService from '../../services/firmJoinService';
 import { apiPut, unwrap } from '../../services/api';
 import { displayName, formatDate } from '../../utils/formatters';
+import CasesFilterBar from '../../components/cases/CasesFilterBar';
+import {
+  STAGE_LABEL,
+  applyCaseFilters,
+  emptyCaseFilter,
+  isCaseFilterActive,
+} from '../../utils/caseFilters';
 import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
 
 // Derive 1–2-letter initials from a firm name. "Chauhan Associates"
@@ -746,6 +753,10 @@ function LeadsTab({ leads }) {
 }
 
 function CasesTab({ cases, onOpenCase }) {
+  const [filter, setFilter] = useState(emptyCaseFilter());
+  const visible = useMemo(() => applyCaseFilters(cases, filter), [cases, filter]);
+  const filterActive = isCaseFilterActive(filter);
+
   if (!cases.length) {
     return (
       <EmptyState
@@ -755,42 +766,104 @@ function CasesTab({ cases, onOpenCase }) {
       />
     );
   }
+
   return (
     <View style={{ gap: spacing.sm }}>
-      {cases.map((c) => (
-        <Pressable
-          key={c.id}
-          onPress={() => onOpenCase(c)}
-          style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1 }]}
-        >
-          <Card>
-            <View style={styles.rowSplit}>
-              <Text style={styles.itemTitle} numberOfLines={1}>
-                {c.title || c.caseNumber || `Case ${c.id}`}
-              </Text>
-              {c.status ? (
-                <Badge
-                  variant={
-                    String(c.status).toLowerCase() === 'closed'
-                      ? 'gray'
-                      : 'green'
-                  }
-                >
-                  {c.status}
-                </Badge>
-              ) : null}
-            </View>
-            {c.clientName || c.professionalName ? (
-              <Text style={styles.muted}>
-                {c.clientName ? `Client: ${c.clientName}` : ''}
-                {c.clientName && c.professionalName ? ' · ' : ''}
-                {c.professionalName ? `Pro: ${c.professionalName}` : ''}
-              </Text>
-            ) : null}
-          </Card>
-        </Pressable>
-      ))}
+      <CasesFilterBar
+        value={filter}
+        onChange={setFilter}
+        totalCount={cases.length}
+        matchCount={visible.length}
+      />
+      {visible.length === 0 ? (
+        <EmptyState
+          icon="search"
+          title="No cases match these filters"
+          description={
+            filterActive
+              ? 'Try clearing the filters above or searching for something else.'
+              : ''
+          }
+          action={
+            filterActive ? (
+              <Pressable
+                onPress={() => setFilter(emptyCaseFilter())}
+                style={({ pressed }) => [
+                  styles.clearFiltersBtn,
+                  { opacity: pressed ? 0.88 : 1 },
+                ]}
+              >
+                <Feather name="x" size={12} color={colors.primary} />
+                <Text style={styles.clearFiltersText}>Clear filters</Text>
+              </Pressable>
+            ) : null
+          }
+        />
+      ) : (
+        visible.map((c) => (
+          <Pressable
+            key={c.id}
+            onPress={() => onOpenCase(c)}
+            style={({ pressed }) => [{ opacity: pressed ? 0.9 : 1 }]}
+          >
+            <FirmCaseCard c={c} />
+          </Pressable>
+        ))
+      )}
     </View>
+  );
+}
+
+function FirmCaseCard({ c }) {
+  const assignees = Array.isArray(c.professionalIds)
+    ? c.professionalIds.filter(Boolean)
+    : [];
+  const isFirmCase = assignees.length >= 2;
+  const stageLabel = c.stage ? STAGE_LABEL[c.stage] || c.stage : null;
+  const priority = c.priority || 'medium';
+  const priorityVariant =
+    priority === 'urgent' ? 'red' : priority === 'high' ? 'amber' : 'gray';
+  return (
+    <Card>
+      <View style={styles.rowSplit}>
+        <View style={{ flex: 1 }}>
+          <View style={styles.rowSplit}>
+            <Text style={styles.itemTitle} numberOfLines={1}>
+              {c.title || c.caseNumber || `Case ${c.id}`}
+            </Text>
+            {isFirmCase ? (
+              <View style={styles.firmCaseChip}>
+                <Feather name="briefcase" size={9} color="#6d28d9" />
+                <Text style={styles.firmCaseChipText}>Firm</Text>
+              </View>
+            ) : null}
+          </View>
+          {c.category ? (
+            <Text style={styles.muted}>{c.category}</Text>
+          ) : null}
+        </View>
+        <View style={{ alignItems: 'flex-end', gap: 4 }}>
+          {stageLabel ? (
+            <Badge variant="blue">{stageLabel}</Badge>
+          ) : (
+            <Badge variant="gray">Stage —</Badge>
+          )}
+          <Badge variant={priorityVariant}>{priority}</Badge>
+        </View>
+      </View>
+      {c.clientName || c.professionalName ? (
+        <Text style={[styles.muted, { marginTop: 6 }]} numberOfLines={1}>
+          {c.clientName ? `Client: ${c.clientName}` : ''}
+          {c.clientName && c.professionalName ? ' · ' : ''}
+          {c.professionalName ? `Pro: ${c.professionalName}` : ''}
+        </Text>
+      ) : null}
+      {c.nextHearingDate ? (
+        <Text style={styles.tiny}>
+          Next hearing {formatDate(c.nextHearingDate)}
+        </Text>
+      ) : null}
+    </Card>
   );
 }
 
@@ -1053,6 +1126,37 @@ const styles = StyleSheet.create({
 
   muted: { marginTop: 2, fontSize: fontSize.sm, color: colors.textSecondary },
   tiny: { marginTop: 4, fontSize: 11, color: colors.textMuted },
+
+  firmCaseChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    backgroundColor: '#ede9fe',
+  },
+  firmCaseChipText: {
+    fontSize: 9,
+    fontWeight: fontWeight.bold,
+    color: '#6d28d9',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  clearFiltersBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primarySoft,
+  },
+  clearFiltersText: {
+    fontSize: 12,
+    fontWeight: fontWeight.bold,
+    color: colors.primary,
+  },
 
   // Hamburger icon embedded in the screen's nav header (right side).
   headerMenuBtn: {

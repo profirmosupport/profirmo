@@ -25,6 +25,7 @@ export default function SearchableMultiSelect({
   onChange,
   placeholder = 'Select…',
   disabled = false,
+  error,
 }) {
   const [open, setOpen] = useState(false);
   const selectedSet = useMemo(() => new Set(value), [value]);
@@ -52,7 +53,11 @@ export default function SearchableMultiSelect({
           {
             opacity: pressed && !disabled ? 0.95 : 1,
             backgroundColor: disabled ? colors.surfaceMuted : colors.surface,
-            borderColor: open ? colors.primary : colors.borderStrong,
+            borderColor: error
+              ? colors.danger || '#dc2626'
+              : open
+                ? colors.primary
+                : colors.borderStrong,
           },
         ]}
       >
@@ -89,7 +94,11 @@ export default function SearchableMultiSelect({
         )}
         <Feather name="chevron-down" size={16} color={colors.textMuted} />
       </Pressable>
-      {hint ? <Text style={styles.hint}>{hint}</Text> : null}
+      {error ? (
+        <Text style={styles.error}>{error}</Text>
+      ) : hint ? (
+        <Text style={styles.hint}>{hint}</Text>
+      ) : null}
 
       <PickerModal
         open={open}
@@ -227,6 +236,7 @@ const styles = StyleSheet.create({
   },
   chipText: { fontSize: 11, fontWeight: fontWeight.bold, color: colors.primarySoftText, maxWidth: 110 },
   hint: { marginTop: 4, fontSize: fontSize.xs, color: colors.textMuted },
+  error: { marginTop: 4, fontSize: fontSize.xs, color: colors.danger || '#dc2626' },
 
   sheet: { flex: 1, backgroundColor: colors.bg },
   sheetHeader: {

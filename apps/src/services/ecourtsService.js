@@ -38,8 +38,15 @@ export async function getImportedCase(cnr) {
   return unwrap(res) || { imported: false, caseId: null, role: null };
 }
 
-export async function importCaseFromEcourts(cnr) {
-  const res = await apiPost('/api/ecourts/cases/import', { cnr });
+export async function importCaseFromEcourts(cnr, opts = {}) {
+  const body = { cnr };
+  if (Array.isArray(opts.clientIds) && opts.clientIds.length > 0) {
+    body.clientIds = opts.clientIds.filter(Boolean);
+  }
+  if (opts.overrides && typeof opts.overrides === 'object') {
+    body.overrides = opts.overrides;
+  }
+  const res = await apiPost('/api/ecourts/cases/import', body);
   return unwrap(res);
 }
 

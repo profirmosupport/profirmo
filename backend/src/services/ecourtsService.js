@@ -671,10 +671,14 @@ async function syncCase(caseId, user) {
   }
   const row = await Case.findByPk(caseId);
   if (!row) throw { statusCode: 404, message: 'Case not found.' };
-  if (row.source !== 'ecourts' || !row.cnr) {
+  // Any case with a CNR can sync — the case doesn't have to have been
+  // imported from E-Courts originally. When a manually-added CNR pulls
+  // a successful snapshot the row is promoted to `source='ecourts'` so
+  // downstream consumers treat it as live-linked.
+  if (!row.cnr) {
     throw {
       statusCode: 400,
-      message: 'This case was not imported from E-Courts.',
+      message: 'Add a CNR to this case before syncing from E-Courts.',
     };
   }
 
@@ -701,6 +705,13 @@ async function syncCase(caseId, user) {
 
   const diff = computeDiff(oldSnap, eciCase);
   const mapped = mapEciToCaseFields(eciCase);
+  // Promote a manually-added CNR case to `source='ecourts'` on the
+  // first successful sync — keeps every downstream consumer (dashboard
+  // badges, attachment streams, eCourts UI deep-links) treating it as
+  // a live-linked case from this point on.
+  if (row.source !== 'ecourts') {
+    mapped.source = 'ecourts';
+  }
   await row.update(mapped);
   return { case: row.get({ plain: true }), diff };
 }

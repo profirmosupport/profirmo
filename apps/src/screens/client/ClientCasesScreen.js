@@ -1,8 +1,9 @@
 // ClientCasesScreen — mobile mirror of /dashboard/client/cases.
-// Shows every case filed for the logged-in client across all the
-// professionals they've engaged. Same column set as the web table.
+// Matches the professional list's filter bar + stage column so clients
+// see the same layout. Clients can't create cases, so the New Case CTA
+// and quota banner from the pro screen are intentionally omitted.
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -17,7 +18,14 @@ import ScreenContainer from '../../components/common/ScreenContainer';
 import Card from '../../components/common/Card';
 import Badge from '../../components/common/Badge';
 import EmptyState from '../../components/common/EmptyState';
+import CasesFilterBar from '../../components/cases/CasesFilterBar';
 import { listMyClientCases } from '../../services/caseService';
+import {
+  STAGE_LABEL,
+  applyCaseFilters,
+  emptyCaseFilter,
+  isCaseFilterActive,
+} from '../../utils/caseFilters';
 import { formatDate } from '../../utils/formatters';
 import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
 
@@ -26,18 +34,6 @@ const PRIORITY_VARIANT = {
   medium: 'gray',
   high: 'amber',
   urgent: 'red',
-};
-
-const STATUS_VARIANT = {
-  open: 'blue',
-  'in-progress': 'amber',
-  closed: 'green',
-};
-
-const STATUS_LABEL = {
-  open: 'Open',
-  'in-progress': 'In progress',
-  closed: 'Closed',
 };
 
 function professionalsFor(c) {
@@ -54,6 +50,7 @@ function professionalsFor(c) {
 export default function ClientCasesScreen({ navigation }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState(emptyCaseFilter());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -72,6 +69,9 @@ export default function ClientCasesScreen({ navigation }) {
       load();
     }, [load])
   );
+
+  const visible = useMemo(() => applyCaseFilters(rows, filter), [rows, filter]);
+  const filterActive = isCaseFilterActive(filter);
 
   if (loading && rows.length === 0) {
     return (
@@ -102,30 +102,66 @@ export default function ClientCasesScreen({ navigation }) {
           {rows.length} case{rows.length === 1 ? '' : 's'}
         </Text>
       </View>
-      <FlatList
-        data={rows}
-        keyExtractor={(item) => item.id}
-        onRefresh={load}
-        refreshing={loading}
-        contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => (
-          <Pressable
-            onPress={() =>
-              navigation.navigate('CaseDetail', { caseId: item.id })
+      <View style={styles.filterWrap}>
+        <CasesFilterBar
+          value={filter}
+          onChange={setFilter}
+          totalCount={rows.length}
+          matchCount={visible.length}
+        />
+      </View>
+      {visible.length === 0 ? (
+        <View style={styles.emptyMatch}>
+          <EmptyState
+            icon="search"
+            title="No cases match these filters"
+            description={
+              filterActive
+                ? 'Try clearing the filters above or searching for something else.'
+                : ''
             }
-            style={({ pressed }) => [{ opacity: pressed ? 0.92 : 1 }]}
-          >
-            <ClientCaseRow item={item} />
-          </Pressable>
-        )}
-      />
+            action={
+              filterActive ? (
+                <Pressable
+                  onPress={() => setFilter(emptyCaseFilter())}
+                  style={({ pressed }) => [
+                    styles.clearAction,
+                    { opacity: pressed ? 0.88 : 1 },
+                  ]}
+                >
+                  <Feather name="x" size={12} color={colors.primary} />
+                  <Text style={styles.clearActionText}>Clear filters</Text>
+                </Pressable>
+              ) : null
+            }
+          />
+        </View>
+      ) : (
+        <FlatList
+          data={visible}
+          keyExtractor={(item) => item.id}
+          onRefresh={load}
+          refreshing={loading}
+          contentContainerStyle={styles.listContent}
+          renderItem={({ item }) => (
+            <Pressable
+              onPress={() =>
+                navigation.navigate('CaseDetail', { caseId: item.id })
+              }
+              style={({ pressed }) => [{ opacity: pressed ? 0.92 : 1 }]}
+            >
+              <ClientCaseRow item={item} />
+            </Pressable>
+          )}
+        />
+      )}
     </ScreenContainer>
   );
 }
 
 function ClientCaseRow({ item }) {
   const priority = item.priority || 'medium';
-  const status = item.status || 'open';
+  const stageLabel = item.stage ? STAGE_LABEL[item.stage] || item.stage : null;
   const pros = professionalsFor(item);
 
   return (
@@ -140,9 +176,11 @@ function ClientCaseRow({ item }) {
           ) : null}
         </View>
         <View style={styles.badgeStack}>
-          <Badge variant={STATUS_VARIANT[status] || 'gray'}>
-            {STATUS_LABEL[status] || status}
-          </Badge>
+          {stageLabel ? (
+            <Badge variant="blue">{stageLabel}</Badge>
+          ) : (
+            <Badge variant="gray">Stage —</Badge>
+          )}
           <Badge variant={PRIORITY_VARIANT[priority] || 'gray'}>
             {priority}
           </Badge>
@@ -201,7 +239,26 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   count: { fontSize: fontSize.sm, color: colors.textSecondary },
+  filterWrap: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
   listContent: { padding: spacing.lg, paddingTop: 0 },
+  emptyMatch: { paddingVertical: spacing.xl },
+  clearAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primarySoft,
+  },
+  clearActionText: {
+    fontSize: 12,
+    fontWeight: fontWeight.bold,
+    color: colors.primary,
+  },
 
   headRow: {
     flexDirection: 'row',

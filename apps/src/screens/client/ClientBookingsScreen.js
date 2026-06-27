@@ -21,6 +21,7 @@ import EmptyState from '../../components/common/EmptyState';
 import AvatarWithInitials from '../../components/common/AvatarWithInitials';
 import { listMyBookings } from '../../services/bookingService';
 import { formatDate, formatRupees } from '../../utils/formatters';
+import { formatSlotLabel } from '../../utils/availability';
 import { imageUrl } from '../../utils/imageUrl';
 import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
 
@@ -30,17 +31,6 @@ const STATUS_VARIANT = {
   completed: 'gray',
   cancelled: 'gray',
 };
-
-function formatTime12h(value) {
-  if (!value) return '';
-  const [hStr, mStr] = String(value).split(':');
-  const h = Number(hStr);
-  const m = Number(mStr || 0);
-  if (!Number.isFinite(h)) return value;
-  const period = h >= 12 ? 'PM' : 'AM';
-  const hour12 = ((h + 11) % 12) + 1;
-  return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
-}
 
 export default function ClientBookingsScreen({ navigation }) {
   const [rows, setRows] = useState([]);
@@ -117,7 +107,7 @@ function BookingRow({ booking, onPress }) {
   const whenLabel = isInstant
     ? 'Instant · Now'
     : booking.date
-      ? `${formatDate(booking.date)}${booking.time ? ` · ${formatTime12h(booking.time)}` : ''}`
+      ? `${formatDate(booking.date)}${booking.time ? ` · ${formatSlotLabel(booking.time)}` : ''}`
       : '—';
 
   return (

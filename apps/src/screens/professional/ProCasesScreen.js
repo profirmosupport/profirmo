@@ -1,9 +1,10 @@
 // ProCasesScreen — mobile mirror of /dashboard/professional/cases.
 // Lists every case assigned to the logged-in professional with the
-// same column set the web's table renders (title, category, client,
-// priority, status, next hearing, created). Tap a row → CaseDetail.
+// same client-side filters the web table exposes (search + stage +
+// priority), plus a stage badge on each card so the workflow column
+// is visible at a glance. Tap a row → CaseDetail.
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -18,7 +19,16 @@ import ScreenContainer from '../../components/common/ScreenContainer';
 import Card from '../../components/common/Card';
 import Badge from '../../components/common/Badge';
 import EmptyState from '../../components/common/EmptyState';
+import CasesFilterBar from '../../components/cases/CasesFilterBar';
+import AddCaseModal from '../../components/cases/AddCaseModal';
 import { listMyCases } from '../../services/caseService';
+import { getMyUsage } from '../../services/subscriptionService';
+import {
+  STAGE_LABEL,
+  applyCaseFilters,
+  emptyCaseFilter,
+  isCaseFilterActive,
+} from '../../utils/caseFilters';
 import { formatDate } from '../../utils/formatters';
 import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
 
@@ -29,29 +39,22 @@ const PRIORITY_VARIANT = {
   urgent: 'red',
 };
 
-const STATUS_VARIANT = {
-  open: 'blue',
-  'in-progress': 'amber',
-  closed: 'green',
-};
-
-const STATUS_LABEL = {
-  open: 'Open',
-  'in-progress': 'In progress',
-  closed: 'Closed',
-};
-
 export default function ProCasesScreen({ navigation }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState(emptyCaseFilter());
+  const [usage, setUsage] = useState(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await listMyCases();
-      setRows(r || []);
-    } catch {
-      setRows([]);
+      // Cases first; usage in parallel but tolerated to fail (the
+      // button only shrinks to "Quota unknown" rather than blocking
+      // creation entirely).
+      const [r, u] = await Promise.allSettled([listMyCases(), getMyUsage()]);
+      setRows(r.status === 'fulfilled' ? r.value || [] : []);
+      if (u.status === 'fulfilled') setUsage(u.value || null);
     } finally {
       setLoading(false);
     }
@@ -62,6 +65,17 @@ export default function ProCasesScreen({ navigation }) {
       load();
     }, [load])
   );
+
+  const casesUsage = usage && usage.cases ? usage.cases : null;
+  const quotaFull = !!(
+    casesUsage &&
+    !casesUsage.unlimited &&
+    typeof casesUsage.remaining === 'number' &&
+    casesUsage.remaining <= 0
+  );
+
+  const visible = useMemo(() => applyCaseFilters(rows, filter), [rows, filter]);
+  const filterActive = isCaseFilterActive(filter);
 
   if (loading && rows.length === 0) {
     return (
@@ -76,10 +90,39 @@ export default function ProCasesScreen({ navigation }) {
   if (rows.length === 0) {
     return (
       <ScreenContainer hasNavHeader>
+        <View style={styles.headerStripEmpty}>
+          {casesUsage ? <QuotaBanner usage={casesUsage} planName={usage?.planName} /> : null}
+          <Pressable
+            onPress={() => setAddOpen(true)}
+            disabled={quotaFull}
+            style={({ pressed }) => [
+              styles.newCaseBtn,
+              { opacity: quotaFull ? 0.55 : pressed ? 0.9 : 1 },
+            ]}
+          >
+            <Feather name="plus" size={13} color="#ffffff" />
+            <Text style={styles.newCaseText}>
+              {quotaFull ? 'Plan limit reached' : 'New case'}
+            </Text>
+          </Pressable>
+        </View>
         <EmptyState
           icon="folder"
           title="No cases yet"
-          description="Cases assigned to you will appear here. Convert a booking from your bookings list to start one."
+          description="Tap “New case” above to add one — or convert a booking from your bookings list."
+        />
+        <AddCaseModal
+          visible={addOpen}
+          onClose={() => setAddOpen(false)}
+          onCreated={(created) => {
+            setAddOpen(false);
+            if (created && created.id) {
+              load();
+              navigation.navigate('CaseDetail', { caseId: created.id });
+            } else {
+              load();
+            }
+          }}
         />
       </ScreenContainer>
     );
@@ -88,28 +131,123 @@ export default function ProCasesScreen({ navigation }) {
   return (
     <ScreenContainer scroll={false} hasNavHeader>
       <View style={styles.headerStrip}>
-        <Text style={styles.count}>
-          {rows.length} case{rows.length === 1 ? '' : 's'}
-        </Text>
+        <View style={styles.headerLeft}>
+          <Text style={styles.count}>
+            {rows.length} case{rows.length === 1 ? '' : 's'}
+          </Text>
+          {casesUsage ? (
+            <Text style={styles.quotaPill}>
+              {casesUsage.unlimited
+                ? `Unlimited · ${usage?.planName || 'Plan'}`
+                : `${casesUsage.used}/${casesUsage.limit} on ${
+                    usage?.planName || 'plan'
+                  }`}
+            </Text>
+          ) : null}
+        </View>
+        <Pressable
+          onPress={() => setAddOpen(true)}
+          disabled={quotaFull}
+          style={({ pressed }) => [
+            styles.newCaseBtn,
+            { opacity: quotaFull ? 0.55 : pressed ? 0.9 : 1 },
+          ]}
+        >
+          <Feather name="plus" size={13} color="#ffffff" />
+          <Text style={styles.newCaseText}>
+            {quotaFull ? 'Limit reached' : 'New case'}
+          </Text>
+        </Pressable>
       </View>
-      <FlatList
-        data={rows}
-        keyExtractor={(item) => item.id}
-        onRefresh={load}
-        refreshing={loading}
-        contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => (
-          <Pressable
-            onPress={() =>
-              navigation.navigate('CaseDetail', { caseId: item.id })
+      <View style={styles.filterWrap}>
+        <CasesFilterBar
+          value={filter}
+          onChange={setFilter}
+          totalCount={rows.length}
+          matchCount={visible.length}
+        />
+      </View>
+      {visible.length === 0 ? (
+        <View style={styles.emptyMatch}>
+          <EmptyState
+            icon="search"
+            title="No cases match these filters"
+            description={
+              filterActive
+                ? 'Try clearing the filters above or searching for something else.'
+                : ''
             }
-            style={({ pressed }) => [{ opacity: pressed ? 0.92 : 1 }]}
-          >
-            <CaseRow item={item} />
-          </Pressable>
-        )}
+            action={
+              filterActive ? (
+                <Pressable
+                  onPress={() => setFilter(emptyCaseFilter())}
+                  style={({ pressed }) => [
+                    styles.clearAction,
+                    { opacity: pressed ? 0.88 : 1 },
+                  ]}
+                >
+                  <Feather name="x" size={12} color={colors.primary} />
+                  <Text style={styles.clearActionText}>Clear filters</Text>
+                </Pressable>
+              ) : null
+            }
+          />
+        </View>
+      ) : (
+        <FlatList
+          data={visible}
+          keyExtractor={(item) => item.id}
+          onRefresh={load}
+          refreshing={loading}
+          contentContainerStyle={styles.listContent}
+          renderItem={({ item }) => (
+            <Pressable
+              onPress={() =>
+                navigation.navigate('CaseDetail', { caseId: item.id })
+              }
+              style={({ pressed }) => [{ opacity: pressed ? 0.92 : 1 }]}
+            >
+              <CaseRow item={item} />
+            </Pressable>
+          )}
+        />
+      )}
+
+      <AddCaseModal
+        visible={addOpen}
+        onClose={() => setAddOpen(false)}
+        onCreated={(created) => {
+          setAddOpen(false);
+          if (created && created.id) {
+            load();
+            navigation.navigate('CaseDetail', { caseId: created.id });
+          } else {
+            load();
+          }
+        }}
       />
     </ScreenContainer>
+  );
+}
+
+function QuotaBanner({ usage, planName }) {
+  if (!usage) return null;
+  const isFull = !usage.unlimited && (usage.remaining || 0) <= 0;
+  return (
+    <View style={[styles.quotaBanner, isFull ? styles.quotaBannerFull : null]}>
+      <Feather
+        name={isFull ? 'alert-circle' : 'briefcase'}
+        size={12}
+        color={isFull ? '#b91c1c' : colors.primary}
+      />
+      <Text style={[styles.quotaBannerText, isFull ? styles.quotaBannerTextFull : null]}>
+        {usage.unlimited
+          ? `Unlimited cases on the ${planName || 'current'} plan.`
+          : isFull
+            ? `Plan limit reached on ${planName || 'your plan'} (${usage.used}/${usage.limit}). Upgrade to add more.`
+            : `${usage.used}/${usage.limit} cases used on the ${planName || 'current'} plan.`}
+      </Text>
+    </View>
   );
 }
 
@@ -119,14 +257,13 @@ function CaseRow({ item }) {
     : [];
   const isFirmCase = assignees.length >= 2;
   const priority = item.priority || 'medium';
-  const status = item.status || 'open';
+  const stageLabel = item.stage ? STAGE_LABEL[item.stage] || item.stage : null;
   const clientName =
     (item.client && item.client.name) || item.clientName || item.clientId;
   const clientPhone = item.client && item.client.phone;
 
   return (
     <Card style={{ marginBottom: spacing.sm }}>
-      {/* Header row — title + status badges */}
       <View style={styles.headRow}>
         <View style={{ flex: 1 }}>
           <View style={styles.titleRow}>
@@ -145,16 +282,17 @@ function CaseRow({ item }) {
           ) : null}
         </View>
         <View style={styles.badgeStack}>
-          <Badge variant={STATUS_VARIANT[status] || 'gray'}>
-            {STATUS_LABEL[status] || status}
-          </Badge>
+          {stageLabel ? (
+            <Badge variant="blue">{stageLabel}</Badge>
+          ) : (
+            <Badge variant="gray">Stage —</Badge>
+          )}
           <Badge variant={PRIORITY_VARIANT[priority] || 'gray'}>
             {priority}
           </Badge>
         </View>
       </View>
 
-      {/* Body — meta rows */}
       <View style={styles.metaGrid}>
         {clientName ? (
           <View style={styles.metaRow}>
@@ -199,9 +337,81 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
   },
+  headerStripEmpty: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  headerLeft: { flex: 1, gap: 2 },
   count: { fontSize: fontSize.sm, color: colors.textSecondary },
+  quotaPill: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: fontWeight.semibold,
+  },
+  newCaseBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primary,
+  },
+  newCaseText: {
+    fontSize: 12,
+    fontWeight: fontWeight.bold,
+    color: '#ffffff',
+    letterSpacing: 0.2,
+  },
+  quotaBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
+  },
+  quotaBannerFull: {
+    backgroundColor: '#fee2e2',
+    borderColor: '#fca5a5',
+  },
+  quotaBannerText: {
+    flex: 1,
+    fontSize: 11,
+    color: colors.textSecondary,
+    lineHeight: 15,
+  },
+  quotaBannerTextFull: { color: '#b91c1c' },
+  filterWrap: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
   listContent: { padding: spacing.lg, paddingTop: 0 },
+  emptyMatch: { paddingVertical: spacing.xl },
+  clearAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primarySoft,
+  },
+  clearActionText: {
+    fontSize: 12,
+    fontWeight: fontWeight.bold,
+    color: colors.primary,
+  },
 
   headRow: {
     flexDirection: 'row',

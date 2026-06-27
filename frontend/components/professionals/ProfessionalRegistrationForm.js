@@ -486,6 +486,16 @@ export function validateValues(values, professionalType, mode) {
     req('taxRegistrationNumber', 'Tax registration number is required.');
   }
 
+  const subCats = Array.isArray(values.subCategoryIds)
+    ? values.subCategoryIds.filter(Boolean)
+    : [];
+  if (subCats.length === 0) {
+    errors.subCategoryIds =
+      professionalType === PROFESSIONAL_TYPES.TAX
+        ? 'Select at least one tax sub-category.'
+        : 'Select at least one legal sub-category.';
+  }
+
   return errors;
 }
 
@@ -819,6 +829,7 @@ export default function ProfessionalRegistrationForm({
         'country',
         'state',
         'city',
+        'subCategoryIds',
       ],
       2: [
         'barRegistrationNumber',
@@ -1152,16 +1163,19 @@ export default function ProfessionalRegistrationForm({
             <MultiCombobox
               label={`${categoryForType.name} sub-categories`}
               name="subCategoryIds"
+              required
               value={values.subCategoryIds || []}
-              onChange={(next) =>
+              onChange={(next) => {
                 setValues((v) => ({
                   ...v,
                   subCategoryIds: Array.from(new Set(next || [])),
-                }))
-              }
+                }));
+                setErrors((er) => ({ ...er, subCategoryIds: undefined }));
+              }}
               options={subCategoryOptions}
               placeholder={`Search ${categoryForType.name.toLowerCase()} areas you practise in…`}
               hint={`Pick every ${categoryForType.name.toLowerCase()} area you practise in.`}
+              error={allErrors.subCategoryIds}
             />
           ) : null}
 

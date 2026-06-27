@@ -716,6 +716,14 @@ function ProRegistrationWizard({ professionalType, verifiedPhone }) {
       if (!form.countryId) next.country = 'Required.';
       if (!form.stateId) next.state = 'Required.';
       if (!form.cityId) next.city = 'Required.';
+      const subs = Array.isArray(form.subCategoryIds)
+        ? form.subCategoryIds.filter(Boolean)
+        : [];
+      if (subs.length === 0) {
+        next.subCategoryIds = isLegal
+          ? 'Select at least one legal sub-category.'
+          : 'Select at least one tax sub-category.';
+      }
     } else if (n === 2 && isLegal) {
       if (!form.barRegistrationNumber.trim())
         next.barRegistrationNumber = 'Required.';
@@ -1067,13 +1075,14 @@ export function Step1({ form, set, setLocation, errors, countries, flatCities, t
 
       {subOptions.length > 0 ? (
         <SearchableMultiSelect
-          label={`${typeCat.name} sub-categories`}
+          label={`${typeCat.name} sub-categories *`}
           hint={`Select every ${typeCat.name.toLowerCase()} area you practise in.`}
           icon="tag"
           options={subOptions}
           value={form.subCategoryIds}
           onChange={(v) => set('subCategoryIds', v)}
           placeholder={`Search ${typeCat.name.toLowerCase()} areas…`}
+          error={errors.subCategoryIds}
         />
       ) : null}
     </View>

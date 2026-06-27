@@ -46,3 +46,12 @@ export async function createBooking(payload) {
   const res = await apiPost('/api/bookings', payload);
   return unwrap(res);
 }
+
+// Pro-only: turn a completed booking into a case. Notes + attachments
+// are copied over server-side. Accepts an optional { title, description }
+// payload; the controller derives sensible defaults from the booking
+// when fields are omitted.
+export async function convertBookingToCase(id, payload = {}) {
+  const res = await apiPost(`/api/bookings/${id}/convert-to-case`, payload);
+  return unwrap(res);
+}

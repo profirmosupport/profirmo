@@ -33,13 +33,20 @@ import EmptyState from '../../components/common/EmptyState';
 import AvatarWithInitials from '../../components/common/AvatarWithInitials';
 import {
   addBookingNote,
+  convertBookingToCase,
   getBookingDetail,
 } from '../../services/bookingService';
+import { createReview } from '../../services/reviewService';
 import { uploadFile } from '../../services/uploadService';
 import { useAuth } from '../../contexts/AuthContext';
-import { displayName, formatDate, formatRupees } from '../../utils/formatters';
+import {
+  displayName,
+  formatDate,
+  formatINR,
+} from '../../utils/formatters';
+import { formatSlotLabel } from '../../utils/availability';
 import { imageUrl } from '../../utils/imageUrl';
-import { ROLES } from '../../config/constants';
+import { INSTANT_BOOKING_MULTIPLIER, ROLES } from '../../config/constants';
 import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
 
 const STATUS_VARIANT = {
@@ -71,17 +78,6 @@ function isImageAttachment(att) {
   return IMAGE_EXT_RE.test(url);
 }
 
-function formatTime12h(value) {
-  if (!value) return '';
-  const [hStr, mStr] = String(value).split(':');
-  const h = Number(hStr);
-  const m = Number(mStr || 0);
-  if (!Number.isFinite(h)) return value;
-  const period = h >= 12 ? 'PM' : 'AM';
-  const hour12 = ((h + 11) % 12) + 1;
-  return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
-}
-
 function formatDateTime(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -95,7 +91,7 @@ function formatDateTime(iso) {
   });
 }
 
-export default function BookingDetailScreen({ route }) {
+export default function BookingDetailScreen({ navigation, route }) {
   const { bookingId } = route.params || {};
   const { user } = useAuth();
   const viewerIsClient = user && user.role === ROLES.CLIENT;
@@ -111,6 +107,19 @@ export default function BookingDetailScreen({ route }) {
   const [attachUploading, setAttachUploading] = useState(false);
   const [noteSubmitting, setNoteSubmitting] = useState(false);
   const [noteError, setNoteError] = useState('');
+
+  // Convert-to-case state — collapsed CTA expands into an inline form.
+  const [convertOpen, setConvertOpen] = useState(false);
+  const [convertTitle, setConvertTitle] = useState('');
+  const [convertDescription, setConvertDescription] = useState('');
+  const [convertSubmitting, setConvertSubmitting] = useState(false);
+  const [convertError, setConvertError] = useState('');
+
+  // Review submission state — keyed by review kind so multiple forms
+  // (consultation / professional) can submit independently without
+  // stomping each other's spinners or errors.
+  const [reviewSubmitting, setReviewSubmitting] = useState({});
+  const [reviewErrors, setReviewErrors] = useState({});
 
   const load = useCallback(
     async (isRefresh = false) => {
@@ -210,6 +219,65 @@ export default function BookingDetailScreen({ route }) {
     }
   }
 
+  // BookingDetail + CaseDetail live in the same AccountStack (see
+  // navigation/GuestTabs.js), so a direct navigate keeps us in-stack —
+  // no cross-tab dance needed.
+  function openCaseDetail(caseId) {
+    if (!caseId) return;
+    navigation.navigate('CaseDetail', { caseId });
+  }
+
+  async function handleConvert() {
+    if (convertSubmitting) return;
+    setConvertError('');
+    setConvertSubmitting(true);
+    try {
+      const result = await convertBookingToCase(bookingId, {
+        title: convertTitle.trim() || undefined,
+        description: convertDescription.trim() || undefined,
+      });
+      const caseId = result && result.case && result.case.id;
+      setConvertOpen(false);
+      setConvertTitle('');
+      setConvertDescription('');
+      await load(true);
+      if (caseId) openCaseDetail(caseId);
+    } catch (err) {
+      setConvertError(err?.message || 'Could not convert to a case.');
+    } finally {
+      setConvertSubmitting(false);
+    }
+  }
+
+  // `kind` is 'consultation' or 'professional'. `reviewedUserId` is
+  // omitted for 'professional' (the pro is identified by professionalId
+  // on the booking); the backend resolves the consultation reviewee
+  // server-side when omitted.
+  async function handleSubmitReview(kind, { rating, comment }) {
+    if (!rating || reviewSubmitting[kind]) return;
+    const booking = detail && detail.booking;
+    if (!booking) return;
+    setReviewErrors((m) => ({ ...m, [kind]: undefined }));
+    setReviewSubmitting((m) => ({ ...m, [kind]: true }));
+    try {
+      await createReview({
+        kind,
+        professionalId: booking.professionalId,
+        bookingId: booking.id,
+        rating,
+        comment: comment && comment.trim() ? comment.trim() : undefined,
+      });
+      await load(true);
+    } catch (err) {
+      setReviewErrors((m) => ({
+        ...m,
+        [kind]: err?.message || 'Could not submit the review.',
+      }));
+    } finally {
+      setReviewSubmitting((m) => ({ ...m, [kind]: false }));
+    }
+  }
+
   if (loading && !detail) {
     return (
       <ScreenContainer hasNavHeader>
@@ -244,9 +312,44 @@ export default function BookingDetailScreen({ route }) {
     );
   }
 
-  const { booking, professional, client, payment, escrow, notes = [], permissions = {} } = detail;
+  const {
+    booking,
+    professional,
+    client,
+    payment,
+    escrow,
+    notes = [],
+    permissions = {},
+    reviews = {},
+    linkedCase,
+  } = detail;
   const counterparty = viewerIsClient ? professional : client;
   const counterpartyLabel = viewerIsClient ? 'Professional' : 'Client';
+  const isCompleted = String(booking.status || '').toLowerCase() === 'completed';
+
+  const paymentStatus =
+    (payment && payment.status) || (payment ? 'created' : null);
+  // For the Summary card's Amount-paid vs Amount-due split.
+  const isPaymentPending =
+    booking.status !== 'cancelled' &&
+    booking.status !== 'completed' &&
+    (paymentStatus === null ||
+      paymentStatus === 'created' ||
+      paymentStatus === 'failed');
+  // Contact details show whenever the booking has actually been
+  // committed — confirmed / completed / cancelled — OR the payment has
+  // landed. The web's payment-only gate hides contact on confirmed
+  // bookings whose Payment row is still 'created' (race condition seen
+  // in production data), which is wrong: once both parties have
+  // committed they need to reach each other regardless of the payment
+  // ledger state. Pending bookings stay locked until payment lands.
+  const bookingCommitted = ['confirmed', 'completed', 'cancelled'].includes(
+    String(booking.status || '').toLowerCase()
+  );
+  const showContact =
+    bookingCommitted ||
+    paymentStatus === 'paid' ||
+    paymentStatus === 'refunded';
 
   return (
     <ScreenContainer
@@ -260,15 +363,16 @@ export default function BookingDetailScreen({ route }) {
         person={counterparty}
         label={counterpartyLabel}
         bookingId={booking.id}
-        // Contact channels are gated until the booking is confirmed
-        // so guests / unpaid bookings don't expose a pro's direct
-        // phone or email before the consultation is live.
-        showConnect={
-          String(booking.status || '').toLowerCase() === 'confirmed'
-        }
+        showConnect={showContact}
       />
 
-      <SummaryCard booking={booking} payment={payment} escrow={escrow} />
+      <SummaryCard
+        booking={booking}
+        payment={payment}
+        paymentStatus={paymentStatus}
+        isPaymentPending={isPaymentPending}
+        escrow={escrow}
+      />
 
       <NotesCard
         notes={notes}
@@ -284,6 +388,93 @@ export default function BookingDetailScreen({ route }) {
         error={noteError}
         onPost={handlePostNote}
       />
+
+      {/* Review surfaces — visible on both sides once the pro marks the
+          booking completed. Each surface is gated by its own permission
+          flag so the form only appears when the API allows submission. */}
+      {isCompleted && viewerIsClient ? (
+        <>
+          <ReviewCard
+            title="Rate the consultation"
+            icon="message-circle"
+            existingReview={reviews.consultationByClient}
+            canSubmit={!!permissions.canReviewConsultationAsClient}
+            gateMessage="The consultation review unlocks once your professional marks this booking completed."
+            submitting={!!reviewSubmitting.consultation}
+            error={reviewErrors.consultation}
+            onSubmit={(payload) => handleSubmitReview('consultation', payload)}
+          />
+          <ReviewCard
+            title="Rate the professional (optional)"
+            icon="star"
+            existingReview={reviews.professional}
+            canSubmit={!!permissions.canReviewProfessional}
+            gateMessage="The professional review unlocks once this booking is completed."
+            submitting={!!reviewSubmitting.professional}
+            error={reviewErrors.professional}
+            onSubmit={(payload) => handleSubmitReview('professional', payload)}
+          />
+          {reviews.consultationByProfessional ? (
+            <CounterpartyReviewCard
+              title="Professional's consultation review"
+              review={reviews.consultationByProfessional}
+            />
+          ) : null}
+        </>
+      ) : null}
+
+      {isCompleted && !viewerIsClient ? (
+        <>
+          <ReviewCard
+            title="Rate the consultation"
+            icon="message-circle"
+            existingReview={reviews.consultationByProfessional}
+            canSubmit={!!permissions.canReviewConsultationAsProfessional}
+            gateMessage="Mark this booking completed to leave a consultation review."
+            submitting={!!reviewSubmitting.consultation}
+            error={reviewErrors.consultation}
+            onSubmit={(payload) => handleSubmitReview('consultation', payload)}
+          />
+          {reviews.consultationByClient || reviews.professional ? (
+            <CounterpartyReviewCard
+              title="Client's reviews"
+              review={reviews.consultationByClient}
+              secondaryLabel={reviews.professional ? 'About you' : null}
+              secondaryReview={reviews.professional}
+            />
+          ) : null}
+        </>
+      ) : null}
+
+      {/* Pro-only: convert to case (or open the linked case if a previous
+          conversion exists). One booking can only ever have one live case
+          at a time — same constraint as the web detail view. */}
+      {!viewerIsClient && (linkedCase || permissions.canConvertToCase) ? (
+        <ConvertToCaseCard
+          linkedCase={linkedCase}
+          open={convertOpen}
+          onOpen={() => {
+            const fallbackTitle = `Case — ${
+              (client && client.name) || 'Client'
+            } (booking ${String(booking.id).slice(-8)})`;
+            setConvertTitle(fallbackTitle);
+            setConvertDescription('');
+            setConvertError('');
+            setConvertOpen(true);
+          }}
+          onCancel={() => {
+            if (!convertSubmitting) setConvertOpen(false);
+          }}
+          title={convertTitle}
+          setTitle={setConvertTitle}
+          description={convertDescription}
+          setDescription={setConvertDescription}
+          submitting={convertSubmitting}
+          error={convertError}
+          onSubmit={handleConvert}
+          onOpenLinkedCase={() => openCaseDetail(linkedCase && linkedCase.id)}
+        />
+      ) : null}
     </ScreenContainer>
   );
 }
@@ -397,18 +588,47 @@ function ConnectChip({ icon, label, onPress }) {
 // Summary card
 // ---------------------------------------------------------------------
 
-function SummaryCard({ booking, payment, escrow }) {
+function SummaryCard({ booking, payment, paymentStatus, escrow }) {
   const status = String(booking.status || 'pending').toLowerCase();
   const isInstant = String(booking.type || '').toLowerCase() === 'instant';
   const whenLabel = isInstant
     ? 'Instant — Now'
     : booking.date
-      ? `${formatDate(booking.date)}${booking.time ? ` · ${formatTime12h(booking.time)}` : ''}`
+      ? `${formatDate(booking.date)}${booking.time ? ` · ${formatSlotLabel(booking.time)}` : ''}`
       : '—';
+
+  // Payment amounts are paise end-to-end (backend services use paise as
+  // the canonical unit, rupees only appear in formatters). Mobile must
+  // use formatINR which divides by 100 — formatRupees would render 100×
+  // the real value, which was the bug.
+  const paid = paymentStatus === 'paid' || paymentStatus === 'refunded';
+  const dueAmountPaise =
+    payment && payment.amount
+      ? Number(payment.amount)
+      : Number(booking.estimatedCost) > 0
+        ? Number(booking.estimatedCost) * 100
+        : 0;
+  const showAmountDue = !paid && dueAmountPaise > 0;
+
   return (
     <Card>
       <View style={styles.summaryHead}>
-        <Text style={styles.cardTitle}>Booking summary</Text>
+        <View style={styles.summaryHeadTitleRow}>
+          <Text style={styles.cardTitle}>Booking summary</Text>
+          {isInstant ? (
+            <View style={styles.instantBadge}>
+              <Feather
+                name="zap"
+                size={10}
+                color="#92400e"
+                style={{ marginRight: 3 }}
+              />
+              <Text style={styles.instantBadgeText}>
+                {INSTANT_BOOKING_MULTIPLIER}× instant
+              </Text>
+            </View>
+          ) : null}
+        </View>
         <Badge variant={STATUS_VARIANT[status] || 'gray'}>{status}</Badge>
       </View>
       <View style={styles.detailGrid}>
@@ -417,14 +637,18 @@ function SummaryCard({ booking, payment, escrow }) {
           label="Duration"
           value={booking.duration ? `${booking.duration} min` : '—'}
         />
-        <Field
-          label="Type"
-          value={booking.type ? String(booking.type) : '—'}
-        />
-        {payment ? (
+        {paid && payment ? (
           <Field
             label="Amount paid"
-            value={payment.amount ? formatRupees(payment.amount) : '—'}
+            value={formatINR(payment.amount)}
+            note={isInstant ? '(includes 2× instant rate)' : null}
+          />
+        ) : null}
+        {showAmountDue ? (
+          <Field
+            label="Amount due"
+            value={formatINR(dueAmountPaise)}
+            note={isInstant ? '(includes 2× instant rate)' : null}
           />
         ) : null}
         {escrow ? (
@@ -442,11 +666,12 @@ function SummaryCard({ booking, payment, escrow }) {
   );
 }
 
-function Field({ label, value }) {
+function Field({ label, value, note }) {
   return (
     <View style={styles.detailItem}>
       <Text style={styles.detailLabel}>{label}</Text>
       <Text style={styles.detailValue}>{value || '—'}</Text>
+      {note ? <Text style={styles.detailNote}>{note}</Text> : null}
     </View>
   );
 }
@@ -695,6 +920,336 @@ function NoteAttachments({ attachments }) {
 }
 
 // ---------------------------------------------------------------------
+// Review surfaces
+// ---------------------------------------------------------------------
+
+function ReviewCard({
+  title,
+  icon = 'star',
+  existingReview,
+  canSubmit,
+  gateMessage,
+  submitting,
+  error,
+  onSubmit,
+}) {
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState('');
+
+  if (existingReview) {
+    return (
+      <Card>
+        <View style={styles.sectionHeader}>
+          <Feather name={icon} size={14} color={colors.primary} />
+          <Text style={styles.cardTitle}>{title}</Text>
+        </View>
+        <View style={styles.reviewExisting}>
+          <StarRow value={Number(existingReview.rating) || 0} />
+          <Text style={styles.reviewExistingScore}>
+            {Number(existingReview.rating).toFixed(0)} / 5
+          </Text>
+        </View>
+        {existingReview.comment ? (
+          <Text style={styles.reviewExistingBody}>
+            “{existingReview.comment}”
+          </Text>
+        ) : null}
+      </Card>
+    );
+  }
+
+  if (!canSubmit) {
+    return (
+      <Card>
+        <View style={styles.sectionHeader}>
+          <Feather name={icon} size={14} color={colors.primary} />
+          <Text style={styles.cardTitle}>{title}</Text>
+        </View>
+        <Text style={styles.reviewGate}>{gateMessage}</Text>
+      </Card>
+    );
+  }
+
+  const canSend = rating > 0 && !submitting;
+  return (
+    <Card>
+      <View style={styles.sectionHeader}>
+        <Feather name={icon} size={14} color={colors.primary} />
+        <Text style={styles.cardTitle}>{title}</Text>
+      </View>
+      <Text style={styles.reviewHint}>Tap a star to rate from 1 to 5.</Text>
+      <StarRow value={rating} onChange={setRating} interactive />
+      <TextInput
+        value={comment}
+        onChangeText={setComment}
+        placeholder="Add a comment (optional)"
+        placeholderTextColor={colors.textMuted}
+        multiline
+        textAlignVertical="top"
+        style={styles.reviewInput}
+      />
+      {error ? <Text style={styles.composerError}>{error}</Text> : null}
+      <Pressable
+        onPress={() => {
+          if (!canSend) return;
+          onSubmit({ rating, comment });
+          setRating(0);
+          setComment('');
+        }}
+        disabled={!canSend}
+        style={({ pressed }) => [
+          styles.postBtn,
+          styles.reviewSubmitBtn,
+          { opacity: !canSend ? 0.5 : pressed ? 0.92 : 1 },
+        ]}
+      >
+        <LinearGradient
+          colors={['#1f2937', '#0f172a']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.postBtnFill}
+        >
+          {submitting ? (
+            <ActivityIndicator color={colors.textInverse} size="small" />
+          ) : (
+            <Feather name="send" size={12} color={colors.textInverse} />
+          )}
+          <Text style={styles.postBtnText}>
+            {submitting ? 'Sending…' : 'Submit review'}
+          </Text>
+        </LinearGradient>
+      </Pressable>
+    </Card>
+  );
+}
+
+function StarRow({ value, onChange, interactive = false }) {
+  const stars = [1, 2, 3, 4, 5];
+  return (
+    <View style={styles.starRow}>
+      {stars.map((n) => {
+        const filled = n <= value;
+        const Comp = interactive ? Pressable : View;
+        return (
+          <Comp
+            key={n}
+            onPress={interactive ? () => onChange?.(n) : undefined}
+            hitSlop={6}
+            style={styles.starBtn}
+          >
+            <Feather
+              name="star"
+              size={interactive ? 26 : 16}
+              color={filled ? colors.warning : colors.border}
+              style={{
+                // Feather doesn't render filled stars without `fill`; fake
+                // the look by overlaying a slightly darker tint via opacity.
+                opacity: filled ? 1 : 0.9,
+              }}
+            />
+          </Comp>
+        );
+      })}
+    </View>
+  );
+}
+
+function CounterpartyReviewCard({
+  title,
+  review,
+  secondaryLabel,
+  secondaryReview,
+}) {
+  if (!review && !secondaryReview) return null;
+  return (
+    <Card>
+      <View style={styles.sectionHeader}>
+        <Feather name="eye" size={14} color={colors.primary} />
+        <Text style={styles.cardTitle}>{title}</Text>
+      </View>
+      {review ? (
+        <View style={styles.cpReviewBlock}>
+          <View style={styles.reviewExisting}>
+            <StarRow value={Number(review.rating) || 0} />
+            <Text style={styles.reviewExistingScore}>
+              {Number(review.rating).toFixed(0)} / 5
+            </Text>
+          </View>
+          {review.comment ? (
+            <Text style={styles.reviewExistingBody}>“{review.comment}”</Text>
+          ) : null}
+        </View>
+      ) : null}
+      {secondaryReview ? (
+        <View style={styles.cpReviewBlock}>
+          {secondaryLabel ? (
+            <Text style={styles.cpReviewLabel}>{secondaryLabel}</Text>
+          ) : null}
+          <View style={styles.reviewExisting}>
+            <StarRow value={Number(secondaryReview.rating) || 0} />
+            <Text style={styles.reviewExistingScore}>
+              {Number(secondaryReview.rating).toFixed(0)} / 5
+            </Text>
+          </View>
+          {secondaryReview.comment ? (
+            <Text style={styles.reviewExistingBody}>
+              “{secondaryReview.comment}”
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Convert-to-case card (pro-only)
+// ---------------------------------------------------------------------
+
+function ConvertToCaseCard({
+  linkedCase,
+  open,
+  onOpen,
+  onCancel,
+  title,
+  setTitle,
+  description,
+  setDescription,
+  submitting,
+  error,
+  onSubmit,
+  onOpenLinkedCase,
+}) {
+  if (linkedCase) {
+    return (
+      <Card>
+        <View style={styles.sectionHeader}>
+          <Feather name="briefcase" size={14} color={colors.primary} />
+          <Text style={styles.cardTitle}>Linked case</Text>
+        </View>
+        <Text style={styles.convertCopy}>
+          This booking has already been converted into &ldquo;
+          {linkedCase.title || 'a case'}&rdquo; ({linkedCase.status}). Delete
+          the case if you want to convert this booking again.
+        </Text>
+        <Pressable
+          onPress={onOpenLinkedCase}
+          style={({ pressed }) => [
+            styles.postBtn,
+            { opacity: pressed ? 0.92 : 1, alignSelf: 'flex-start', marginTop: spacing.sm },
+          ]}
+        >
+          <LinearGradient
+            colors={['#1f2937', '#0f172a']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.postBtnFill}
+          >
+            <Feather name="briefcase" size={12} color={colors.textInverse} />
+            <Text style={styles.postBtnText}>Open case</Text>
+          </LinearGradient>
+        </Pressable>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <View style={styles.sectionHeader}>
+        <Feather name="briefcase" size={14} color={colors.primary} />
+        <Text style={styles.cardTitle}>Convert to case</Text>
+      </View>
+      <Text style={styles.convertCopy}>
+        Open a case from this booking — booking notes (with attachments) are
+        copied into the case timeline so you don&rsquo;t lose context.
+      </Text>
+
+      {!open ? (
+        <Pressable
+          onPress={onOpen}
+          style={({ pressed }) => [
+            styles.postBtn,
+            { opacity: pressed ? 0.92 : 1, alignSelf: 'flex-start', marginTop: spacing.sm },
+          ]}
+        >
+          <LinearGradient
+            colors={['#1f2937', '#0f172a']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.postBtnFill}
+          >
+            <Feather name="briefcase" size={12} color={colors.textInverse} />
+            <Text style={styles.postBtnText}>Convert</Text>
+          </LinearGradient>
+        </Pressable>
+      ) : (
+        <View style={{ marginTop: spacing.sm, gap: spacing.sm }}>
+          <View>
+            <Text style={styles.convertFieldLabel}>Case title</Text>
+            <TextInput
+              value={title}
+              onChangeText={setTitle}
+              placeholder="Case title"
+              placeholderTextColor={colors.textMuted}
+              style={styles.convertInput}
+            />
+          </View>
+          <View>
+            <Text style={styles.convertFieldLabel}>Description (optional)</Text>
+            <TextInput
+              value={description}
+              onChangeText={setDescription}
+              placeholder="What is this case about?"
+              placeholderTextColor={colors.textMuted}
+              multiline
+              textAlignVertical="top"
+              style={[styles.convertInput, { minHeight: 80 }]}
+            />
+          </View>
+          {error ? <Text style={styles.composerError}>{error}</Text> : null}
+          <View style={styles.convertActions}>
+            <Pressable
+              onPress={onCancel}
+              disabled={submitting}
+              style={({ pressed }) => [
+                styles.convertCancelBtn,
+                { opacity: pressed || submitting ? 0.6 : 1 },
+              ]}
+            >
+              <Text style={styles.convertCancelText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              onPress={onSubmit}
+              disabled={submitting}
+              style={({ pressed }) => [
+                styles.postBtn,
+                { opacity: submitting ? 0.6 : pressed ? 0.92 : 1 },
+              ]}
+            >
+              <LinearGradient
+                colors={['#1f2937', '#0f172a']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.postBtnFill}
+              >
+                {submitting ? (
+                  <ActivityIndicator color={colors.textInverse} size="small" />
+                ) : (
+                  <Feather name="check" size={12} color={colors.textInverse} />
+                )}
+                <Text style={styles.postBtnText}>
+                  {submitting ? 'Creating…' : 'Create case'}
+                </Text>
+              </LinearGradient>
+            </Pressable>
+          </View>
+        </View>
+      )}
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -785,6 +1340,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: spacing.sm,
+    gap: 8,
+  },
+  summaryHeadTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 1,
+    flexWrap: 'wrap',
+  },
+  instantBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: '#fef3c7',
+  },
+  instantBadgeText: {
+    fontSize: 10,
+    fontWeight: fontWeight.bold,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    color: '#92400e',
   },
   detailGrid: {
     flexDirection: 'row',
@@ -806,6 +1384,16 @@ const styles = StyleSheet.create({
     marginTop: 3,
     fontSize: fontSize.sm,
     color: colors.textPrimary,
+  },
+  detailNote: {
+    marginTop: 2,
+    fontSize: 10,
+    fontWeight: fontWeight.semibold,
+    color: '#92400e',
+  },
+  reviewSubmitBtn: {
+    marginTop: spacing.md,
+    alignSelf: 'flex-end',
   },
 
   // Notes
@@ -967,5 +1555,110 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     color: colors.textPrimary,
     lineHeight: 19,
+  },
+
+  // Reviews
+  reviewHint: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginBottom: 6,
+  },
+  starRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  starBtn: {
+    paddingVertical: 2,
+    paddingHorizontal: 2,
+  },
+  reviewInput: {
+    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    minHeight: 64,
+    maxHeight: 200,
+    padding: spacing.sm,
+    fontSize: fontSize.sm,
+    color: colors.textPrimary,
+  },
+  reviewExisting: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  reviewExistingScore: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.bold,
+    color: colors.textPrimary,
+  },
+  reviewExistingBody: {
+    marginTop: 6,
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+    lineHeight: 19,
+  },
+  reviewGate: {
+    fontSize: 12,
+    color: colors.textMuted,
+    lineHeight: 17,
+  },
+  cpReviewBlock: {
+    marginTop: spacing.sm,
+  },
+  cpReviewLabel: {
+    fontSize: 10,
+    fontWeight: fontWeight.bold,
+    color: colors.textMuted,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+
+  // Convert to case
+  convertCopy: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    lineHeight: 17,
+  },
+  convertFieldLabel: {
+    fontSize: 11,
+    fontWeight: fontWeight.bold,
+    color: colors.textMuted,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  convertInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 8,
+    fontSize: fontSize.sm,
+    color: colors.textPrimary,
+  },
+  convertActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+  },
+  convertCancelBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  convertCancelText: {
+    fontSize: 12,
+    fontWeight: fontWeight.bold,
+    color: colors.textSecondary,
   },
 });
