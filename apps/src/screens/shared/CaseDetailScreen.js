@@ -55,6 +55,7 @@ import {
   updateCase,
 } from '../../services/caseService';
 import { uploadFile } from '../../services/uploadService';
+import { useCaseAttachmentUrl } from '../../services/caseAttachmentService';
 import { useAuth } from '../../contexts/AuthContext';
 import { displayName, formatDate } from '../../utils/formatters';
 import { imageUrl } from '../../utils/imageUrl';
@@ -1076,6 +1077,7 @@ function UpdatesCard({ updates, loadError, caseId, canEdit, onChanged }) {
                   <AttachmentList
                     attachments={u.attachments}
                     keyPrefix={u.id}
+                    caseId={caseId}
                   />
                   {canEdit ? (
                     <View style={styles.updateActions}>
@@ -1705,7 +1707,7 @@ function isImageAttachment(att) {
   return IMAGE_EXT_RE.test(url);
 }
 
-function AttachmentList({ attachments, keyPrefix }) {
+function AttachmentList({ attachments, keyPrefix, caseId }) {
   if (!Array.isArray(attachments) || attachments.length === 0) return null;
   const images = [];
   const others = [];
@@ -1717,59 +1719,78 @@ function AttachmentList({ attachments, keyPrefix }) {
     <View>
       {images.length > 0 ? (
         <View style={styles.imageRow}>
-          {images.map((a, i) => {
-            const uri = imageUrl(a.url);
-            if (!uri) return null;
-            return (
-              <Pressable
-                key={`${keyPrefix}-img-${i}`}
-                onPress={() => Linking.openURL(uri).catch(() => {})}
-                style={({ pressed }) => [
-                  styles.imageThumbWrap,
-                  { opacity: pressed ? 0.85 : 1 },
-                ]}
-              >
-                <Image
-                  source={{ uri }}
-                  style={styles.imageThumb}
-                  resizeMode="cover"
-                />
-              </Pressable>
-            );
-          })}
+          {images.map((a, i) => (
+            <ImageAttachmentThumb
+              key={`${keyPrefix}-img-${i}`}
+              caseId={caseId}
+              attachment={a}
+            />
+          ))}
         </View>
       ) : null}
       {others.length > 0 ? (
         <View style={styles.attachmentRow}>
-          {others.map((a, i) => {
-            const uri = imageUrl(a.url);
-            const fallbackName = prettyAttachmentName(a, i);
-            return (
-              <Pressable
-                key={`${keyPrefix}-att-${i}`}
-                onPress={() => uri && Linking.openURL(uri).catch(() => {})}
-                style={({ pressed }) => [
-                  styles.attachmentChip,
-                  { opacity: pressed ? 0.85 : 1 },
-                ]}
-              >
-                <Feather
-                  name="paperclip"
-                  size={10}
-                  color={colors.textSecondary}
-                />
-                <Text
-                  style={styles.attachmentText}
-                  numberOfLines={1}
-                >
-                  {fallbackName}
-                </Text>
-              </Pressable>
-            );
-          })}
+          {others.map((a, i) => (
+            <FileAttachmentChip
+              key={`${keyPrefix}-att-${i}`}
+              caseId={caseId}
+              attachment={a}
+              fallbackName={prettyAttachmentName(a, i)}
+            />
+          ))}
         </View>
       ) : null}
     </View>
+  );
+}
+
+function ImageAttachmentThumb({ caseId, attachment }) {
+  const { uri, loading } = useCaseAttachmentUrl(caseId, attachment && attachment.url);
+  if (loading) {
+    return (
+      <View style={[styles.imageThumbWrap, styles.imageThumbPlaceholder]}>
+        <ActivityIndicator color={colors.primary} size="small" />
+      </View>
+    );
+  }
+  if (!uri) return null;
+  return (
+    <Pressable
+      onPress={() => Linking.openURL(uri).catch(() => {})}
+      style={({ pressed }) => [
+        styles.imageThumbWrap,
+        { opacity: pressed ? 0.85 : 1 },
+      ]}
+    >
+      <Image
+        source={{ uri }}
+        style={styles.imageThumb}
+        resizeMode="cover"
+      />
+    </Pressable>
+  );
+}
+
+function FileAttachmentChip({ caseId, attachment, fallbackName }) {
+  const { uri, loading } = useCaseAttachmentUrl(caseId, attachment && attachment.url);
+  return (
+    <Pressable
+      onPress={() => uri && Linking.openURL(uri).catch(() => {})}
+      disabled={loading || !uri}
+      style={({ pressed }) => [
+        styles.attachmentChip,
+        { opacity: pressed || loading ? 0.7 : 1 },
+      ]}
+    >
+      {loading ? (
+        <ActivityIndicator color={colors.textSecondary} size="small" />
+      ) : (
+        <Feather name="paperclip" size={10} color={colors.textSecondary} />
+      )}
+      <Text style={styles.attachmentText} numberOfLines={1}>
+        {fallbackName}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -2046,6 +2067,7 @@ function NoteRow({ note, currentUser, caseId, canEdit, onNotesChanged }) {
             <AttachmentList
               attachments={note.attachments}
               keyPrefix={`note-${note.id || ''}`}
+              caseId={caseId}
             />
             {canMutate ? (
               <View style={styles.noteActionsRow}>
@@ -3203,6 +3225,12 @@ const styles = StyleSheet.create({
   imageThumb: {
     width: 120,
     height: 120,
+  },
+  imageThumbPlaceholder: {
+    width: 120,
+    height: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   attachmentChip: {
     flexDirection: 'row',
