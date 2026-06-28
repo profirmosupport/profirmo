@@ -94,3 +94,58 @@ to obtain the `subscription_id` for `RazorpayCheckout.open`.
 Admin users (`role=platform_admin`) who sign in are shown a friendly
 "Admin tools are web-only" screen with a Sign out button. There is no
 admin surface in the mobile app by design.
+
+## Store auto-update
+
+On cold start the app calls `GET /api/app-settings/mobile-version` and
+compares the installed build against the `latest` / `minimum` numbers
+the backend returns. **Every published update is mandatory** — there's
+no "Later" button, no snooze, hardware-back is blocked. The decision
+tree (in `services/appUpdateService.js`):
+
+- `installed >= latest`           → no gate.
+- `installed <  latest` (or min)  → forced full-screen gate. Only
+                                     action is the store button.
+
+`latest` is treated as the effective minimum so operators only have
+to bump one env var per platform to force every device onto the new
+build. The legacy `minimum` field still works as a fallback when only
+it is set.
+
+Set the server-side knobs via `.env` (see `backend/.env.example`):
+
+```
+MOBILE_IOS_LATEST_VERSION   MOBILE_IOS_MIN_VERSION   MOBILE_IOS_STORE_URL
+MOBILE_ANDROID_LATEST_VERSION   MOBILE_ANDROID_MIN_VERSION   MOBILE_ANDROID_STORE_URL
+```
+
+### iOS
+
+Apple does **not** provide any API to install app updates from
+inside an app. The maximum we can do programmatically is detect the
+new version and deep-link the user to the App Store, which is what
+`AppUpdateGate` does. Truly silent updates only happen when the user
+has enabled **Settings → App Store → App Updates** on the device — a
+system-level preference outside our control.
+
+### Android — Play in-app updates
+
+Google Play's [In-App Updates API](https://developer.android.com/guide/playcore/in-app-updates)
+lets us show a Play-provided UI to download + install a new APK
+without leaving the app (flexible mode downloads in the background,
+immediate mode is a full-screen blocking flow). `services/playStoreUpdater.js`
+wraps this; when the native module is present and a Play release is
+available, the native flow takes over and the JS modal stays hidden.
+
+The wrapper lazy-requires `sp-react-native-in-app-updates` and falls
+back to the JS modal when the require fails, so **the current Expo Go
+build is unaffected**. To enable the native flow:
+
+1. `npx expo prebuild` — generates `android/` + `ios/`
+2. `npm i sp-react-native-in-app-updates`
+3. Build a dev client with EAS (`eas build --profile development --platform android`)
+4. Install + run that build — Play's native UI now drives Android
+   updates while iOS continues using the modal.
+
+The integration is already gated on `Platform.OS === 'android'` so
+nothing changes on iOS.

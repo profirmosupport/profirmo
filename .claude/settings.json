@@ -326,7 +326,18 @@
       "Bash(curl -s -o /dev/null -w \"bundle: %{http_code} %{size_download}B in %{time_total}s\\\\n\" \"http://localhost:8081/index.bundle?platform=ios&dev=true&hot=false&lazy=true&transform.engine=hermes&transform.bytecode=1&transform.routerRoot=app&unstable_transformProfile=hermes-stable\")",
       "Bash(curl -s -o /dev/null -w \"bundle: %{http_code}  %{size_download}B  %{time_total}s\\\\n\" \"http://localhost:8081/index.bundle?platform=ios&dev=true&hot=false&lazy=true&transform.engine=hermes&transform.bytecode=1&transform.routerRoot=app&unstable_transformProfile=hermes-stable\")",
       "Bash(curl -s -o /dev/null -w \"backend health: %{http_code}\\\\n\" http://localhost:5001/api/health)",
-      "Bash(curl -s -o /dev/null -w \"bundle: %{http_code}  %{size_download}B\\\\n\" \"http://localhost:8081/index.bundle?platform=ios&dev=true&hot=false&lazy=true&transform.engine=hermes&transform.bytecode=1&transform.routerRoot=app&unstable_transformProfile=hermes-stable\")"
+      "Bash(curl -s -o /dev/null -w \"bundle: %{http_code}  %{size_download}B\\\\n\" \"http://localhost:8081/index.bundle?platform=ios&dev=true&hot=false&lazy=true&transform.engine=hermes&transform.bytecode=1&transform.routerRoot=app&unstable_transformProfile=hermes-stable\")",
+      "Bash(curl -s -o /dev/null -w \"bundle: %{http_code} %{size_download}B\\\\n\" \"http://localhost:8081/index.bundle?platform=ios&dev=true&hot=false&lazy=true&transform.engine=hermes&transform.bytecode=1&transform.routerRoot=app&unstable_transformProfile=hermes-stable\")",
+      "Bash(grep -n \"AttachmentList$\\\\|<AttachmentList\" /Users/vishalchauhan/code/profirmo/apps/src/screens/shared/CaseDetailScreen.js)",
+      "Bash(python3 -c \"import sys,json; p=json.load\\(sys.stdin\\); deps={**p.get\\('dependencies',{}\\),**p.get\\('devDependencies',{}\\)}; relevant=['expo-application','expo-constants','expo-updates','react-native-version-check','sp-react-native-in-app-updates','expo-store-review']; [print\\(k,'->',v\\) for k,v in deps.items\\(\\) if k in relevant]; print\\('---'\\); print\\('appVersion in app.json:'\\); import json; cfg=json.load\\(open\\('/Users/vishalchauhan/code/profirmo/apps/app.json'\\)\\); print\\('version:', cfg.get\\('expo',{}\\).get\\('version'\\)\\); print\\('iosBundleId:', cfg.get\\('expo',{}\\).get\\('ios',{}\\).get\\('bundleIdentifier'\\)\\); print\\('androidPackage:', cfg.get\\('expo',{}\\).get\\('android',{}\\).get\\('package'\\)\\)\")",
+      "Bash(curl -s http://localhost:5001/api/app-settings/mobile-version)",
+      "Bash(curl -s -o /dev/null -w \"health: %{http_code}\\\\n\" http://localhost:5001/api/health)",
+      "Bash(python3 -c \"import sys,json; c=json.load\\(sys.stdin\\); e=c.get\\('expo',{}\\); print\\('plugins:', json.dumps\\(e.get\\('plugins',[]\\),indent=2\\)\\); print\\('newArchEnabled:', e.get\\('newArchEnabled'\\)\\)\")",
+      "Bash(ssh -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=5 ubuntu@13.235.85.94 \"echo connected; whoami; hostname; cd /var/www/profirmo && git rev-parse HEAD | head -c 12; echo\")",
+      "Bash(ssh -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no ubuntu@13.235.85.94 \"cd /var/www/profirmo && git log --oneline -3 && echo --- && git rev-parse origin/main 2>/dev/null\")",
+      "Bash(git format-patch *)",
+      "Bash(scp -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no /tmp/profirmo-mobile-version.patch ubuntu@13.235.85.94:/tmp/)",
+      "Bash(ssh -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no ubuntu@13.235.85.94 \"ls -la /tmp/profirmo-mobile-version.patch && cd /var/www/profirmo && git status && echo --- && git log --oneline -3\")"
     ],
     "additionalDirectories": [
       "/Users/vishalchauhan/code/profirmo/frontend/app/services",
