@@ -619,7 +619,22 @@ function LoginInner() {
   const [tab, setTab] = useState('phone'); // 'phone' | 'email'
 
   // Already signed in — go straight to the post-login destination.
+  // Regular user → respect `next=` query param (or /dashboard fallback).
+  // Employee session → bounce to the employee dashboard so the
+  // /join-team flow doesn't collide with a parallel platform login.
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    // Check the employee token synchronously since the User-level
+    // AuthProvider doesn't know about it.
+    try {
+      const empToken = window.localStorage.getItem('pf.employee.access');
+      if (empToken) {
+        router.replace('/join-team/dashboard');
+        return;
+      }
+    } catch {
+      /* localStorage unavailable — fall through */
+    }
     if (!loading && isAuthenticated) {
       router.replace(nextPath);
     }

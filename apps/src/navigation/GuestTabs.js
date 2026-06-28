@@ -42,6 +42,9 @@ import ProPaymentsScreen from '../screens/professional/ProPaymentsScreen';
 import ProWalletScreen from '../screens/professional/ProWalletScreen';
 import ProPayoutRequestScreen from '../screens/professional/ProPayoutRequestScreen';
 import ProAvailabilityScreen from '../screens/professional/ProAvailabilityScreen';
+import FirmDashboardScreen from '../screens/professional/FirmDashboardScreen';
+import FirmCreateScreen from '../screens/professional/FirmCreateScreen';
+import ProClientsScreen from '../screens/professional/ProClientsScreen';
 import ProSubscriptionScreen from '../screens/professional/ProSubscriptionScreen';
 import ProFirmScreen from '../screens/professional/ProFirmScreen';
 
@@ -287,6 +290,30 @@ function AccountStack() {
             name="AccountFirm"
             component={ProFirmScreen}
             options={{ title: 'Manage firm' }}
+          />
+          {/* Firm Dashboard — tabbed owner/co-owner view (overview,
+              members, requests, clients, leads, cases, reviews,
+              profile). Mirrors /dashboard/firm on the web. */}
+          <Stack.Screen
+            name="FirmDashboard"
+            component={FirmDashboardScreen}
+            options={{ title: 'Firm Dashboard' }}
+          />
+          <Stack.Screen
+            name="FirmCreate"
+            component={FirmCreateScreen}
+            options={{ title: 'Create firm' }}
+          />
+          <Stack.Screen
+            name="AccountClients"
+            component={ProClientsScreen}
+            options={{ title: 'Clients' }}
+          />
+          {/* Public firm detail kept around for deep links. */}
+          <Stack.Screen
+            name="FirmDetail"
+            component={FirmDetailScreen}
+            options={{ title: 'Firm Details' }}
           />
         </>
       ) : null}

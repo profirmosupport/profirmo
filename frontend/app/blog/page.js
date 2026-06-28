@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
+import LeadGenFloater from '@/components/common/LeadGenFloater';
 import PostCard from '@/components/blog/PostCard';
 import EmptyState from '@/components/common/EmptyState';
 import {
@@ -252,6 +253,7 @@ function BlogPageInner() {
         </section>
       </main>
       <Footer />
+      <LeadGenFloater source="blog-index" />
     </div>
   );
 }

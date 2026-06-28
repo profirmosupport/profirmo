@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -30,6 +30,9 @@ import {
   Newspaper,
   Hash,
   Mail,
+  Receipt,
+  ChevronsLeft,
+  ChevronsRight,
 } from 'lucide-react';
 import BrandLogo from '@/components/common/BrandLogo';
 import { useLanguage } from '@/components/LanguageProvider';
@@ -56,6 +59,13 @@ const PROFESSIONAL_NAV = [
     labelKey: 'dash.nav.bookings',
     href: '/dashboard/professional/bookings',
     icon: CalendarClock,
+  },
+  {
+    // Inline label — i18n entry can be added later. Surfaces upcoming
+    // GST / TDS / ITR / ROC filings across all clients.
+    label: 'Compliance',
+    href: '/dashboard/professional/compliance',
+    icon: Receipt,
   },
   {
     labelKey: 'dash.nav.myReviews',
@@ -125,11 +135,19 @@ const NAV_BY_ROLE = {
       icon: CreditCard,
     },
     {
-      labelKey: 'dash.nav.findProfessionals',
-      href: '/professionals',
+      // Inline label; i18n entry can be added later.
+      label: 'Compliance',
+      href: '/dashboard/client/compliance',
+      icon: Receipt,
+    },
+    {
+      // Combined search across professionals + firms — points at the
+      // unified /search page. Replaces the older separate "Find
+      // professionals" and "Browse firms" entries.
+      label: 'Professionals & firms',
+      href: '/search',
       icon: Search,
     },
-    { labelKey: 'dash.nav.browseFirms', href: '/firms', icon: Building2 },
     {
       labelKey: 'dash.nav.profile',
       href: '/dashboard/client/profile',
@@ -279,6 +297,25 @@ const NAV_BY_ROLE = {
         },
       ],
     },
+    // Employee module — field agents who onboard professionals via
+    // /join-team. Listing + payout queue + commission/payout settings.
+    {
+      label: 'Employees',
+      icon: UserPlus,
+      children: [
+        { label: 'Employee listing', href: '/admin/employees', icon: Users },
+        {
+          label: 'Payout requests',
+          href: '/admin/employee-payouts',
+          icon: ArrowDownToLine,
+        },
+        {
+          label: 'Module settings',
+          href: '/admin/employee-settings',
+          icon: Settings,
+        },
+      ],
+    },
     // Blog / journal — admin-managed. The three children mirror the
     // backend's posts / categories / tags split.
     {
@@ -349,42 +386,75 @@ const NAV_BY_ROLE = {
 };
 
 /**
- * SidebarLink — leaf navigation item.
+ * SidebarLink — leaf navigation item. In `collapsed` mode the icon
+ * sits centred with the label hidden (browser-native tooltip via
+ * `title=` carries the affordance).
  */
-function SidebarLink({ item, active }) {
+function SidebarLink({ item, active, collapsed }) {
   const { t } = useLanguage();
   const Icon = item.icon;
+  const label = item.labelKey ? t(item.labelKey) : item.label;
   return (
     <Link
       href={item.href}
-      className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+      title={collapsed ? label : undefined}
+      className={[
+        'flex items-center rounded-lg text-sm font-medium transition-colors',
+        collapsed
+          ? 'justify-center px-2 py-2.5'
+          : 'gap-3 px-3 py-2.5',
         active
           ? 'bg-blue-50 text-blue-700'
-          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-      }`}
+          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+      ].join(' ')}
     >
       {Icon ? <Icon size={18} /> : null}
-      {t(item.labelKey)}
+      {!collapsed && <span>{label}</span>}
     </Link>
   );
 }
 
 /**
- * SidebarGroup — collapsible nav item with nested children. Auto-opens when
- * any of its children matches the current pathname.
+ * SidebarGroup — collapsible nav item with nested children. In
+ * `collapsed` (sidebar) mode the group renders as a single icon row
+ * and clicking it doesn't try to expand — children are surfaced via
+ * the per-icon link in a popout only after the sidebar is expanded.
+ * Auto-opens when any of its children matches the current pathname.
  */
-function SidebarGroup({ item, isActive }) {
+function SidebarGroup({ item, isActive, collapsed }) {
   const { t } = useLanguage();
   const childHrefs = (item.children || []).map((c) => c.href);
   const containsActive = childHrefs.some((href) => isActive(href));
   const [open, setOpen] = useState(containsActive);
 
-  // Re-sync expanded state when navigating into a child route.
   useEffect(() => {
     if (containsActive) setOpen(true);
   }, [containsActive]);
 
   const Icon = item.icon;
+  const label = item.labelKey ? t(item.labelKey) : item.label;
+
+  if (collapsed) {
+    // Render a compact icon row that links to the FIRST child as a
+    // sensible single-target for the collapsed surface.
+    const firstChild = (item.children || [])[0];
+    if (!firstChild) return null;
+    return (
+      <Link
+        href={firstChild.href}
+        title={label}
+        className={[
+          'flex items-center justify-center rounded-lg px-2 py-2.5 text-sm font-medium transition-colors',
+          containsActive
+            ? 'bg-blue-50 text-blue-700'
+            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+        ].join(' ')}
+      >
+        {Icon ? <Icon size={18} /> : null}
+      </Link>
+    );
+  }
+
   return (
     <div>
       <button
@@ -398,7 +468,7 @@ function SidebarGroup({ item, isActive }) {
         }`}
       >
         {Icon ? <Icon size={18} /> : null}
-        <span className="flex-1 text-left">{t(item.labelKey)}</span>
+        <span className="flex-1 text-left">{label}</span>
         <ChevronRight
           size={16}
           className={`text-slate-400 transition-transform ${
@@ -423,58 +493,19 @@ function SidebarGroup({ item, isActive }) {
 
 /**
  * Sidebar — Pro Firmo logo + role-specific navigation. Items with a
- * `children` array render as collapsible groups.
- * Props: { role }
+ * `children` array render as collapsible groups. When `collapsed` is
+ * true the sidebar narrows to an icon-only rail; clicking the toggle
+ * at the bottom expands/collapses it. `onToggleCollapsed` is the
+ * controlled callback — the parent (DashboardLayout) owns the state
+ * and persists it via UserPreference.
+ *
+ * Props: { role, collapsed?, onToggleCollapsed? }
  */
-export default function Sidebar({ role }) {
+export default function Sidebar({ role, collapsed = false, onToggleCollapsed }) {
   const pathname = usePathname();
   const { t } = useLanguage();
   const baseItems = NAV_BY_ROLE[role] || NAV_BY_ROLE[ROLES.CLIENT];
-
-  // Firm-owner / co-owner extension: when a professional owns or
-  // co-owns a firm, surface a "Manage firm" link to the firm admin
-  // dashboard so they don't have to leave the pro UI to switch contexts.
-  // Fetched once per Sidebar mount; null until we know.
-  const [firmRole, setFirmRole] = useState(null);
-  useEffect(() => {
-    const usesProNav = role === ROLES.PROFESSIONAL || role === ROLES.FIRM_PROFESSIONAL;
-    if (!usesProNav) return undefined;
-    let active = true;
-    (async () => {
-      try {
-        // Lazy import so the firm-join service isn't loaded on roles
-        // that never need it.
-        const mod = await import('@/services/firmJoinService');
-        const res = await mod.getMyMembership();
-        if (!active) return;
-        const role = res && res.member && res.member.role;
-        setFirmRole(role || null);
-      } catch {
-        if (active) setFirmRole(null);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [role]);
-
-  // Inject the "Manage firm" item right after "My Firm" so the two firm-
-  // related entries sit together in the pro sidebar. Only visible to
-  // owner / co-owner — regular members can't see the firm-admin
-  // dashboard anyway, so showing it would just 403 them.
-  const items = useMemo(() => {
-    if (firmRole !== 'owner' && firmRole !== 'co-owner') return baseItems;
-    const idx = baseItems.findIndex((it) => it.labelKey === 'dash.nav.myFirm');
-    const manage = {
-      labelKey: 'dash.nav.manageFirm',
-      href: '/dashboard/firm',
-      icon: Building2,
-    };
-    if (idx < 0) return [...baseItems, manage];
-    const copy = [...baseItems];
-    copy.splice(idx + 1, 0, manage);
-    return copy;
-  }, [baseItems, firmRole]);
+  const items = baseItems;
 
   function isActive(href) {
     return pathname === href;
@@ -482,21 +513,57 @@ export default function Sidebar({ role }) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-slate-200 px-5 py-4">
-        <BrandLogo variant="light" />
+      <div
+        className={`flex items-center border-b border-slate-200 py-4 ${
+          collapsed ? 'justify-center px-2' : 'gap-2 px-5'
+        }`}
+      >
+        {collapsed ? (
+          <Link href="/" title="Pro Firmo home" className="inline-flex">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/images/profirmo-logo.png"
+              alt="Pro Firmo"
+              width={36}
+              height={36}
+              className="h-9 w-9 object-contain"
+            />
+          </Link>
+        ) : (
+          <BrandLogo variant="light" />
+        )}
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-        <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          {t('dash.nav.menu')}
-        </p>
+      <nav className={`flex-1 space-y-1 overflow-y-auto py-4 ${collapsed ? 'px-2' : 'px-3'}`}>
+        {/* Firm-admin users sit on a separate dashboard — give them a
+            one-tap return to their personal/professional dashboard so
+            they don't have to navigate via the global site root. */}
+        {role === ROLES.FIRM_ADMIN && (
+          <Link
+            href="/dashboard/professional"
+            title={collapsed ? 'Personal dashboard' : undefined}
+            className={[
+              'mb-3 flex items-center rounded-lg border border-amber-200 bg-amber-50/70 text-sm font-semibold text-amber-800 transition hover:border-amber-300 hover:bg-amber-100',
+              collapsed ? 'justify-center px-2 py-2.5' : 'gap-2 px-3 py-2',
+            ].join(' ')}
+          >
+            <ArrowLeft size={15} />
+            {!collapsed && <span>Personal dashboard</span>}
+          </Link>
+        )}
+        {!collapsed && (
+          <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            {t('dash.nav.menu')}
+          </p>
+        )}
         {items.map((item) => {
           if (Array.isArray(item.children) && item.children.length > 0) {
             return (
               <SidebarGroup
-                key={item.labelKey}
+                key={item.labelKey || item.label}
                 item={item}
                 isActive={isActive}
+                collapsed={collapsed}
               />
             );
           }
@@ -505,18 +572,37 @@ export default function Sidebar({ role }) {
               key={item.href}
               item={item}
               active={isActive(item.href)}
+              collapsed={collapsed}
             />
           );
         })}
       </nav>
 
-      <div className="border-t border-slate-200 px-3 py-4">
+      <div className={`border-t border-slate-200 py-4 ${collapsed ? 'px-2' : 'px-3'}`}>
+        {onToggleCollapsed && (
+          <button
+            type="button"
+            onClick={onToggleCollapsed}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className={[
+              'mb-1 flex w-full items-center rounded-lg text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900',
+              collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5',
+            ].join(' ')}
+          >
+            {collapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
+            {!collapsed && <span>Collapse</span>}
+          </button>
+        )}
         <Link
           href="/"
-          className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+          title={collapsed ? t('dash.nav.backToSite') : undefined}
+          className={[
+            'flex items-center rounded-lg text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900',
+            collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5',
+          ].join(' ')}
         >
           <ArrowLeft size={18} />
-          {t('dash.nav.backToSite')}
+          {!collapsed && <span>{t('dash.nav.backToSite')}</span>}
         </Link>
       </div>
     </div>

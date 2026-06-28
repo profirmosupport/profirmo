@@ -355,6 +355,7 @@ const create = async (data = {}, actor = null) => {
     description: data.description || null,
     priority: data.priority || 'medium',
     caseNumber: data.caseNumber || null,
+    cnr: data.cnr ? String(data.cnr).trim().toUpperCase() : null,
     courtName: data.courtName || null,
     opposingParty: data.opposingParty || null,
     nextHearingDate: data.nextHearingDate || null,
@@ -507,12 +508,17 @@ const update = async (id, data = {}, actor = null) => {
     'description',
     'priority',
     'caseNumber',
+    'cnr',
     'courtName',
     'opposingParty',
     'nextHearingDate',
   ];
   const changes = {};
   const prevValues = found.get({ plain: true });
+  // Normalize CNR upfront so the diff comparison + persisted value agree.
+  if (data.cnr !== undefined) {
+    data.cnr = data.cnr ? String(data.cnr).trim().toUpperCase() : null;
+  }
   updatable.forEach((field) => {
     if (data[field] !== undefined && data[field] !== prevValues[field]) {
       changes[field] = data[field];
@@ -684,6 +690,170 @@ const update = async (id, data = {}, actor = null) => {
   }
 
   return decorate(found.get({ plain: true }));
+};
+
+/**
+ * Set a case's stage / pipeline. Validates against the pipelines
+ * defined in seeds/compliance-rules.json (via config/caseStages). Both
+ * stageType and stage may be patched independently; an unknown
+ * pipeline resets stage to null. Logs the change to case_log so it
+ * shows up in the case timeline alongside hearings + updates.
+ */
+const caseStages = require('../config/caseStages');
+const googleCalendarService = require('./googleCalendarService');
+
+/**
+ * Resolve a Case row → assigned professional's userId so we can push
+ * hearings to that pro's Google Calendar. Returns null when there is
+ * no resolvable owner (case has no professional yet, e.g. just-created
+ * by a client and unassigned).
+ */
+async function caseOwnerUserId(caseRow) {
+  if (!caseRow || !caseRow.professionalId) return null;
+  // eslint-disable-next-line global-require
+  const { ProfessionalDetail } = require('../models');
+  const detail = await ProfessionalDetail.findOne({
+    where: { id: caseRow.professionalId },
+    attributes: ['userId'],
+    raw: true,
+  });
+  return detail ? detail.userId : null;
+}
+
+async function pushHearingToCalendar(caseRow) {
+  try {
+    const userId = await caseOwnerUserId(caseRow);
+    if (!userId) return;
+    await googleCalendarService.pushHearing(userId, caseRow);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[caseService.calendar hearing]', err.message || err);
+  }
+}
+
+async function pushTaskToCalendar(caseUpdate) {
+  try {
+    if (!caseUpdate || !caseUpdate.caseId) return;
+    const caseRow = await Case.findByPk(caseUpdate.caseId, { raw: true });
+    const userId = await caseOwnerUserId(caseRow);
+    if (!userId) return;
+    await googleCalendarService.pushTask(userId, caseUpdate);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[caseService.calendar task]', err.message || err);
+  }
+}
+const setStage = async (id, payload = {}, actor = null) => {
+  const found = await Case.findByPk(id);
+  if (!found) return null;
+
+  // Common-stages model — just `stage`. stageType is preserved on the
+  // row for backward-compat with any rows written under the old
+  // per-pipeline scheme but is no longer driven by callers.
+  const stage = caseStages.normalize(payload.stage);
+
+  const prevStage = found.stage;
+  await found.update({ stage, stageUpdatedAt: new Date() });
+
+  const fromLabel = caseStages.labelFor(prevStage);
+  const toLabel = caseStages.labelFor(stage);
+  await writeLog(
+    id,
+    actor,
+    'stage_changed',
+    fromLabel
+      ? `Stage: ${fromLabel} → ${toLabel || '(cleared)'}`
+      : toLabel
+        ? `Stage set to ${toLabel}`
+        : 'Stage cleared',
+    { from: { stage: prevStage }, to: { stage } }
+  );
+
+  return decorate(found.get({ plain: true }));
+};
+
+/**
+ * Detach the calling professional from a case. Used when a case is
+ * shared across multiple pros (firm case) and one of them wants out
+ * without destroying the case for the others.
+ *
+ * Rules:
+ *   * Caller must be on the case (in professionalIds[] OR be the
+ *     primary professionalId). Otherwise 403.
+ *   * After removal, if the case still has ≥1 pro remaining, the
+ *     case stays + the caller's id is purged from professionalIds
+ *     and (if applicable) the primary professionalId is rotated to
+ *     the next id in professionalIds.
+ *   * If removing the caller would leave the case with zero pros,
+ *     refuse — the caller should DELETE the case instead. Returns a
+ *     422 with a clear message; the UI uses that to swap the action
+ *     from "Leave" to "Delete".
+ *
+ * Reasoning: "leave" is a no-op safety net for shared cases. A
+ * one-pro case should never be left dangling unowned.
+ */
+const leaveCase = async (id, actor) => {
+  if (!actor || !actor.id) {
+    throw { statusCode: 401, message: 'Authentication required.' };
+  }
+  const c = await Case.findByPk(id);
+  if (!c) return null;
+
+  // Resolve caller's ProfessionalDetail.id — that's the value that
+  // lives in the case's professionalId / professionalIds columns.
+  const detail = await ProfessionalDetail.findOne({
+    where: { userId: actor.id },
+    attributes: ['id'],
+    raw: true,
+  });
+  const myProId = detail ? detail.id : null;
+  if (!myProId) {
+    throw {
+      statusCode: 403,
+      message: 'Only assigned professionals can leave a case.',
+    };
+  }
+
+  const ids = Array.isArray(c.professionalIds)
+    ? c.professionalIds.filter(Boolean)
+    : [];
+  const isPrimary = c.professionalId && c.professionalId === myProId;
+  const inList = ids.includes(myProId);
+  if (!isPrimary && !inList) {
+    throw {
+      statusCode: 403,
+      message: 'You are not on this case.',
+    };
+  }
+  const remaining = ids.filter((p) => p !== myProId);
+  // If the caller is the only pro on the case, leaving is not
+  // allowed — they should delete the case instead.
+  if (remaining.length === 0 && (!c.professionalId || isPrimary)) {
+    throw {
+      statusCode: 422,
+      code: 'LAST_PROFESSIONAL',
+      message:
+        'You are the only professional on this case. Delete it instead of leaving.',
+    };
+  }
+  // Rotate primary id if the caller was it.
+  const nextPrimary = isPrimary
+    ? remaining[0] || c.professionalId
+    : c.professionalId;
+  await c.update({
+    professionalIds: remaining,
+    professionalId: nextPrimary,
+  });
+
+  await writeLog(
+    id,
+    actor,
+    'professional_left',
+    `Professional left the case.`,
+    { removedProfessionalId: myProId, remainingCount: remaining.length }
+  );
+
+  return decorate(c.get({ plain: true }));
 };
 
 /** Delete a case record (and its files). Returns the removed case or null. */
@@ -999,8 +1169,16 @@ const listLog = async (caseId) =>
  * @param {object} data - { body, scheduledAt, nextHearingDate, attachments[] }
  */
 const addUpdate = async (caseId, user, data = {}) => {
-  if (!data.body || !String(data.body).trim()) {
-    throw { statusCode: 422, message: 'Update body is required.' };
+  // Body is optional now that an update can be a pure task (title + due
+  // date alone). Require at least one of body, title, dueDate.
+  const hasBody = data.body && String(data.body).trim();
+  const hasTitle = data.title && String(data.title).trim();
+  const hasDueDate = !!data.dueDate;
+  if (!hasBody && !hasTitle && !hasDueDate) {
+    throw {
+      statusCode: 422,
+      message: 'Add a title, body, or due date for the update.',
+    };
   }
   const found = await Case.findByPk(caseId);
   if (!found) throw { statusCode: 404, message: 'Case not found.' };
@@ -1018,22 +1196,43 @@ const addUpdate = async (caseId, user, data = {}) => {
     authorName = displayName(u);
   }
 
+  // Task fields — optional. Any one of status / dueDate / priority being
+  // set turns this update into a task row visible on the calendar.
+  const status = data.status && CaseUpdate.STATUSES.includes(data.status)
+    ? data.status
+    : null;
+  const priority = data.priority && CaseUpdate.PRIORITIES.includes(data.priority)
+    ? data.priority
+    : null;
+  const dueDate =
+    data.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(String(data.dueDate))
+      ? data.dueDate
+      : null;
+
   const update = await CaseUpdate.create({
     caseId,
     authorUserId: (user && user.id) || null,
     authorName: authorName || '',
     title: data.title ? String(data.title).trim() : null,
     scheduledAt,
-    body: String(data.body).trim(),
+    body: hasBody ? String(data.body).trim() : '',
     nextHearingDate: data.nextHearingDate || null,
     attachments,
+    status,
+    priority,
+    dueDate,
+    completedAt: status === 'done' ? new Date() : null,
+    completedByUserId: status === 'done' && user ? user.id : null,
   });
+  // Push task-shaped updates (those with dueDate) to Google Calendar.
+  if (dueDate) pushTaskToCalendar(update.get({ plain: true }));
 
   // If a hearing date is provided, also push it to the case itself so the
   // listing's "Next hearing" column stays current.
   if (data.nextHearingDate) {
     try {
       await found.update({ nextHearingDate: data.nextHearingDate });
+      pushHearingToCalendar(found.get({ plain: true }));
     } catch (err) {
       console.warn(`[caseUpdate] could not sync nextHearingDate: ${err.message}`);
     }
@@ -1112,13 +1311,45 @@ const editUpdate = async (updateId, user, data = {}) => {
       (a) => a && (a.url || a.name)
     );
   }
+  // Task-field patches — null clears, value sets, undefined leaves alone.
+  if (data.status !== undefined) {
+    const next = data.status && CaseUpdate.STATUSES.includes(data.status)
+      ? data.status
+      : null;
+    patch.status = next;
+    if (next === 'done' && row.status !== 'done') {
+      patch.completedAt = new Date();
+      patch.completedByUserId = user ? user.id : null;
+    } else if (next !== 'done' && row.status === 'done') {
+      patch.completedAt = null;
+      patch.completedByUserId = null;
+    }
+  }
+  if (data.priority !== undefined) {
+    patch.priority = data.priority && CaseUpdate.PRIORITIES.includes(data.priority)
+      ? data.priority
+      : null;
+  }
+  if (data.dueDate !== undefined) {
+    patch.dueDate =
+      data.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(String(data.dueDate))
+        ? data.dueDate
+        : null;
+  }
   await row.update(patch);
+  // Re-push task to Google Calendar — dueDate may have changed
+  // (including being cleared, which causes the helper to delete the
+  // mirrored event).
+  pushTaskToCalendar(row.get({ plain: true }));
 
   // If the next hearing date changed, sync it to the case + log it.
   if (data.nextHearingDate !== undefined) {
     try {
       const c = await Case.findByPk(row.caseId);
-      if (c) await c.update({ nextHearingDate: data.nextHearingDate || null });
+      if (c) {
+        await c.update({ nextHearingDate: data.nextHearingDate || null });
+        pushHearingToCalendar(c.get({ plain: true }));
+      }
     } catch (err) {
       console.warn(`[caseUpdate] could not sync nextHearingDate: ${err.message}`);
     }
@@ -1212,6 +1443,8 @@ module.exports = {
   getById,
   create,
   update,
+  setStage,
+  leaveCase,
   remove,
   getByClient,
   getByProfessional,

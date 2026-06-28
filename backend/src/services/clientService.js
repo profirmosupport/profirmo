@@ -116,7 +116,34 @@ const list = async ({ filters = {}, page, limit, actor } = {}) => {
     raw: true,
   });
 
-  return { items: rows.map(toClientView), page: p, limit: l, total: count };
+  // Decorate each client with their compliance entityType (relative
+  // to the calling professional). One bulk lookup so the listing
+  // doesn't N+1.
+  let entityByClient = new Map();
+  if (rows.length > 0 && actor && actor.role === 'professional') {
+    // eslint-disable-next-line global-require
+    const { ClientComplianceProfile } = require('../models');
+    const proId = await resolveActorProfessionalId(actor);
+    if (proId) {
+      const profiles = await ClientComplianceProfile.findAll({
+        where: {
+          professionalId: proId,
+          clientUserId: { [Op.in]: rows.map((r) => r.id) },
+        },
+        attributes: ['clientUserId', 'entityType'],
+        raw: true,
+      });
+      entityByClient = new Map(
+        profiles.map((p) => [p.clientUserId, p.entityType || null])
+      );
+    }
+  }
+
+  const items = rows.map((u) => ({
+    ...toClientView(u),
+    entityType: entityByClient.get(u.id) || null,
+  }));
+  return { items, page: p, limit: l, total: count };
 };
 
 /** Find a client by id, or null when not found. */
@@ -143,14 +170,46 @@ const create = async (data = {}, actor = null) => {
     throw { statusCode: 422, message: 'Provide at least name, phone, or email.' };
   }
 
+  // Block creation when the phone is already taken by a non-client
+  // account. Without this guard a typo'd phone in the modal could end
+  // up creating a duplicate user with role=client alongside the
+  // existing professional/admin row. Match by last-10-digits suffix
+  // so stored numbers in any format (+91…, 91…, raw) are caught.
+  if (phone) {
+    const digits = phone.replace(/\D/g, '');
+    const last10 = digits.slice(-10);
+    if (last10.length === 10) {
+      const taken = await User.findOne({
+        where: {
+          mobileNumber: { [Op.like]: `%${last10}` },
+          role: { [Op.ne]: 'client' },
+        },
+        raw: true,
+      });
+      if (taken) {
+        throw {
+          statusCode: 409,
+          message: `This phone is already in the system under a ${taken.role || 'non-client'} account. It can't be added as a client.`,
+        };
+      }
+    }
+  }
+
   // Find-or-create the client-user by phone or email. Only existing users
   // with role='client' qualify for reuse — a professional/admin user that
   // happens to share a phone number does not become someone else's client.
   let user = null;
   if (phone) {
-    user = await User.findOne({
-      where: { mobileNumber: phone, role: 'client' },
-    });
+    const digits = phone.replace(/\D/g, '');
+    const last10 = digits.slice(-10);
+    if (last10.length === 10) {
+      user = await User.findOne({
+        where: {
+          mobileNumber: { [Op.like]: `%${last10}` },
+          role: 'client',
+        },
+      });
+    }
   }
   if (!user && emailRaw) {
     user = await User.findOne({ where: { email: emailRaw, role: 'client' } });
@@ -257,12 +316,26 @@ const update = async (id, data = {}) => {
  */
 const searchByPhone = async (phone) => {
   const trimmed = String(phone || '').trim();
-  if (!trimmed) return { user: null };
+  if (!trimmed) return { user: null, existsAsNonClient: false, role: null };
+
+  // Normalise: strip every non-digit, then keep the last 10 digits
+  // (the Indian national-number length). Stored mobileNumber values
+  // in the DB live in various shapes — '9310819195', '+919310819195',
+  // '91 9310 819 195', etc. — so we match by suffix-of-digits.
+  const digits = trimmed.replace(/\D/g, '');
+  const last10 = digits.slice(-10);
+  if (last10.length < 10) {
+    return { user: null, existsAsNonClient: false, role: null };
+  }
   const user = await User.findOne({
-    where: { mobileNumber: trimmed, role: 'client' },
+    where: { mobileNumber: { [Op.like]: `%${last10}` } },
     raw: true,
   });
-  return { user: user ? toClientView(user) : null };
+  if (!user) return { user: null, existsAsNonClient: false, role: null };
+  if (user.role === 'client') {
+    return { user: toClientView(user), existsAsNonClient: false, role: 'client' };
+  }
+  return { user: null, existsAsNonClient: true, role: user.role || 'unknown' };
 };
 
 /** Link an existing client-user to the calling professional. */

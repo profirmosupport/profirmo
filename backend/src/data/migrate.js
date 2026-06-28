@@ -376,6 +376,56 @@ async function runMigrations() {
     }
   }
 
+  // 7c-bis. Case stage tracking — pipeline + step within pipeline,
+  // sourced from seeds/compliance-rules.json via config/caseStages.
+  // googleHearingEventId mirrors nextHearingDate to Google Calendar.
+  const CASE_STAGE_COLUMNS = [
+    ['stageType', 'VARCHAR(40) NULL'],
+    ['stage', 'VARCHAR(60) NULL'],
+    ['stageUpdatedAt', 'DATETIME NULL'],
+    ['googleHearingEventId', 'VARCHAR(128) NULL'],
+    // AI Clerk persisted summary
+    ['aiSummary', 'TEXT NULL'],
+    ['aiSummaryUpdatedAt', 'DATETIME NULL'],
+    ['aiSummaryByUserId', 'VARCHAR(64) NULL'],
+  ];
+  for (const [col, type] of CASE_STAGE_COLUMNS) {
+    try {
+      await sequelize.query(
+        `ALTER TABLE \`cases\` ADD COLUMN IF NOT EXISTS \`${col}\` ${type}`
+      );
+    } catch (err) {
+      if (!/doesn'?t exist|Unknown table/i.test(err.message)) {
+        console.warn(`[Migrate] Could not add cases.${col}: ${err.message}`);
+      }
+    }
+  }
+
+  // 7d-bis. CaseUpdate task fields — promotes an update into a task
+  // surface (status / priority / dueDate / completedAt). NULLs preserve
+  // the pure-narration shape. Drives the dashboard calendar pills.
+  const CASE_UPDATE_TASK_COLUMNS = [
+    ['status', "ENUM('open','in_progress','done','cancelled') NULL"],
+    ['priority', "ENUM('low','normal','high') NULL"],
+    ['dueDate', 'DATE NULL'],
+    ['completedAt', 'DATETIME NULL'],
+    ['completedByUserId', 'VARCHAR(64) NULL'],
+    ['googleEventId', 'VARCHAR(128) NULL'],
+  ];
+  for (const [col, type] of CASE_UPDATE_TASK_COLUMNS) {
+    try {
+      await sequelize.query(
+        `ALTER TABLE \`case_updates\` ADD COLUMN IF NOT EXISTS \`${col}\` ${type}`
+      );
+    } catch (err) {
+      if (!/doesn'?t exist|Unknown table/i.test(err.message)) {
+        console.warn(
+          `[Migrate] Could not add case_updates.${col}: ${err.message}`
+        );
+      }
+    }
+  }
+
   // 7e. CaseNote `attachments` JSON column for existing DBs.
   try {
     await sequelize.query(
@@ -399,6 +449,26 @@ async function runMigrations() {
       console.warn(
         `[Migrate] Could not add cases.bookingId: ${err.message}`
       );
+    }
+  }
+
+  // 7j. ProfessionalDetail.employeeId / employeeCode — set when a
+  // /join-team employee onboards the professional. Used by the
+  // employee-commission credit hook on admin approval.
+  for (const [col, type] of [
+    ['employeeId', 'VARCHAR(64) NULL'],
+    ['employeeCode', 'VARCHAR(16) NULL'],
+  ]) {
+    try {
+      await sequelize.query(
+        `ALTER TABLE \`professional_details\` ADD COLUMN IF NOT EXISTS \`${col}\` ${type}`
+      );
+    } catch (err) {
+      if (!/doesn'?t exist|Unknown table/i.test(err.message)) {
+        console.warn(
+          `[Migrate] Could not add professional_details.${col}: ${err.message}`
+        );
+      }
     }
   }
 

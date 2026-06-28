@@ -209,7 +209,10 @@ const SETTINGS = {
   // The `storage_driver` key flips the entire upload pipeline between
   // local disk and AWS S3 at runtime (no restart required). The S3
   // sub-keys configure the SDK client. `aws_secret_access_key` is
-  // marked `encrypted: true` so it is stored as AES-GCM ciphertext.
+  // stored as plaintext + masked from the admin GET response by the
+  // `secret: true` flag; encryption at rest is intentionally OFF here
+  // because it was tied to JWT_SECRET and silently broke whenever the
+  // signing secret was rotated.
   storage_driver: {
     label: 'Storage driver',
     description:
@@ -244,12 +247,11 @@ const SETTINGS = {
   aws_secret_access_key: {
     label: 'AWS Secret Access Key',
     description:
-      'Secret half of the IAM access key. Stored encrypted (AES-256-GCM) using a key derived from JWT_SECRET. Re-enter to rotate.',
+      'Secret half of the IAM access key. Stored as plaintext in admin_settings; the admin GET response masks the value via `secret: true` so it never leaves the server in cleartext. Re-enter to rotate.',
     defaultGetter: () => process.env.AWS_SECRET_ACCESS_KEY || '',
     type: 'string',
     group: 'Storage / AWS S3',
     secret: true,
-    encrypted: true,
     coerce: stringCoerce,
     format: stringCoerce,
   },
@@ -301,6 +303,106 @@ const SETTINGS = {
         throw { statusCode: 422, message: 'aws_use_path_style_endpoint must be "true" or "false".' };
       }
       return v || 'false';
+    },
+    format: stringCoerce,
+  },
+
+  // --- Integrations / Gmail OAuth --------------------------------------
+  // Server-side credentials for the Gmail OAuth flow. Mirrors the AWS
+  // model: secret values are stored as plaintext and only the admin GET
+  // response masks them (`secret: true`). NO encryption-at-rest — see
+  // the AWS comment above for why.
+  gmail_oauth_client_id: {
+    label: 'Gmail OAuth Client ID',
+    description:
+      'OAuth 2.0 Client ID for the GCP project that backs the Gmail integration. Visible in the Google Cloud Console under APIs & Services → Credentials.',
+    defaultGetter: () => process.env.GMAIL_OAUTH_CLIENT_ID || '',
+    type: 'string',
+    group: 'Integrations / Gmail',
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  gmail_oauth_client_secret: {
+    label: 'Gmail OAuth Client Secret',
+    description:
+      'Matching client secret. Stored as plaintext; the admin GET response masks the value via `secret: true`. Re-enter to rotate.',
+    defaultGetter: () => process.env.GMAIL_OAUTH_CLIENT_SECRET || '',
+    type: 'string',
+    group: 'Integrations / Gmail',
+    secret: true,
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  gmail_redirect_uri: {
+    label: 'Gmail OAuth Redirect URI',
+    description:
+      'Where Google sends the user back after consent. Must exactly match the redirect URI registered in the GCP OAuth client. Example: https://proapi.profirmo.com/api/integrations/gmail/callback',
+    defaultGetter: () =>
+      process.env.GMAIL_REDIRECT_URI ||
+      'http://localhost:5001/api/integrations/gmail/callback',
+    type: 'string',
+    group: 'Integrations / Gmail',
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+
+  // --- AI / Anthropic Claude --------------------------------------
+  // Drives the per-case AI Clerk (summarise / suggest next step /
+  // free-prompt help). Key is stored plaintext + masked on admin GET
+  // by `secret: true` — same model as the AWS S3 + Gmail credentials.
+  claude_api_key: {
+    label: 'Claude (Anthropic) API key',
+    description:
+      'Anthropic console key (starts with sk-ant-…). Used by the per-case AI Clerk for summary, next-step suggestions and prompt-based help. Stored plaintext; masked in the admin UI via `secret: true`.',
+    defaultGetter: () => process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY || '',
+    type: 'string',
+    group: 'AI / Anthropic',
+    secret: true,
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  claude_model: {
+    label: 'Claude model',
+    description:
+      'Model identifier passed to /v1/messages. Default is Haiku 4.5 — the cheapest currently-supported model, ideal for trialling the AI Clerk. Move to Sonnet for production once token usage stabilises, or Opus for the hardest analytical work.',
+    // Default to Haiku 4.5 — roughly $0.80 / $4 per 1M tokens, ~10×
+    // cheaper than Sonnet 4.6. Right pick while piloting.
+    defaultGetter: () => process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001',
+    type: 'string',
+    group: 'AI / Anthropic',
+    options: [
+      {
+        value: 'claude-haiku-4-5-20251001',
+        label: 'Haiku 4.5 — cheapest (~$0.80 / $4 per 1M tokens)',
+      },
+      {
+        value: 'claude-sonnet-4-6',
+        label: 'Sonnet 4.6 — balanced (~$3 / $15 per 1M)',
+      },
+      {
+        value: 'claude-opus-4-7',
+        label: 'Opus 4.7 — strongest (~$15 / $75 per 1M)',
+      },
+      {
+        value: 'claude-opus-4-8',
+        label: 'Opus 4.8 — latest strongest (~$15 / $75 per 1M)',
+      },
+    ],
+    coerce: (raw) => {
+      const v = stringCoerce(raw);
+      const allowed = [
+        'claude-haiku-4-5-20251001',
+        'claude-sonnet-4-6',
+        'claude-opus-4-7',
+        'claude-opus-4-8',
+      ];
+      if (v && !allowed.includes(v)) {
+        throw {
+          statusCode: 422,
+          message: `claude_model must be one of: ${allowed.join(', ')}`,
+        };
+      }
+      return v || 'claude-haiku-4-5-20251001';
     },
     format: stringCoerce,
   },

@@ -15,19 +15,9 @@ import { CardSkeleton } from '../../components/common/Skeleton';
 import { useAuth } from '../../contexts/AuthContext';
 import { listMyBookings } from '../../services/bookingService';
 import { displayName, formatDate, formatRupees } from '../../utils/formatters';
+import { formatSlotLabel } from '../../utils/availability';
 import { imageUrl } from '../../utils/imageUrl';
 import { colors, fontSize, fontWeight, spacing } from '../../theme';
-
-function formatTime12h(value) {
-  if (!value) return '';
-  const [hStr, mStr] = String(value).split(':');
-  const h = Number(hStr);
-  const m = Number(mStr || 0);
-  if (!Number.isFinite(h)) return value;
-  const period = h >= 12 ? 'PM' : 'AM';
-  const hour12 = ((h + 11) % 12) + 1;
-  return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
-}
 
 const BOOKING_STATUS_VARIANT = {
   pending: 'amber',
@@ -237,7 +227,7 @@ function DashboardBookingRow({ booking, navigation }) {
   const whenLabel = isInstant
     ? 'Instant · Now'
     : booking.date
-      ? `${formatDate(booking.date)}${booking.time ? ` · ${formatTime12h(booking.time)}` : ''}`
+      ? `${formatDate(booking.date)}${booking.time ? ` · ${formatSlotLabel(booking.time)}` : ''}`
       : '—';
   return (
     <Pressable

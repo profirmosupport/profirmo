@@ -31,8 +31,9 @@ import professionalService from '@/services/professionalService';
 import bookingService from '@/services/bookingService';
 import { payForBooking } from '@/services/paymentService';
 import { useAuth } from '@/components/AuthProvider';
-import { BOOKING_TYPES } from '@/utils/constants';
+import { BOOKING_TYPES, INSTANT_BOOKING_MULTIPLIER } from '@/utils/constants';
 import { formatCurrency, formatDate, formatTime } from '@/utils/formatters';
+import { resolveDaySlots, expandSlotsToHourly } from '@/utils/availability';
 
 const DURATIONS = [15, 30, 45, 60];
 
@@ -86,8 +87,17 @@ export default function BookingPage() {
   }, [professionalId]);
 
   const isInstant = bookingType === BOOKING_TYPES.INSTANT;
-  const rate = professional ? Number(professional.consultationFee) || 0 : 0;
-  const estimatedCost = duration * rate;
+  // Pro's declared per-minute rate (scheduled price). Instant bookings
+  // are billed at INSTANT_BOOKING_MULTIPLIER × this rate because they
+  // require the pro to drop whatever they're doing. The toggle copy +
+  // the cost line below + the right-side ConsultationSummary all use
+  // `effectiveRate` so the displayed total matches what the client pays.
+  const baseRate = professional ? Number(professional.consultationFee) || 0 : 0;
+  const effectiveRate = isInstant
+    ? baseRate * INSTANT_BOOKING_MULTIPLIER
+    : baseRate;
+  const rate = effectiveRate; // alias preserved for downstream consumers
+  const estimatedCost = duration * effectiveRate;
 
   // Weekdays the professional has explicitly marked as "Day off" on
   // their availability manager. The calendar disables those buttons,
@@ -103,21 +113,26 @@ export default function BookingPage() {
     return out;
   }, [professional]);
 
-  // Seed time slots from the professional's availability for the selected day.
+  // Seed time slots from the professional's availability for the selected
+  // day. Falls back to the shared default (09:00-17:00) when no custom
+  // slots exist and the day isn't marked off — see utils/availability.js
+  // for the single source of truth.
   const slotsForDay = useMemo(() => {
     if (!selectedDate || !professional) return undefined;
     const weekday = new Date(`${selectedDate}T00:00:00`).toLocaleDateString(
       'en-IN',
       { weekday: 'long' }
     );
-    const entry = (professional.availability || []).find(
-      (s) => s && s.day === weekday
+    const { isOff, slots } = resolveDaySlots(
+      professional.availability || [],
+      weekday
     );
-    // An entry explicitly marked off — no slots.
-    if (entry && entry.enabled === false) return [];
-    return entry && Array.isArray(entry.slots) && entry.slots.length > 0
-      ? entry.slots
-      : undefined;
+    if (isOff) return [];
+    // Split each declared range (e.g. "09:00-17:00") into 1-hour bookable
+    // buckets so the booking calendar shows pickable hour-long slots
+    // rather than a single multi-hour blob. Legacy single-time strings
+    // (e.g. "09:00") become a single "09:00-10:00" bucket.
+    return expandSlotsToHourly(slots);
   }, [selectedDate, professional]);
 
   const canConfirm =
@@ -347,12 +362,22 @@ export default function BookingPage() {
                       <span className="text-sm font-semibold text-slate-800">
                         {t('bookingPage.instant')}
                       </span>
+                      <span className="ml-auto inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">
+                        {INSTANT_BOOKING_MULTIPLIER}× rate
+                      </span>
                     </div>
                     <p className="mt-1.5 text-xs text-slate-500">
                       {professional.availableNow
                         ? t('bookingPage.instantAvailable')
                         : t('bookingPage.instantUnavailable')}
                     </p>
+                    {baseRate > 0 && (
+                      <p className="mt-1 text-[11px] font-medium text-amber-700">
+                        Charged at {INSTANT_BOOKING_MULTIPLIER}× the per-minute
+                        rate ({formatCurrency(baseRate)} →{' '}
+                        {formatCurrency(baseRate * INSTANT_BOOKING_MULTIPLIER)}/min)
+                      </p>
+                    )}
                   </button>
 
                   <button
@@ -374,10 +399,18 @@ export default function BookingPage() {
                       <span className="text-sm font-semibold text-slate-800">
                         {t('bookingPage.scheduled')}
                       </span>
+                      <span className="ml-auto inline-flex items-center rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
+                        Standard rate
+                      </span>
                     </div>
                     <p className="mt-1.5 text-xs text-slate-500">
                       {t('bookingPage.scheduledDesc')}
                     </p>
+                    {baseRate > 0 && (
+                      <p className="mt-1 text-[11px] font-medium text-slate-600">
+                        Charged at the per-minute rate ({formatCurrency(baseRate)}/min)
+                      </p>
+                    )}
                   </button>
                 </div>
               </Card>

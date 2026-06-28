@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Briefcase, Plus, RefreshCw, Eye, Building2 } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import Card from '@/components/common/Card';
@@ -8,9 +8,15 @@ import Button from '@/components/common/Button';
 import Badge from '@/components/common/Badge';
 import EmptyState from '@/components/common/EmptyState';
 import AddCaseModal from '@/components/cases/AddCaseModal';
+import CasesFilterBar, {
+  emptyFilter,
+  applyCaseFilters,
+  isFilterActive,
+} from '@/components/cases/CasesFilterBar';
 import QuotaBanner from '@/components/common/QuotaBanner';
 import caseService from '@/services/caseService';
 import { getMyUsage } from '@/services/subscriptionService';
+import { getPref, setPref } from '@/services/userPreferenceService';
 import { useAuth } from '@/components/AuthProvider';
 import firmJoinService from '@/services/firmJoinService';
 import { ROLES } from '@/utils/constants';
@@ -23,15 +29,32 @@ const PRIORITY_VARIANT = {
   urgent: 'red',
 };
 
-const STATUS_VARIANT = {
-  open: 'blue',
-  'in-progress': 'amber',
-  closed: 'green',
-};
+// Status column was retired in favour of `stage` — stage is now the
+// single signal of where a case sits. The `status` column lingers on
+// the DB row for backward-compat with any external integrations but
+// is no longer surfaced.
 
-const STATUS_LABEL = {
-  open: 'Open',
-  'in-progress': 'In progress',
+// Local mirror of backend/src/config/caseStages.js so the table /
+// Kanban don't need an extra API round-trip to render labels. Keep in
+// sync if the canonical list changes — there's also /api/cases/stages
+// for the case-detail stepper which fetches dynamically.
+const STAGE_ORDER = [
+  'intake',
+  'preparation',
+  'filed',
+  'awaiting_response',
+  'hearing',
+  'closing',
+  'closed',
+];
+
+const STAGE_LABEL = {
+  intake: 'Intake',
+  preparation: 'Preparation',
+  filed: 'Filed',
+  awaiting_response: 'Awaiting Response',
+  hearing: 'Hearing',
+  closing: 'Closing',
   closed: 'Closed',
 };
 
@@ -55,6 +78,36 @@ export default function ProfessionalCasesPage() {
   const [error, setError] = useState('');
   const [addOpen, setAddOpen] = useState(false);
   const [firmIdForCreate, setFirmIdForCreate] = useState(null);
+  // View mode — 'table' (default, dense scannable) or 'kanban'
+  // (columns grouped by stage). Persisted to user_preferences server-
+  // side so it survives across sessions + devices.
+  const [viewMode, setViewModeState] = useState('table');
+
+  // Hydrate the persisted choice on mount. Best-effort — failures
+  // silently fall back to the 'table' default.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const v = await getPref('casesView');
+        if (!cancelled && (v === 'table' || v === 'kanban')) {
+          setViewModeState(v);
+        }
+      } catch {
+        // Pref not set yet → keep default. No need to surface.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Wrapper that persists the new choice in the background — UI
+  // updates immediately, save is fire-and-forget.
+  function setViewMode(next) {
+    setViewModeState(next);
+    setPref('casesView', next).catch(() => {});
+  }
   // Plan quota snapshot — drives the QuotaBanner + button-disable below.
   const [usage, setUsage] = useState(null);
 
@@ -111,6 +164,46 @@ export default function ProfessionalCasesPage() {
     load();
   }, [load]);
 
+  // Client-side search + filters. The Kanban + table both read from
+  // `filteredCases` so a filter narrows both views consistently.
+  const [filter, setFilter] = useState(emptyFilter);
+  const filteredCases = useMemo(
+    () => applyCaseFilters(cases, filter),
+    [cases, filter]
+  );
+
+  // Table / Kanban switch — extracted so both header variants (the
+  // QuotaBanner actions slot and the no-subscription fallback row)
+  // can drop it inline next to the Refresh button without duplicating
+  // markup. Hidden when there's nothing to show.
+  const showViewToggle = !loading && !error && cases.length > 0;
+  const viewToggle = showViewToggle ? (
+    <div className="inline-flex overflow-hidden rounded-lg border border-slate-200">
+      <button
+        type="button"
+        onClick={() => setViewMode('table')}
+        className={`px-3 py-1.5 text-xs font-medium transition ${
+          viewMode === 'table'
+            ? 'bg-slate-900 text-white'
+            : 'bg-white text-slate-600 hover:bg-slate-50'
+        }`}
+      >
+        Table
+      </button>
+      <button
+        type="button"
+        onClick={() => setViewMode('kanban')}
+        className={`px-3 py-1.5 text-xs font-medium transition ${
+          viewMode === 'kanban'
+            ? 'bg-slate-900 text-white'
+            : 'bg-white text-slate-600 hover:bg-slate-50'
+        }`}
+      >
+        Kanban
+      </button>
+    </div>
+  ) : null;
+
   return (
     <DashboardLayout
       role={ROLES.PROFESSIONAL}
@@ -142,6 +235,7 @@ export default function ProfessionalCasesPage() {
                   <RefreshCw size={15} />
                   Refresh
                 </Button>
+                {viewToggle}
                 <Button
                   size="sm"
                   onClick={() => setAddOpen(true)}
@@ -175,12 +269,26 @@ export default function ProfessionalCasesPage() {
                 <RefreshCw size={15} />
                 Refresh
               </Button>
+              {viewToggle}
               <Button size="sm" onClick={() => setAddOpen(true)}>
                 <Plus size={15} />
                 New case
               </Button>
             </div>
           </div>
+        )}
+
+        {/* Search + filter bar — narrows both the Kanban and the
+            table to the same matching subset. Hidden until at least
+            one case exists so the empty-state CTA above stays the
+            primary action when the dashboard is brand new. */}
+        {!loading && !error && cases.length > 0 && (
+          <CasesFilterBar
+            value={filter}
+            onChange={setFilter}
+            totalCount={cases.length}
+            matchCount={filteredCases.length}
+          />
         )}
 
         {loading ? (
@@ -211,16 +319,51 @@ export default function ProfessionalCasesPage() {
               </Button>
             }
           />
+        ) : filteredCases.length === 0 && isFilterActive(filter) ? (
+          <EmptyState
+            icon={<Briefcase size={24} />}
+            title="No cases match these filters"
+            description="Try a different search term or clear the filters."
+            action={
+              <Button size="sm" variant="outline" onClick={() => setFilter(emptyFilter())}>
+                Clear filters
+              </Button>
+            }
+          />
+        ) : viewMode === 'kanban' ? (
+          <CasesKanban
+            cases={filteredCases}
+            onMoveCase={async (caseId, nextStage) => {
+              // Optimistic update — the card lands in the new column
+              // before the network call returns. On failure we revert
+              // and surface the error via the existing top-level
+              // setError so it lines up with other server failures.
+              const prev = cases;
+              setCases(
+                cases.map((c) =>
+                  c.id === caseId ? { ...c, stage: nextStage } : c
+                )
+              );
+              try {
+                await caseService.setStage(caseId, { stage: nextStage });
+              } catch (err) {
+                setError(err.message || 'Could not update stage.');
+                setCases(prev);
+              }
+            }}
+          />
         ) : (
           <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Title</th>
-                  <th className="px-4 py-3 font-semibold">Category</th>
+                  {/* Category column dropped — replaced by Stage so
+                      the table communicates *where the case is*
+                      instead of *what type of work it is*. */}
+                  <th className="px-4 py-3 font-semibold">Stage</th>
                   <th className="px-4 py-3 font-semibold">Client</th>
                   <th className="px-4 py-3 font-semibold">Priority</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3 font-semibold">Next hearing</th>
                   <th className="px-4 py-3 font-semibold">Created</th>
                   <th className="px-4 py-3 font-semibold text-right">
@@ -229,7 +372,7 @@ export default function ProfessionalCasesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {cases.map((c) => {
+                {filteredCases.map((c) => {
                   // A case with 2+ assignees is a firm case per the
                   // current spec — surface a small badge inline with the
                   // title so the pro can tell at a glance which of their
@@ -256,8 +399,14 @@ export default function ProfessionalCasesPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {c.category || '—'}
+                    <td className="px-4 py-3">
+                      {c.stage ? (
+                        <Badge variant="violet">
+                          {STAGE_LABEL[c.stage] || c.stage}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-slate-400">— Not set —</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-slate-600">
                       {c.client ? (
@@ -278,11 +427,6 @@ export default function ProfessionalCasesPage() {
                     <td className="px-4 py-3">
                       <Badge variant={PRIORITY_VARIANT[c.priority] || 'gray'}>
                         {c.priority || 'medium'}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant={STATUS_VARIANT[c.status] || 'gray'}>
-                        {STATUS_LABEL[c.status] || c.status || 'Open'}
                       </Badge>
                     </td>
                     <td className="px-4 py-3 text-slate-600">
@@ -329,6 +473,262 @@ export default function ProfessionalCasesPage() {
           firmId: firmIdForCreate || undefined,
         }}
       />
+
     </DashboardLayout>
+  );
+}
+
+// Per-stage column styling. Each stage gets a bold solid colour header
+// with white text so the board reads as a coloured pipeline at a
+// glance. Body keeps a faintly tinted background so the column
+// boundaries stay obvious without distracting from the cards.
+//
+// Palette ordering follows the natural funnel — neutral slate for
+// unassigned, cool blue/violet/indigo through the working stages,
+// warm orange for "waiting", teal/emerald for the closing arc. Avoid
+// red anywhere here (reserved for destructive actions elsewhere).
+const STAGE_COLUMN = {
+  unassigned: {
+    head: 'bg-slate-500',
+    body: 'bg-slate-50',
+    icon: '○',
+  },
+  intake: {
+    head: 'bg-gradient-to-r from-sky-500 to-sky-600',
+    body: 'bg-sky-50/50',
+    icon: '✦',
+  },
+  preparation: {
+    head: 'bg-gradient-to-r from-amber-500 to-amber-600',
+    body: 'bg-amber-50/40',
+    icon: '✎',
+  },
+  filed: {
+    head: 'bg-gradient-to-r from-purple-500 to-purple-600',
+    body: 'bg-purple-50/40',
+    icon: '📤',
+  },
+  awaiting_response: {
+    head: 'bg-gradient-to-r from-orange-500 to-orange-600',
+    body: 'bg-orange-50/40',
+    icon: '⏳',
+  },
+  hearing: {
+    head: 'bg-gradient-to-r from-indigo-500 to-indigo-700',
+    body: 'bg-indigo-50/40',
+    icon: '⚖',
+  },
+  closing: {
+    head: 'bg-gradient-to-r from-teal-500 to-teal-600',
+    body: 'bg-teal-50/40',
+    icon: '✓',
+  },
+  closed: {
+    head: 'bg-gradient-to-r from-emerald-600 to-emerald-700',
+    body: 'bg-emerald-50/40',
+    icon: '🔒',
+  },
+};
+
+/**
+ * CasesKanban — horizontal-scroll board with one column per canonical
+ * stage. Cases without a stage drop into an "Unassigned" column at
+ * the front so they're not lost.
+ *
+ * Drag-and-drop uses the native HTML5 API (no extra deps). Dragging a
+ * card onto another column fires `onMoveCase(caseId, nextStage)`; the
+ * parent decides whether to optimistically update + persist. Dropping
+ * back on the same column is a no-op.
+ */
+function CasesKanban({ cases, onMoveCase }) {
+  const [draggingId, setDraggingId] = useState(null);
+  const [dropTarget, setDropTarget] = useState(null);
+
+  const columns = [{ key: 'unassigned', label: 'Unassigned' }];
+  for (const k of STAGE_ORDER) {
+    columns.push({ key: k, label: STAGE_LABEL[k] });
+  }
+
+  const byStage = new Map();
+  for (const c of cases) {
+    const key = c.stage && STAGE_LABEL[c.stage] ? c.stage : 'unassigned';
+    if (!byStage.has(key)) byStage.set(key, []);
+    byStage.get(key).push(c);
+  }
+
+  function handleDragStart(e, caseId) {
+    setDraggingId(caseId);
+    // Required for Firefox to actually start a drag.
+    e.dataTransfer.setData('text/plain', caseId);
+    e.dataTransfer.effectAllowed = 'move';
+  }
+
+  function handleDragEnd() {
+    setDraggingId(null);
+    setDropTarget(null);
+  }
+
+  function handleDragOver(e, columnKey) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dropTarget !== columnKey) setDropTarget(columnKey);
+  }
+
+  function handleDrop(e, columnKey) {
+    e.preventDefault();
+    const caseId = e.dataTransfer.getData('text/plain') || draggingId;
+    setDraggingId(null);
+    setDropTarget(null);
+    if (!caseId) return;
+    // Map our pseudo-column "unassigned" back to a null stage so the
+    // backend understands "clear the stage".
+    const nextStage = columnKey === 'unassigned' ? null : columnKey;
+    const c = cases.find((x) => x.id === caseId);
+    if (!c) return;
+    const currentStage = c.stage || null;
+    if (currentStage === nextStage) return;
+    if (typeof onMoveCase === 'function') {
+      onMoveCase(caseId, nextStage);
+    }
+  }
+
+  return (
+    <div className="flex min-h-[480px] gap-3 overflow-x-auto pb-3">
+      {columns.map((col) => {
+        const items = byStage.get(col.key) || [];
+        const tint = STAGE_COLUMN[col.key] || STAGE_COLUMN.unassigned;
+        const isDropZone = dropTarget === col.key && draggingId;
+        return (
+          <div
+            key={col.key}
+            onDragOver={(e) => handleDragOver(e, col.key)}
+            onDrop={(e) => handleDrop(e, col.key)}
+            onDragLeave={() => {
+              // Only clear when leaving the column entirely (not when
+              // dragging over a child card).
+              if (dropTarget === col.key) setDropTarget(null);
+            }}
+            className={[
+              'flex w-80 shrink-0 flex-col overflow-hidden rounded-xl border bg-white shadow-sm transition',
+              isDropZone
+                ? 'border-indigo-400 ring-2 ring-indigo-200'
+                : 'border-slate-200',
+            ].join(' ')}
+          >
+            <div
+              className={`sticky top-0 z-10 flex items-center justify-between px-4 py-3 text-white shadow-sm ${tint.head}`}
+            >
+              <span className="flex items-center gap-2">
+                <span
+                  className="flex h-6 w-6 items-center justify-center rounded-full bg-white/25 text-sm font-semibold leading-none"
+                  aria-hidden="true"
+                >
+                  {tint.icon}
+                </span>
+                <span className="text-sm font-bold tracking-tight">
+                  {col.label}
+                </span>
+              </span>
+              <span className="inline-flex h-6 min-w-[24px] items-center justify-center rounded-full bg-white/25 px-2 text-[11px] font-semibold tabular-nums">
+                {items.length}
+              </span>
+            </div>
+            <div className={`flex-1 space-y-2 overflow-y-auto p-2 ${tint.body}`}>
+              {items.length === 0 ? (
+                <p
+                  className={[
+                    'rounded-lg border border-dashed px-2 py-6 text-center text-[11px]',
+                    isDropZone
+                      ? 'border-indigo-300 bg-indigo-50/60 text-indigo-700'
+                      : 'border-slate-200 bg-white/60 text-slate-400',
+                  ].join(' ')}
+                >
+                  {isDropZone
+                    ? `Drop to move into ${col.label}`
+                    : `No cases in ${col.label.toLowerCase()}`}
+                </p>
+              ) : (
+                items.map((c) => {
+                  const assignees =
+                    Array.isArray(c.professionals) && c.professionals.length > 0
+                      ? c.professionals
+                      : c.professional
+                        ? [c.professional]
+                        : [];
+                  const isFirmCase = assignees.length >= 2;
+                  const isDragging = draggingId === c.id;
+                  return (
+                    <div
+                      key={c.id}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, c.id)}
+                      onDragEnd={handleDragEnd}
+                      className={[
+                        'group cursor-grab rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-sm transition active:cursor-grabbing',
+                        isDragging
+                          ? 'opacity-40'
+                          : 'hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-md',
+                      ].join(' ')}
+                    >
+                      {/* The whole card is draggable; the title link
+                          opens the detail page when clicked without
+                          drag. Anchor inside a draggable parent works
+                          fine — clicks not preceded by a drag fire
+                          normally. */}
+                      <a
+                        href={`/dashboard/professional/cases/${c.id}`}
+                        className="block"
+                        onClick={(e) => {
+                          // If we just finished a drag the browser may
+                          // synthesize a click — swallow it.
+                          if (draggingId === c.id) e.preventDefault();
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="line-clamp-2 flex-1 text-sm font-semibold text-slate-800">
+                            {c.title || 'Untitled case'}
+                          </p>
+                          {isFirmCase && (
+                            <span
+                              title={`Firm case — ${assignees.length} assignees`}
+                              className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-violet-700"
+                            >
+                              Firm
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1.5 text-[11px] text-slate-500">
+                          {c.client && c.client.name
+                            ? c.client.name
+                            : c.clientId || '—'}
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <Badge variant={PRIORITY_VARIANT[c.priority] || 'gray'}>
+                            {c.priority || 'medium'}
+                          </Badge>
+                          {c.cnr && (
+                            <span
+                              className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-800"
+                              title={`E-Courts CNR ${c.cnr}`}
+                            >
+                              CNR
+                            </span>
+                          )}
+                          {c.nextHearingDate && (
+                            <span className="text-[10px] text-slate-500">
+                              ⚖ {formatDate(c.nextHearingDate)}
+                            </span>
+                          )}
+                        </div>
+                      </a>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }

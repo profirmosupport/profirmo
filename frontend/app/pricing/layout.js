@@ -1,3 +1,5 @@
+import JsonLd, { breadcrumb, webPage } from '@/components/seo/JsonLd';
+
 const title = 'Pricing';
 const description =
   'Simple, transparent per-minute consultation pricing on Pro Firmo. No subscriptions — pay only for the expert legal and tax advice you use.';
@@ -18,6 +20,23 @@ export const metadata = {
   twitter: { title: `${title} | Pro Firmo`, description },
 };
 
+const JSON_LD = [
+  webPage({
+    url: '/pricing',
+    name: `${title} | Pro Firmo`,
+    description,
+  }),
+  breadcrumb([
+    { name: 'Home', url: '/' },
+    { name: 'Pricing', url: '/pricing' },
+  ]),
+];
+
 export default function PricingLayout({ children }) {
-  return children;
+  return (
+    <>
+      <JsonLd data={JSON_LD} />
+      {children}
+    </>
+  );
 }

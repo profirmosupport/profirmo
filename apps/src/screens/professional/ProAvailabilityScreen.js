@@ -33,6 +33,7 @@ import {
   getMyProfile,
   updateMyProfessionalProfile,
 } from '../../services/profileService';
+import { INSTANT_BOOKING_MULTIPLIER } from '../../config/constants';
 import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
 
 const DAYS = [
@@ -377,6 +378,27 @@ export default function ProAvailabilityScreen() {
               onChangeText={(v) => setFeePerMin(v.replace(/[^0-9.]/g, ''))}
               hint="Total consultation cost = rate × selected duration."
             />
+            <View style={styles.instantHint}>
+              <Feather
+                name="zap"
+                size={12}
+                color={colors.warning}
+                style={{ marginTop: 2 }}
+              />
+              <Text style={styles.instantHintText}>
+                For instant consultations you earn{' '}
+                <Text style={styles.instantHintStrong}>
+                  {INSTANT_BOOKING_MULTIPLIER}× this rate
+                </Text>
+                {Number(feePerMin) > 0
+                  ? ` — ₹${
+                      Number(feePerMin) * INSTANT_BOOKING_MULTIPLIER
+                    }/min`
+                  : ''}
+                . The client is charged the same {INSTANT_BOOKING_MULTIPLIER}×
+                multiplier.
+              </Text>
+            </View>
           </Card>
 
           {/* Weekly schedule */}
@@ -599,4 +621,26 @@ const styles = StyleSheet.create({
   bannerError: { backgroundColor: '#fee2e2', borderColor: '#fca5a5' },
   bannerSuccess: { backgroundColor: '#d1fae5', borderColor: '#6ee7b7' },
   bannerText: { flex: 1, fontSize: 12, fontWeight: fontWeight.semibold },
+  instantHint: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: '#fcd34d',
+    backgroundColor: colors.warningSoft,
+  },
+  instantHintText: {
+    flex: 1,
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.warningSoftText,
+  },
+  instantHintStrong: {
+    fontWeight: fontWeight.bold,
+    color: colors.warningSoftText,
+  },
 });

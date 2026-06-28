@@ -1,12 +1,22 @@
 import './globals.css';
+import Script from 'next/script';
 import { Inter } from 'next/font/google';
 import { LanguageProvider } from '@/components/LanguageProvider';
 import { AuthProvider } from '@/components/AuthProvider';
+
+const GA_MEASUREMENT_ID = 'G-K1LJGC40Y6';
 
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
   display: 'swap',
+  // Preload + restrict the weight axis to the four weights actually used
+  // in the design system. Inter ships with a variable-font default; pinning
+  // weights here lets next/font emit a single woff2 with only the slices we
+  // render, knocking ~40 KB off the critical-path font fetch.
+  preload: true,
+  weight: ['400', '500', '600', '700'],
+  adjustFontFallback: 'Arial',
 });
 
 // Layered fallback — see notes in app/blog/[slug]/page.js. Without this,
@@ -78,10 +88,128 @@ export const viewport = {
   initialScale: 1,
 };
 
+// Site-wide JSON-LD. Two graphs: Organization (the brand) + WebSite
+// (with a SearchAction so Google can render the sitelinks search box, and
+// so AI assistants understand how to query us). Kept in this layout so it
+// renders on every page.
+const SITE_LD = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      '@id': `${SITE_URL}#organization`,
+      name: 'Pro Firmo',
+      alternateName: 'Profirmo',
+      url: SITE_URL,
+      logo: `${SITE_URL}/logos/profirmo-512.png`,
+      description: DESCRIPTION,
+      foundingDate: '2024',
+      areaServed: { '@type': 'Country', name: 'India' },
+      knowsAbout: [
+        'Legal consultation',
+        'Tax consultation',
+        'GST advisory',
+        'Income tax filing',
+        'Company registration',
+        'Property law',
+        'Family law',
+        'Corporate law',
+      ],
+      sameAs: [
+        'https://www.linkedin.com/company/pro-firmo/',
+        'https://www.facebook.com/fbprofirmo',
+        'https://www.instagram.com/profirmoinsta/',
+      ],
+      contactPoint: [
+        {
+          '@type': 'ContactPoint',
+          contactType: 'customer support',
+          email: 'support@profirmo.com',
+          areaServed: 'IN',
+          availableLanguage: ['en', 'hi'],
+        },
+      ],
+    },
+    {
+      '@type': 'WebSite',
+      '@id': `${SITE_URL}#website`,
+      url: SITE_URL,
+      name: 'Pro Firmo',
+      description: DESCRIPTION,
+      inLanguage: 'en-IN',
+      publisher: { '@id': `${SITE_URL}#organization` },
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: {
+          '@type': 'EntryPoint',
+          urlTemplate: `${SITE_URL}/search?q={search_term_string}`,
+        },
+        'query-input': 'required name=search_term_string',
+      },
+    },
+  ],
+};
+
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={inter.variable}>
+      <head>
+        {/* LCP — preload the mobile brand mark so the browser pulls it in
+            parallel with CSS instead of waiting for the parser to reach the
+            <img> in the Header. The PNG is 33 KB and the LCP element on
+            mobile (the desktop wordmark is text and renders inline). */}
+        <link
+          rel="preload"
+          as="image"
+          href="/images/profirmo-logo.png"
+          type="image/png"
+          fetchPriority="high"
+        />
+
+        {/* Cheap perf hints — open TLS to the third-party origins we know
+            we'll hit so the browser doesn't pay DNS+TLS RTT on first use.
+            S3 is preconnect (full TLS warm-up) because EVERY page renders
+            at least one image from there (profile photos, firm logos,
+            blog cover images). The others are dns-prefetch only because
+            they're used for cosmetic avatars / placeholders that load
+            after LCP. */}
+        <link
+          rel="preconnect"
+          href="https://profirmomain.s3.ap-south-1.amazonaws.com"
+          crossOrigin="anonymous"
+        />
+        <link rel="preconnect" href="https://www.googletagmanager.com" />
+        <link rel="preconnect" href="https://www.google-analytics.com" />
+        <link rel="dns-prefetch" href="https://i.pravatar.cc" />
+        <link rel="dns-prefetch" href="https://picsum.photos" />
+        <link rel="dns-prefetch" href="https://ui-avatars.com" />
+        {/* Site-wide structured data — read by Google, Bing, and the AI
+            assistants (ChatGPT/Gemini/Claude/Perplexity) to understand
+            what the site is and how to cite it. */}
+        <script
+          type="application/ld+json"
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(SITE_LD) }}
+        />
+      </head>
       <body className="font-sans">
+        {/* Google Analytics (gtag.js) — `lazyOnload` defers until the
+            browser is idle, off the critical render path. PageSpeed flags
+            `afterInteractive` GA bundles as render-blocking third-party
+            requests on slow connections; this strategy is the standard
+            mitigation. The dataLayer is initialised inline so any
+            gtag('event', ...) calls before the script loads are buffered. */}
+        <Script id="gtag-bootstrap" strategy="beforeInteractive">
+          {`window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            window.gtag = gtag;
+            gtag('js', new Date());
+            gtag('config', '${GA_MEASUREMENT_ID}');`}
+        </Script>
+        <Script
+          src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
+          strategy="lazyOnload"
+        />
         <LanguageProvider>
           <AuthProvider>{children}</AuthProvider>
         </LanguageProvider>

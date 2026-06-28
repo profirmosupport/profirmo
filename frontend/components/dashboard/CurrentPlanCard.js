@@ -130,18 +130,25 @@ export default function CurrentPlanCard({
               {plan.planType}
             </span>
             {/* Show payment status only when it adds info beyond the plan
-                type — i.e. NOT for free plans where it'd just duplicate the
-                "Free" pill. Paid plans surface 'paid' / 'pending' / 'failed'. */}
-            {sub.paymentStatus && sub.paymentStatus !== 'free' && (
-              <span
-                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest ${
-                  PAYMENT_BADGE[sub.paymentStatus] ||
-                  'bg-slate-100 text-slate-700'
-                }`}
-              >
-                {sub.paymentStatus}
-              </span>
-            )}
+                type pill. Skip when:
+                  - status is 'free' (would duplicate the "Free" plan-type pill), or
+                  - status text equals planType text — e.g. plan-type "paid" +
+                    payment-status "paid" was rendering "PAID PAID" twice on
+                    the dashboard card. Only show when the status carries new
+                    info ('pending' / 'failed' / 'cancelled' / etc.). */}
+            {sub.paymentStatus &&
+              sub.paymentStatus !== 'free' &&
+              String(sub.paymentStatus).toLowerCase() !==
+                String(plan.planType || '').toLowerCase() && (
+                <span
+                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest ${
+                    PAYMENT_BADGE[sub.paymentStatus] ||
+                    'bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  {sub.paymentStatus}
+                </span>
+              )}
             {plan.recommendedBadge && (
               <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-violet-700">
                 <Star size={10} />

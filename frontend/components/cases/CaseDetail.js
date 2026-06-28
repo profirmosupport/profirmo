@@ -24,6 +24,9 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
+  Sparkles,
+  LogOut,
+  ArrowLeft,
 } from 'lucide-react';
 import Card from '@/components/common/Card';
 import Button from '@/components/common/Button';
@@ -35,6 +38,11 @@ import FileUpload from '@/components/common/FileUpload';
 import AddCaseModal from '@/components/cases/AddCaseModal';
 import { resolveFileUrl } from '@/services/fileService';
 import CaseAttachmentLink from '@/components/cases/CaseAttachmentLink';
+import CaseAttachmentList from '@/components/cases/CaseAttachmentList';
+import CaseStageTracker from '@/components/cases/CaseStageTracker';
+import CaseGmailMessages from '@/components/cases/CaseGmailMessages';
+import CaseAiClerk from '@/components/cases/CaseAiClerk';
+import { summarizeCase } from '@/services/caseAiService';
 import caseService from '@/services/caseService';
 import { getLawFirm } from '@/services/profileService';
 import { syncCaseFromEcourts } from '@/services/ecourtsService';
@@ -48,17 +56,9 @@ const PRIORITY_VARIANT = {
   urgent: 'red',
 };
 
-const STATUS_VARIANT = {
-  open: 'blue',
-  'in-progress': 'amber',
-  closed: 'green',
-};
-
-const STATUS_LABEL = {
-  open: 'Open',
-  'in-progress': 'In progress',
-  closed: 'Closed',
-};
+// Status was retired in favour of `stage`. Stage is shown via the
+// CaseStageTracker at the top of the page — no separate Status badge
+// is rendered anywhere on this surface.
 
 function DetailRow({ label, value }) {
   return (
@@ -128,6 +128,14 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deletingCase, setDeletingCase] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+
+  // Leave-case modal state — only reachable on firm-shared cases
+  // (≥ 2 professionals assigned). Pulling out keeps the row in
+  // professionalIds but leaves the case intact for the rest of the
+  // firm.
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [leavingCase, setLeavingCase] = useState(false);
+  const [leaveError, setLeaveError] = useState('');
 
   // Firm members — loaded lazily; only populated when the caller belongs to
   // a firm. Used by the Edit modal so the assignee picker is available.
@@ -306,12 +314,14 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
     }
   }
 
-  function addNoteAttachment(url) {
+  function addNoteAttachment(url, meta) {
     if (!url) return;
+    // Strip query params (signed URLs leak X-Amz-Signature etc) if we
+    // ever have to fall back to deriving from the URL path.
+    const cleanFromUrl = String(url).split('?')[0].split('/').pop();
+    const name = (meta && meta.name) || cleanFromUrl;
     setNoteAttachments((prev) =>
-      prev.some((a) => a.url === url)
-        ? prev
-        : [...prev, { url, name: url.split('/').pop() }]
+      prev.some((a) => a.url === url) ? prev : [...prev, { url, name }]
     );
   }
   function removeNoteAttachment(url) {
@@ -330,12 +340,12 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
     setEditingNoteDraft('');
     setEditingNoteAttachments([]);
   }
-  function addEditingNoteAttachment(url) {
+  function addEditingNoteAttachment(url, meta) {
     if (!url) return;
+    const cleanFromUrl = String(url).split('?')[0].split('/').pop();
+    const name = (meta && meta.name) || cleanFromUrl;
     setEditingNoteAttachments((prev) =>
-      prev.some((a) => a.url === url)
-        ? prev
-        : [...prev, { url, name: url.split('/').pop() }]
+      prev.some((a) => a.url === url) ? prev : [...prev, { url, name }]
     );
   }
   function removeEditingNoteAttachment(url) {
@@ -403,6 +413,28 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
     }
   }
 
+  function openLeaveCase() {
+    setLeaveError('');
+    setLeaveOpen(true);
+  }
+  function closeLeaveCase() {
+    if (leavingCase) return;
+    setLeaveOpen(false);
+    setLeaveError('');
+  }
+  async function confirmLeaveCase() {
+    if (leavingCase) return;
+    setLeavingCase(true);
+    setLeaveError('');
+    try {
+      await caseService.leave(caseId);
+      router.back();
+    } catch (err) {
+      setLeaveError(err.message || 'Could not leave the case.');
+      setLeavingCase(false);
+    }
+  }
+
   if (loading) return <Skeleton />;
 
   if (error || !data) {
@@ -430,12 +462,61 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
         ? [data.client]
         : [];
 
+  // "Back" target — firm-admin viewers come from /dashboard/firm/cases,
+  // everyone else from the per-pro / client list. Falls back to
+  // router.back() so a direct deep-link still has a sensible escape
+  // hatch.
+  const backHref = viewedAsFirmAdmin
+    ? '/dashboard/firm/cases'
+    : isClient
+      ? '/dashboard/client/cases'
+      : '/dashboard/professional/cases';
+
   return (
-    <div className="space-y-6">
+    // pb-24 keeps the floating AI Clerk launcher at the bottom-right
+    // from overlapping the danger-zone card on scroll-to-bottom.
+    <div className="space-y-6 pb-24">
+      {/* Back link — sits above the stage tracker so the pro can
+          return to the list without hunting for the breadcrumb in the
+          dashboard chrome. Uses a Link-style anchor rather than a
+          history-back so a refreshed tab still has a working escape. */}
+      <button
+        type="button"
+        onClick={() => router.push(backHref)}
+        className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-amber-700"
+      >
+        <ArrowLeft size={13} />
+        Back to cases
+      </button>
+
+      {/* Stage tracker — top of the page. The shared lifecycle (intake
+          → … → closed) is the first thing a pro should see when they
+          open a case. Drives the Kanban board on /cases too. */}
+      <CaseStageTracker caseRow={data} onUpdated={loadCase} />
+
+      {/* Floating AI Clerk launcher — only for the professional.
+          The clerk's capability gate lives in the admin's Claude API
+          key, not the user's plan. After saving a draft as an update
+          we reload BOTH the case and the timeline so the new entry
+          surfaces immediately. */}
+      {!isClient && data && (
+        <CaseAiClerk
+          caseId={caseId}
+          onChange={async () => {
+            await Promise.all([loadCase(), loadUpdates()]);
+          }}
+        />
+      )}
+
       {/* Header */}
       <Card>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
+        {/* `flex-wrap` + `flex-1 min-w-0` on the title block lets the
+            action buttons (Refresh, Sync from E-Courts, Edit, Delete)
+            drop to a new row whenever the title is long enough that
+            the right side would otherwise get squeezed. The title
+            keeps its natural soft-wrap inside `min-w-0`. */}
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1 basis-[18rem]">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-lg font-semibold text-slate-900">
                 {data.title || 'Untitled case'}
@@ -456,9 +537,8 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                 )}
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Badge variant={STATUS_VARIANT[data.status] || 'gray'}>
-                {STATUS_LABEL[data.status] || data.status || 'Open'}
-              </Badge>
+              {/* Status removed — stage handles "where is this case"
+                  via the CaseStageTracker at the top of the page. */}
               <Badge variant={PRIORITY_VARIANT[data.priority] || 'gray'}>
                 {data.priority || 'medium'}
               </Badge>
@@ -475,7 +555,7 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -485,15 +565,15 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
               <RefreshCw size={15} />
               Refresh
             </Button>
-            {data && data.source === 'ecourts' && data.cnr ? (
+            {data && data.cnr ? (
               <Button
                 variant="primary"
                 size="sm"
                 href={`/ecourts/${encodeURIComponent(data.cnr)}?from=${encodeURIComponent(pathname || '')}`}
-                title="Open the live E-Courts India record for this case"
+                title="Pull the latest hearing / order detail from E-Courts India for this CNR"
               >
                 <CloudDownload size={15} />
-                Update from E-Court
+                Sync from E-Courts
               </Button>
             ) : null}
             {!isClient && (() => {
@@ -525,6 +605,20 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
           </div>
         </div>
       </Card>
+
+      {/* AI Clerk persisted summary — sits right below the header
+          card. Visible to client + pro. A "Regenerate" button on the
+          right re-runs summarisation; only the professional can press
+          it (clients see the existing summary read-only). */}
+      {data && data.aiSummary && (
+        <AiSummaryCard
+          summary={data.aiSummary}
+          updatedAt={data.aiSummaryUpdatedAt}
+          canRegenerate={!isClient}
+          caseId={caseId}
+          onRegenerated={loadCase}
+        />
+      )}
 
       {/* Client panel — always on top of the detail view */}
       <Card>
@@ -690,7 +784,7 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                   `case-files/<caseId>/`, isolated per case. */}
               <FileUpload
                 value=""
-                onChange={(url) => addNoteAttachment(url)}
+                onChange={(url, meta) => addNoteAttachment(url, meta)}
                 category="case_note"
                 caseId={caseId}
                 accept=".pdf,.doc,.docx,image/*"
@@ -803,7 +897,9 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                           />
                           <FileUpload
                             value=""
-                            onChange={(url) => addEditingNoteAttachment(url)}
+                            onChange={(url, meta) =>
+                              addEditingNoteAttachment(url, meta)
+                            }
                             category="case_note"
                             caseId={caseId}
                             accept=".pdf,.doc,.docx,image/*"
@@ -857,26 +953,10 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                             {truncated}
                             {didTruncate && '…'}
                           </p>
-                          {Array.isArray(n.attachments) &&
-                            n.attachments.length > 0 && (
-                              <ul className="mt-2 flex flex-wrap gap-1.5">
-                                {n.attachments.map((a, i) => (
-                                  <li key={i}>
-                                    <CaseAttachmentLink
-                                      caseId={caseId}
-                                      attachment={a}
-                                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-                                    >
-                                      <Paperclip
-                                        size={10}
-                                        className="text-slate-400"
-                                      />
-                                      {a.name || `Attachment ${i + 1}`}
-                                    </CaseAttachmentLink>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
+                          <CaseAttachmentList
+                            caseId={caseId}
+                            attachments={n.attachments}
+                          />
                           {didTruncate && (
                             <button
                               type="button"
@@ -963,6 +1043,11 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
         </div>
       </div>
 
+      {/* Inbound Gmail messages matched to this case. Renders nothing
+          when Gmail isn't connected — the dashboard-level
+          GmailIntegrationCard handles the connect / re-grant UX. */}
+      <CaseGmailMessages caseId={caseId} />
+
       {/* Updates — full-width timeline */}
       <Card>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -1019,16 +1104,44 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                         </span>
                       </p>
                     </div>
-                    <div className="flex shrink-0 items-center gap-1.5">
+                    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                      {/* Task status chip — only renders if this update is
+                          tagged as a task (status set). Distinct colour per
+                          state for fast scanning. */}
+                      {u.status && (
+                        <Badge
+                          variant={
+                            u.status === 'done'
+                              ? 'green'
+                              : u.status === 'in_progress'
+                                ? 'blue'
+                                : u.status === 'cancelled'
+                                  ? 'red'
+                                  : 'gray'
+                          }
+                        >
+                          {u.status === 'in_progress'
+                            ? 'In progress'
+                            : u.status.charAt(0).toUpperCase() + u.status.slice(1)}
+                        </Badge>
+                      )}
+                      {u.priority && u.priority !== 'normal' && (
+                        <span
+                          className={`text-[10px] uppercase tracking-wide ${
+                            u.priority === 'high'
+                              ? 'font-semibold text-red-600'
+                              : 'text-slate-500'
+                          }`}
+                        >
+                          {u.priority} priority
+                        </span>
+                      )}
+                      {u.dueDate && (
+                        <Badge variant="violet">Due {formatDate(u.dueDate)}</Badge>
+                      )}
                       {u.nextHearingDate && (
                         <Badge variant="amber">
                           Next hearing {formatDate(u.nextHearingDate)}
-                        </Badge>
-                      )}
-                      {Array.isArray(u.attachments) && u.attachments.length > 0 && (
-                        <Badge variant="gray">
-                          <Paperclip size={11} className="mr-0.5" />
-                          {u.attachments.length}
                         </Badge>
                       )}
                     </div>
@@ -1039,30 +1152,96 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                     </p>
                   )}
                 </button>
+                {/* Attachments rendered OUTSIDE the button so each link
+                    is its own actionable element (a <a> inside <button>
+                    is invalid HTML and the click would bubble). Images
+                    appear as thumbnails; PDFs/DOCs as paperclip pills.
+                    All open in a new tab via CaseAttachmentLink. */}
+                <div className="mt-1 px-3 pb-3">
+                  <CaseAttachmentList
+                    caseId={caseId}
+                    attachments={u.attachments}
+                  />
+                </div>
               </li>
             ))}
           </ol>
         )}
       </Card>
 
-      {/* Danger zone — case deletion lives at the very bottom of the page
-          so it stays out of the way until you explicitly scroll to it.
-          Clients can only delete their own cases when no professional has
-          been assigned yet (server-enforced as well). */}
+      {/* Danger zone — case deletion / leave-case live at the very bottom
+          of the page so they stay out of the way until you explicitly
+          scroll to it.
+          Rules:
+            * Clients can only delete their own cases when no professional
+              has been assigned yet (server-enforced as well).
+            * On a firm-shared case (≥ 2 professionals assigned) a
+              professional can LEAVE the case but cannot delete it — the
+              remaining pros must keep working. Deletion is reserved for
+              the last professional standing, which falls back to the
+              individual-case rules. */}
+
       {(() => {
         const assignees = Array.isArray(data && data.professionalIds)
           ? data.professionalIds.filter(Boolean)
           : [];
         const hasPro = !!(data && data.professionalId) || assignees.length > 0;
-        const canDelete = isClient ? !hasPro : true;
-        if (isClient && hasPro) return null;
+        const isFirmShared = assignees.length >= 2;
+        // Clients see the delete button only on their own
+        // unassigned cases (same rule as before).
+        const clientCanDelete = isClient && !hasPro;
+        // Pros on a firm-shared case leave instead of delete; pros on
+        // a sole-assignee case delete as before.
+        const proCanLeave = !isClient && isFirmShared;
+        const proCanDelete = !isClient && !isFirmShared;
+        if (!clientCanDelete && !proCanLeave && !proCanDelete) return null;
+        // Leave-case sits in its own amber-toned card — it's a
+        // step-off, not a destructive op, so we deliberately separate
+        // it visually from the red Danger zone below.
+        if (proCanLeave) {
+          const otherCount = assignees.length - 1;
+          return (
+            <Card className="border-amber-200 bg-gradient-to-br from-amber-50/60 to-white">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex gap-3">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-amber-100 text-amber-700">
+                    <LogOut size={16} />
+                  </span>
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold text-amber-900">
+                      Leave this case
+                    </h3>
+                    <p className="mt-0.5 text-xs text-slate-600">
+                      Shared with{' '}
+                      <span className="font-semibold text-slate-800">
+                        {otherCount} other professional{otherCount === 1 ? '' : 's'}
+                      </span>{' '}
+                      in your firm. Stepping off keeps the case intact for
+                      the rest of the team. To delete it entirely, every
+                      other professional needs to leave first.
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={openLeaveCase}
+                  className="border-amber-300 bg-white text-amber-800 hover:border-amber-400 hover:bg-amber-50"
+                >
+                  <LogOut size={14} />
+                  Leave case
+                </Button>
+              </div>
+            </Card>
+          );
+        }
         return (
           <Card className="border-red-200">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h3 className="text-sm font-semibold text-red-700">Danger zone</h3>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  {isClient
+                  {clientCanDelete
                     ? 'Deleting this case removes every note and update you added. No professional is assigned yet, so this can be done from your side. This cannot be undone.'
                     : 'Deleting the case removes every note, update, attachment, and activity-log entry. This cannot be undone.'}
                 </p>
@@ -1071,7 +1250,6 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                 variant="danger"
                 size="sm"
                 onClick={openDeleteCase}
-                disabled={!canDelete}
               >
                 <Trash2 size={14} />
                 Delete case
@@ -1139,20 +1317,10 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                   <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Attachments
                   </h4>
-                  <ul className="flex flex-wrap gap-2">
-                    {viewingNote.attachments.map((a, i) => (
-                      <li key={i}>
-                        <CaseAttachmentLink
-                          caseId={caseId}
-                          attachment={a}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-                        >
-                          <Paperclip size={12} className="text-slate-400" />
-                          {a.name || `Attachment ${i + 1}`}
-                        </CaseAttachmentLink>
-                      </li>
-                    ))}
-                  </ul>
+                  <CaseAttachmentList
+                    caseId={caseId}
+                    attachments={viewingNote.attachments}
+                  />
                 </div>
               )}
           </div>
@@ -1195,22 +1363,10 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
                 <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
                   {n.body}
                 </p>
-                {Array.isArray(n.attachments) && n.attachments.length > 0 && (
-                  <ul className="mt-2 flex flex-wrap gap-1.5">
-                    {n.attachments.map((a, i) => (
-                      <li key={i}>
-                        <CaseAttachmentLink
-                          caseId={caseId}
-                          attachment={a}
-                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-                        >
-                          <Paperclip size={10} className="text-slate-400" />
-                          {a.name || `Attachment ${i + 1}`}
-                        </CaseAttachmentLink>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                <CaseAttachmentList
+                  caseId={caseId}
+                  attachments={n.attachments}
+                />
               </li>
             ))}
           </ul>
@@ -1239,6 +1395,7 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
           description: data.description,
           priority: data.priority,
           caseNumber: data.caseNumber,
+          cnr: data.cnr,
           courtName: data.courtName,
           opposingParty: data.opposingParty,
           nextHearingDate: data.nextHearingDate
@@ -1403,6 +1560,48 @@ export default function CaseDetail({ caseId, viewedAsFirmAdmin = false }) {
           {deleteError && (
             <p className="text-xs text-red-600">{deleteError}</p>
           )}
+        </div>
+      </Modal>
+
+      {/* Confirm "leave case" on a firm-shared case. Lightweight: no
+          confirm-text required because leaving is reversible (the firm
+          can re-add the pro). */}
+      <Modal
+        open={leaveOpen}
+        onClose={closeLeaveCase}
+        title="Leave case"
+        size="md"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={closeLeaveCase}
+              disabled={leavingCase}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={confirmLeaveCase}
+              disabled={leavingCase}
+            >
+              {leavingCase ? 'Leaving…' : 'Leave case'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-sm text-slate-700">
+          <p>
+            You will be removed from <span className="font-semibold">{data.title || 'this case'}</span>.
+            Other professionals in your firm will continue to work on it.
+          </p>
+          <p className="text-xs text-slate-500">
+            You can be added back at any time by another firm member. Your
+            previous notes and updates stay on the case.
+          </p>
+          {leaveError && <p className="text-xs text-red-600">{leaveError}</p>}
         </div>
       </Modal>
 
@@ -1857,6 +2056,11 @@ function AddUpdateModal({ open, caseId, onClose, onAdded, authorDisplayName }) {
   const [body, setBody] = useState('');
   const [nextHearingDate, setNextHearingDate] = useState('');
   const [attachments, setAttachments] = useState([]);
+  // Task fields — leaving these empty produces a pure-narration update;
+  // setting any of them surfaces this row on the dashboard calendar.
+  const [dueDate, setDueDate] = useState('');
+  const [taskStatus, setTaskStatus] = useState('');
+  const [priority, setPriority] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -1867,15 +2071,20 @@ function AddUpdateModal({ open, caseId, onClose, onAdded, authorDisplayName }) {
       setBody('');
       setNextHearingDate('');
       setAttachments([]);
+      setDueDate('');
+      setTaskStatus('');
+      setPriority('');
       setSubmitting(false);
       setError('');
     }
   }, [open]);
 
-  function addAttachment(url) {
+  function addAttachment(url, meta) {
     if (!url) return;
+    const cleanFromUrl = String(url).split('?')[0].split('/').pop();
+    const name = (meta && meta.name) || cleanFromUrl;
     setAttachments((prev) =>
-      prev.some((a) => a.url === url) ? prev : [...prev, { url, name: url.split('/').pop() }]
+      prev.some((a) => a.url === url) ? prev : [...prev, { url, name }]
     );
   }
   function removeAttachment(url) {
@@ -1885,8 +2094,10 @@ function AddUpdateModal({ open, caseId, onClose, onAdded, authorDisplayName }) {
   async function submit(e) {
     if (e && e.preventDefault) e.preventDefault();
     if (submitting) return;
-    if (!body.trim()) {
-      setError('Write something for the update.');
+    // An update is valid if it has body, title, OR a due date (turns
+    // it into a pure task with no narration yet).
+    if (!body.trim() && !title.trim() && !dueDate) {
+      setError('Add a title, body, or due date.');
       return;
     }
     setSubmitting(true);
@@ -1900,6 +2111,9 @@ function AddUpdateModal({ open, caseId, onClose, onAdded, authorDisplayName }) {
           : undefined,
         nextHearingDate: nextHearingDate || undefined,
         attachments,
+        dueDate: dueDate || undefined,
+        status: taskStatus || (dueDate ? 'open' : undefined),
+        priority: priority || undefined,
       });
       if (typeof onAdded === 'function') await onAdded();
     } catch (err) {
@@ -1934,7 +2148,7 @@ function AddUpdateModal({ open, caseId, onClose, onAdded, authorDisplayName }) {
             variant="primary"
             size="sm"
             onClick={submit}
-            disabled={submitting || !body.trim()}
+            disabled={submitting || (!body.trim() && !title.trim() && !dueDate)}
           >
             {submitting ? 'Saving…' : 'Save update'}
           </Button>
@@ -1974,12 +2188,62 @@ function AddUpdateModal({ open, caseId, onClose, onAdded, authorDisplayName }) {
             hint="Saved to the case + the audit log."
           />
         </div>
+
+        {/* Task block — optional. Setting a due date turns this update
+            into a task: it shows up on the dashboard calendar and
+            renders a status chip on the timeline. */}
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Task (optional)
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Input
+              label="Due date"
+              name="dueDate"
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              hint="Surfaces on the calendar."
+            />
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                Status
+              </label>
+              <select
+                value={taskStatus}
+                onChange={(e) => setTaskStatus(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              >
+                <option value="">— Not a task —</option>
+                <option value="open">Open</option>
+                <option value="in_progress">In progress</option>
+                <option value="done">Done</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                Priority
+              </label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              >
+                <option value="">— Normal —</option>
+                <option value="low">Low</option>
+                <option value="normal">Normal</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+          </div>
+        </div>
         <div>
           <label
             htmlFor="update-body"
             className="mb-1.5 block text-sm font-medium text-slate-700"
           >
-            What happened?
+            What happened? <span className="text-xs font-normal text-slate-400">(optional if this is a pure task)</span>
           </label>
           <textarea
             id="update-body"
@@ -1996,7 +2260,7 @@ function AddUpdateModal({ open, caseId, onClose, onAdded, authorDisplayName }) {
           </label>
           <FileUpload
             value=""
-            onChange={(url) => addAttachment(url)}
+            onChange={(url, meta) => addAttachment(url, meta)}
             category="case_note"
             caseId={caseId}
             accept=".pdf,.doc,.docx,image/*"
@@ -2086,12 +2350,12 @@ function UpdateViewModal({
     setDeleting(false);
   }, [open, update]);
 
-  function addAttachment(url) {
+  function addAttachment(url, meta) {
     if (!url) return;
+    const cleanFromUrl = String(url).split('?')[0].split('/').pop();
+    const name = (meta && meta.name) || cleanFromUrl;
     setAttachments((prev) =>
-      prev.some((a) => a.url === url)
-        ? prev
-        : [...prev, { url, name: url.split('/').pop() }]
+      prev.some((a) => a.url === url) ? prev : [...prev, { url, name }]
     );
   }
   function removeAttachment(url) {
@@ -2266,7 +2530,7 @@ function UpdateViewModal({
             </label>
             <FileUpload
               value=""
-              onChange={(url) => addAttachment(url)}
+              onChange={(url, meta) => addAttachment(url, meta)}
               category="case_note"
               caseId={caseId}
               accept=".pdf,.doc,.docx,image/*"
@@ -2322,24 +2586,83 @@ function UpdateViewModal({
               <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Attachments
               </h4>
-              <ul className="flex flex-wrap gap-2">
-                {update.attachments.map((a, i) => (
-                  <li key={i}>
-                    <CaseAttachmentLink
-                      caseId={caseId}
-                      attachment={a}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-                    >
-                      <Paperclip size={12} className="text-slate-400" />
-                      {a.name || `Attachment ${i + 1}`}
-                    </CaseAttachmentLink>
-                  </li>
-                ))}
-              </ul>
+              <CaseAttachmentList
+                caseId={caseId}
+                attachments={update.attachments}
+              />
             </div>
           )}
         </div>
       )}
     </Modal>
+  );
+}
+
+/**
+ * AiSummaryCard — persisted-summary surface on the case detail page.
+ * Pros see a Regenerate button on the right; clients see the same
+ * card minus the button. Designed to sit immediately under the case
+ * header card so a quick read tells you what's going on with the
+ * matter without scrolling.
+ */
+function AiSummaryCard({ summary, updatedAt, canRegenerate, caseId, onRegenerated }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function regenerate() {
+    setBusy(true);
+    setError('');
+    try {
+      await summarizeCase(caseId);
+      if (typeof onRegenerated === 'function') await onRegenerated();
+    } catch (err) {
+      setError(err.message || 'Could not regenerate summary.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="border-indigo-200 bg-gradient-to-br from-indigo-50/60 via-white to-violet-50/40">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-sm">
+            <Sparkles size={15} />
+          </span>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
+              AI Clerk summary
+            </p>
+            <p className="text-[11px] text-slate-400">
+              {updatedAt
+                ? `Updated ${new Date(updatedAt).toLocaleString()}`
+                : 'Just now'}
+            </p>
+          </div>
+        </div>
+        {canRegenerate && (
+          <button
+            type="button"
+            onClick={regenerate}
+            disabled={busy}
+            title="Re-run the AI summary against the latest case data"
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 py-1 text-[11px] font-medium text-indigo-700 hover:border-indigo-300 hover:bg-indigo-50 disabled:opacity-60"
+          >
+            <RefreshCw size={12} className={busy ? 'animate-spin' : ''} />
+            {busy ? 'Analysing…' : 'Analyse again'}
+          </button>
+        )}
+      </div>
+
+      {error && (
+        <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+          {error}
+        </p>
+      )}
+
+      <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+        {summary}
+      </p>
+    </Card>
   );
 }

@@ -28,7 +28,15 @@ const smsService = require('./smsService');
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const MAX_VERIFY_ATTEMPTS = 5;
 
-const ALLOWED_PURPOSES = new Set(['login', 'signup', 'change-phone']);
+const ALLOWED_PURPOSES = new Set([
+  'login',
+  'signup',
+  'change-phone',
+  // Employee module — separate purposes so a signup OTP can't be
+  // replayed against the login endpoint and vice versa.
+  'employee-signup',
+  'employee-login',
+]);
 
 function genCode() {
   // crypto.randomInt is uniform over [0, 1_000_000)

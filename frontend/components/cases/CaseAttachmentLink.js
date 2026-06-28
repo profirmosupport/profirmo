@@ -24,8 +24,25 @@ import {
 } from '@/services/api';
 import { resolveFileUrl } from '@/services/fileService';
 
+// Legacy `/uploads/<file>` paths bypass S3 entirely — those are served
+// straight from the backend static handler, no presign needed.
 const isLegacyServedByBackend = (key) =>
-  !!key && (/^https?:\/\//i.test(key) || String(key).startsWith('/uploads/'));
+  !!key && String(key).startsWith('/uploads/');
+
+// Pull the bare S3 key out of a full signed URL. The DB used to store
+// the entire signed URL as the attachment record's `url`; the
+// signature has long since expired so we re-presign on every fetch.
+function toBareKey(raw) {
+  if (!raw) return '';
+  const s = String(raw);
+  if (!/^https?:\/\//i.test(s)) return s;
+  try {
+    const u = new URL(s);
+    return decodeURIComponent(u.pathname.replace(/^\/+/, ''));
+  } catch {
+    return s;
+  }
+}
 
 async function fetchAttachmentBlob(caseId, key) {
   const token = getAccessToken();
@@ -63,15 +80,14 @@ export default function CaseAttachmentLink({
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const key = attachment && attachment.url;
-  if (!key) return null;
-
-  // Absolute URLs + legacy `/uploads/*` paths render as plain anchors;
-  // they never went through S3 so they don't need the proxy.
-  if (isLegacyServedByBackend(key)) {
+  const rawKey = attachment && attachment.url;
+  if (!rawKey) return null;
+  // Legacy `/uploads/<file>` paths render as plain anchors; they never
+  // went through S3 so they don't need the proxy.
+  if (isLegacyServedByBackend(rawKey)) {
     return (
       <a
-        href={resolveFileUrl(key) || key}
+        href={resolveFileUrl(rawKey) || rawKey}
         target="_blank"
         rel="noopener noreferrer"
         className={className}
@@ -80,6 +96,8 @@ export default function CaseAttachmentLink({
       </a>
     );
   }
+  // Strip any signed-URL wrapper to recover the bare S3 key.
+  const key = toBareKey(rawKey);
 
   async function handleClick(e) {
     e.preventDefault();

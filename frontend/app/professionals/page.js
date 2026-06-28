@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { Search, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
+import LeadGenFloater from '@/components/common/LeadGenFloater';
 import Card from '@/components/common/Card';
 import Select from '@/components/common/Select';
 import ProfessionalCard from '@/components/professionals/ProfessionalCard';
@@ -213,6 +214,7 @@ export default function ProfessionalsPage() {
         </Suspense>
       </main>
       <Footer />
+      <LeadGenFloater source="professionals-index" />
     </div>
   );
 }

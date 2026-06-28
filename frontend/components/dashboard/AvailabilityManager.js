@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, X, Calendar, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Plus, X, Calendar, CheckCircle2, AlertCircle, Zap } from 'lucide-react';
 import Card from '@/components/common/Card';
 import Button from '@/components/common/Button';
 import Input from '@/components/common/Input';
 import { useLanguage } from '@/components/LanguageProvider';
 import { updateProfessionalDetails } from '@/services/profileService';
+import { INSTANT_BOOKING_MULTIPLIER } from '@/utils/constants';
+import { formatCurrency } from '@/utils/formatters';
 
 const DAYS = [
   'Monday',
@@ -17,6 +19,21 @@ const DAYS = [
   'Saturday',
   'Sunday',
 ];
+
+// 30-minute increments from 00:00 to 23:30. Fed into both the From and To
+// dropdowns; To-options are filtered client-side to only show entries
+// after the selected From.
+const TIME_OPTIONS = (() => {
+  const out = [];
+  for (let h = 0; h < 24; h += 1) {
+    for (const m of [0, 30]) {
+      out.push(
+        `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+      );
+    }
+  }
+  return out;
+})();
 
 /**
  * AvailabilityManager — available-now toggle, editable rate, and weekly slots.
@@ -84,7 +101,14 @@ export default function AvailabilityManager({ professional, onSaved }) {
   // Days the pro has explicitly marked off — blocks new bookings and
   // hides the day from the public availability list.
   const [daysOff, setDaysOff] = useState(() => buildDaysOff(pro));
-  const [draft, setDraft] = useState({ day: 'Monday', time: '' });
+  // Draft for the "add slot" row: a day + a start/end time range. Stored
+  // as "HH:MM-HH:MM" strings in slotsByDay so consumers (public profile,
+  // booking widget) just render the label as-is.
+  const [draft, setDraft] = useState({
+    day: 'Monday',
+    start: '09:00',
+    end: '17:00',
+  });
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState(null);
 
@@ -147,26 +171,34 @@ export default function AvailabilityManager({ professional, onSaved }) {
   }
 
   function addSlot() {
-    const time = draft.time.trim();
-    if (!/^\d{1,2}:\d{2}$/.test(time)) return;
+    const { day, start, end } = draft;
+    if (!start || !end) return;
+    if (start >= end) {
+      setFeedback({
+        type: 'error',
+        message: 'End time must be after start time.',
+      });
+      return;
+    }
+    const range = `${start}-${end}`;
     // Adding a slot to a day implicitly un-marks it as off — saves
     // the pro from having to toggle "Unmark off" first.
-    if (daysOff.has(draft.day)) {
+    if (daysOff.has(day)) {
       setDaysOff((prev) => {
         const next = new Set(prev);
-        next.delete(draft.day);
+        next.delete(day);
         return next;
       });
     }
     setSlotsByDay((prev) => {
-      const existing = prev[draft.day] || [];
-      if (existing.includes(time)) return prev;
+      const existing = prev[day] || [];
+      if (existing.includes(range)) return prev;
       return {
         ...prev,
-        [draft.day]: [...existing, time].sort(),
+        [day]: [...existing, range].sort(),
       };
     });
-    setDraft((d) => ({ ...d, time: '' }));
+    setFeedback(null);
   }
 
   function removeSlot(day, time) {
@@ -215,7 +247,7 @@ export default function AvailabilityManager({ professional, onSaved }) {
             />
           </button>
         </div>
-        <div className="sm:w-48">
+        <div className="sm:w-64">
           <Input
             label={t('dash.availability.rateLabel')}
             name="perMinuteRate"
@@ -225,6 +257,24 @@ export default function AvailabilityManager({ professional, onSaved }) {
             placeholder={t('dash.availability.ratePlaceholder')}
             min="0"
           />
+          {/* Instant-consultation earnings hint — shown below the rate
+              input so the pro understands they make 2× per minute when
+              someone books them on the spot. The number on the right
+              previews their actual instant rate using the current input. */}
+          <div className="mt-1.5 flex items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] leading-snug text-amber-800">
+            <Zap size={12} className="mt-0.5 shrink-0 fill-amber-500 text-amber-600" />
+            <span className="flex-1">
+              For instant consultations you earn{' '}
+              <strong>{INSTANT_BOOKING_MULTIPLIER}× this rate</strong>
+              {Number(rate) > 0 && (
+                <>
+                  {' '}— {formatCurrency(Number(rate) * INSTANT_BOOKING_MULTIPLIER)}/min
+                </>
+              )}
+              . The client is charged the same {INSTANT_BOOKING_MULTIPLIER}×
+              multiplier.
+            </span>
+          </div>
         </div>
       </div>
 
@@ -233,6 +283,19 @@ export default function AvailabilityManager({ professional, onSaved }) {
           <Calendar size={16} className="text-slate-400" />
           {t('dash.availability.weekly')}
         </p>
+        {/* Default-availability notice — explains the implicit 09:00-17:00
+            window the public profile + booking widget fall back to when a
+            day has no slots and isn't marked off. Mirrors the same rule
+            enforced in ProfessionalAvailability.js + booking page. */}
+        <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <AlertCircle size={14} className="mt-0.5 shrink-0 text-amber-600" />
+          <span>
+            If no slot is added for a day and the day isn&apos;t marked off,
+            Pro Firmo shows your default availability of{' '}
+            <strong>09:00&nbsp;–&nbsp;17:00</strong> on the public profile
+            and booking calendar.
+          </span>
+        </div>
         <div className="space-y-2">
           {DAYS.map((day) => {
             const isOff = daysOff.has(day);
@@ -325,17 +388,58 @@ export default function AvailabilityManager({ professional, onSaved }) {
               ))}
             </select>
           </div>
-          <div className="sm:w-40">
-            <Input
-              label={t('dash.availability.timeSlot')}
-              name="slot-time"
-              value={draft.time}
+          <div className="sm:w-32">
+            <label
+              htmlFor="slot-start"
+              className="mb-1.5 block text-sm font-medium text-slate-700"
+            >
+              From
+            </label>
+            <select
+              id="slot-start"
+              value={draft.start}
               onChange={(e) =>
-                setDraft((d) => ({ ...d, time: e.target.value }))
+                setDraft((d) => {
+                  // Snap `end` forward if the new start runs past it, so we
+                  // never end up with a start ≥ end pair the user has to
+                  // manually correct.
+                  const start = e.target.value;
+                  const end = d.end > start ? d.end : start;
+                  return { ...d, start, end };
+                })
               }
-              placeholder={t('dash.availability.timePlaceholder')}
-              hint={t('dash.availability.timeHint')}
-            />
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            >
+              {TIME_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="sm:w-32">
+            <label
+              htmlFor="slot-end"
+              className="mb-1.5 block text-sm font-medium text-slate-700"
+            >
+              To
+            </label>
+            <select
+              id="slot-end"
+              value={draft.end}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, end: e.target.value }))
+              }
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            >
+              {/* Only show times strictly after the chosen start so the
+                  pair is always valid by construction. */}
+              {TIME_OPTIONS.filter((opt) => opt > draft.start).map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
           </div>
           <Button variant="outline" size="md" onClick={addSlot}>
             <Plus size={15} />

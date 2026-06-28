@@ -38,6 +38,12 @@ import {
 import { imageUrl } from '../../utils/imageUrl';
 import { formatRupees } from '../../utils/formatters';
 import { setItem, STORAGE_KEYS } from '../../utils/storage';
+import {
+  resolveDaySlots,
+  expandSlotsToHourly,
+  formatSlotLabel,
+} from '../../utils/availability';
+import { INSTANT_BOOKING_MULTIPLIER } from '../../config/constants';
 import { colors, fontSize, fontWeight, radius, spacing } from '../../theme';
 
 const BOOKING_TYPES = { INSTANT: 'instant', SCHEDULED: 'scheduled' };
@@ -131,19 +137,18 @@ export default function BookingScreen({ navigation, route }) {
     return out;
   }, [pro]);
 
-  // Surface slots for the picked day from the pro's `availability` map
-  // (same shape the web uses). Falls back to a default grid inside
-  // TimeSlotSelector when nothing is configured.
+  // Surface slots for the picked day from the pro's `availability` map.
+  // Mirrors the web booking page: applies the 09:00-17:00 default when
+  // the pro hasn't set custom slots and the day isn't marked off, then
+  // expands range strings ("09:00-17:00") into hour-long bookable
+  // buckets so the grid renders pickable hour windows instead of one
+  // multi-hour blob — see utils/availability.js for the rules.
   const slotsForDay = useMemo(() => {
     if (!selectedDate || !pro) return undefined;
     const weekday = WEEKDAYS[new Date(`${selectedDate}T00:00:00`).getDay()];
-    const entry = (pro.availability || []).find(
-      (s) => s && s.day === weekday
-    );
-    if (entry && entry.enabled === false) return [];
-    return entry && Array.isArray(entry.slots) && entry.slots.length > 0
-      ? entry.slots
-      : undefined;
+    const { isOff, slots } = resolveDaySlots(pro.availability || [], weekday);
+    if (isOff) return [];
+    return expandSlotsToHourly(slots);
   }, [selectedDate, pro]);
 
   if (loading) {
@@ -169,13 +174,22 @@ export default function BookingScreen({ navigation, route }) {
 
   const photoUrl = imageUrl(pro.profilePhoto);
   const subtitle = pro.designation || pro.professionalType || 'Professional';
-  const perMinuteRate = pro.perMinuteRate ?? pro.consultationFee ?? 0;
-  const estimatedCost = duration * Number(perMinuteRate || 0);
+  // Pro's declared scheduled per-minute rate. Instant bookings are
+  // billed at INSTANT_BOOKING_MULTIPLIER × this rate because they
+  // require the pro to drop whatever they're doing — same convention as
+  // the web booking page.
+  const baseRate = Number(
+    pro.perMinuteRate ?? pro.consultationFee ?? 0
+  ) || 0;
   const canBook = Boolean(
     pro.acceptsOnlineBooking ?? pro.acceptOnlineBooking ?? pro.bookable
   );
   const instantOk = Boolean(pro.availableNow);
   const isInstant = bookingType === BOOKING_TYPES.INSTANT;
+  const effectiveRate = isInstant
+    ? baseRate * INSTANT_BOOKING_MULTIPLIER
+    : baseRate;
+  const estimatedCost = duration * effectiveRate;
   const isClient = !isGuest && user && (!user.role || user.role === 'client');
   const canConfirm =
     canBook &&
@@ -353,6 +367,18 @@ export default function BookingScreen({ navigation, route }) {
                   onPress={() =>
                     instantOk && setBookingType(BOOKING_TYPES.INSTANT)
                   }
+                  badgeText={`${INSTANT_BOOKING_MULTIPLIER}× rate`}
+                  badgeTone="amber"
+                  rateLine={
+                    baseRate > 0
+                      ? `Charged at ${INSTANT_BOOKING_MULTIPLIER}× the per-minute rate (${formatRupees(
+                          baseRate
+                        )} → ${formatRupees(
+                          baseRate * INSTANT_BOOKING_MULTIPLIER
+                        )}/min)`
+                      : null
+                  }
+                  rateTone="amber"
                 />
                 <TypeBtn
                   icon="calendar"
@@ -360,6 +386,16 @@ export default function BookingScreen({ navigation, route }) {
                   subtitle="Pick a date & time"
                   active={!isInstant}
                   onPress={() => setBookingType(BOOKING_TYPES.SCHEDULED)}
+                  badgeText="Standard rate"
+                  badgeTone="emerald"
+                  rateLine={
+                    baseRate > 0
+                      ? `Charged at the per-minute rate (${formatRupees(
+                          baseRate
+                        )}/min)`
+                      : null
+                  }
+                  rateTone="slate"
                 />
               </View>
             </Card>
@@ -458,7 +494,7 @@ export default function BookingScreen({ navigation, route }) {
                     ? 'Now'
                     : selectedDate
                       ? `${prettyDate(selectedDate)}${
-                          selectedSlot ? ` · ${prettyTime(selectedSlot)}` : ''
+                          selectedSlot ? ` · ${formatSlotLabel(selectedSlot)}` : ''
                         }`
                       : 'Pick a date'}
                 </Text>
@@ -470,7 +506,12 @@ export default function BookingScreen({ navigation, route }) {
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Rate</Text>
                 <Text style={styles.summaryValue}>
-                  {formatRupees(perMinuteRate)} / min
+                  {formatRupees(effectiveRate)} / min
+                  {isInstant ? (
+                    <Text style={styles.summaryRateNote}>
+                      {'  '}({INSTANT_BOOKING_MULTIPLIER}× instant)
+                    </Text>
+                  ) : null}
                 </Text>
               </View>
               <View style={[styles.summaryRow, styles.summaryTotal]}>
@@ -666,7 +707,7 @@ export default function BookingScreen({ navigation, route }) {
                   value={
                     confirmed.type === BOOKING_TYPES.INSTANT
                       ? 'Now'
-                      : `${prettyDate(confirmed.date)} · ${prettyTime(
+                      : `${prettyDate(confirmed.date)} · ${formatSlotLabel(
                           confirmed.time
                         )}`
                   }
@@ -707,7 +748,28 @@ export default function BookingScreen({ navigation, route }) {
   );
 }
 
-function TypeBtn({ icon, title, subtitle, active, disabled, onPress }) {
+function TypeBtn({
+  icon,
+  title,
+  subtitle,
+  active,
+  disabled,
+  onPress,
+  badgeText,
+  badgeTone,
+  rateLine,
+  rateTone,
+}) {
+  const badgeStyle =
+    badgeTone === 'emerald'
+      ? styles.typeBadgeEmerald
+      : styles.typeBadgeAmber;
+  const badgeTextStyle =
+    badgeTone === 'emerald'
+      ? styles.typeBadgeTextEmerald
+      : styles.typeBadgeTextAmber;
+  const rateTextStyle =
+    rateTone === 'amber' ? styles.typeRateAmber : styles.typeRateSlate;
   return (
     <Pressable
       onPress={disabled ? undefined : onPress}
@@ -718,27 +780,41 @@ function TypeBtn({ icon, title, subtitle, active, disabled, onPress }) {
         { opacity: pressed && !disabled ? 0.92 : 1 },
       ]}
     >
-      <View
-        style={[
-          styles.typeIcon,
-          active && {
-            backgroundColor: colors.primary,
-            borderColor: colors.primary,
-          },
-        ]}
-      >
-        <Feather
-          name={icon}
-          size={16}
-          color={active ? colors.textInverse : colors.primary}
-        />
+      <View style={styles.typeBtnHead}>
+        <View
+          style={[
+            styles.typeIcon,
+            active && {
+              backgroundColor: colors.primary,
+              borderColor: colors.primary,
+            },
+          ]}
+        >
+          <Feather
+            name={icon}
+            size={16}
+            color={active ? colors.textInverse : colors.primary}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <View style={styles.typeTitleRow}>
+            <Text style={styles.typeTitle}>{title}</Text>
+            {badgeText ? (
+              <View style={[styles.typeBadge, badgeStyle]}>
+                <Text style={[styles.typeBadgeText, badgeTextStyle]}>
+                  {badgeText}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+          <Text style={styles.typeSub}>{subtitle}</Text>
+        </View>
+        {active ? (
+          <Feather name="check-circle" size={16} color={colors.primary} />
+        ) : null}
       </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.typeTitle}>{title}</Text>
-        <Text style={styles.typeSub}>{subtitle}</Text>
-      </View>
-      {active ? (
-        <Feather name="check-circle" size={16} color={colors.primary} />
+      {rateLine ? (
+        <Text style={[styles.typeRateLine, rateTextStyle]}>{rateLine}</Text>
       ) : null}
     </Pressable>
   );
@@ -834,14 +910,17 @@ const styles = StyleSheet.create({
 
   typeRow: { marginTop: spacing.sm, gap: spacing.sm },
   typeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
+    flexDirection: 'column',
     padding: spacing.md,
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
+  },
+  typeBtnHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
   },
   typeBtnActive: {
     borderColor: colors.primary,
@@ -858,6 +937,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  typeTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
   typeTitle: {
     fontSize: fontSize.base,
     fontWeight: fontWeight.bold,
@@ -867,6 +952,34 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontSize: fontSize.xs,
     color: colors.textSecondary,
+  },
+  typeBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  typeBadgeText: {
+    fontSize: 10,
+    fontWeight: fontWeight.bold,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  typeBadgeAmber: { backgroundColor: '#fef3c7' },
+  typeBadgeTextAmber: { color: '#92400e' },
+  typeBadgeEmerald: { backgroundColor: '#d1fae5' },
+  typeBadgeTextEmerald: { color: '#065f46' },
+  typeRateLine: {
+    marginTop: 6,
+    fontSize: 11,
+    fontWeight: fontWeight.semibold,
+    lineHeight: 15,
+  },
+  typeRateAmber: { color: '#92400e' },
+  typeRateSlate: { color: colors.textSecondary },
+  summaryRateNote: {
+    fontSize: 11,
+    fontWeight: fontWeight.semibold,
+    color: '#92400e',
   },
 
   placeholder: {

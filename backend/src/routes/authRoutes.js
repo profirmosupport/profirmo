@@ -187,27 +187,31 @@ router.post(
 
 // Begin a password reset. authLimiter throttles abuse; the response is
 // intentionally generic so it never reveals whether an account exists.
+// The `identifier` field accepts either an email or a phone number; the
+// controller validates the format. `email` is also accepted as a legacy
+// alias so older clients in flight keep working.
 router.post(
   '/forgot-password',
   authLimiter,
-  validateBody({ email: 'required|email' }),
   authController.forgotPassword
 );
 
 // Resend the password-reset OTP. authLimiter throttles abuse on top of the
-// service-level 60s cooldown / 5-resend cap.
+// service-level 60s cooldown / 5-resend cap. Optional body `channel: 'phone'`
+// forces an SMS dispatch even when the original identifier was an email.
 router.post(
   '/resend-otp',
   authLimiter,
-  validateBody({ email: 'required|email' }),
   authController.resendOtp
 );
 
 // Verify the 6-digit OTP; on success a short-lived resetToken is returned.
+// Accepts `identifier` (email or phone) + `otp`. Validation is done in the
+// controller so the email/phone routing can share one validator path.
 router.post(
   '/verify-password-otp',
   authLimiter,
-  validateBody({ email: 'required|email', otp: 'required' }),
+  validateBody({ otp: 'required' }),
   authController.verifyPasswordOtp
 );
 

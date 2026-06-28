@@ -1,52 +1,62 @@
 'use client';
 
-// AddClientModal — a multi-step modal a professional (or firm owner) uses to
-// add a client. Steps:
-//   1. lookup    — enter a phone number; query /api/clients/search-by-phone
-//   2. foundUser — an existing client-user matched; offer to link them
-//   3. newForm   — no match; collect name/email/city/type and create one
-//
-// The created/linked client is always stored as a `users` row with
-// role='client'. The caller (always a professional) is linked to the client
-// via `professional_clients`. When the caller is a firm owner, that link is
-// what surfaces the client in the firm-wide client list.
+// AddClientModal — multi-step modal for adding a client. Steps:
+//   1. lookup         — enter phone → query /api/clients/search-by-phone
+//   2. foundUser      — existing client-user matched; offer to link
+//   3. nonClientUser  — phone is owned by a non-client account (pro,
+//                       admin, etc.) → refuse with explanation. No
+//                       new client can be created with that phone.
+//   4. newForm        — no match; collect name / email / city /
+//                       entity-type and create. On success the new
+//                       user row gets a starter ClientComplianceProfile
+//                       so the manage page lands you ready to generate.
 
 import { useState } from 'react';
 import { Search } from 'lucide-react';
 import Modal from '@/components/common/Modal';
 import Button from '@/components/common/Button';
 import Input from '@/components/common/Input';
-import Select from '@/components/common/Select';
+import Combobox from '@/components/common/Combobox';
 import Avatar from '@/components/common/Avatar';
 import Badge from '@/components/common/Badge';
 import clientService from '@/services/clientService';
+import { saveProfile } from '@/services/complianceService';
 
-const USER_TYPE_OPTIONS = [
+// Entity types — same list as the compliance editor so the new
+// client lands with the right rules ready to generate. The first nine
+// match config/entityTypeRequirements.js exactly.
+const ENTITY_TYPE_OPTIONS = [
   { value: 'individual', label: 'Individual' },
-  { value: 'business', label: 'Business' },
+  { value: 'sole_proprietor', label: 'Sole proprietor' },
+  { value: 'partnership', label: 'Partnership firm' },
+  { value: 'llp', label: 'LLP' },
+  { value: 'private_ltd', label: 'Private limited' },
+  { value: 'public_ltd', label: 'Public limited' },
+  { value: 'huf', label: 'HUF' },
+  { value: 'trust', label: 'Trust' },
+  { value: 'society', label: 'Society' },
 ];
+
+// Map entity → coarse userType column for backward compat. Anyone
+// non-individual is treated as a business for the existing badge /
+// filters that consume userType.
+function userTypeFor(entityType) {
+  return entityType === 'individual' ? 'individual' : 'business';
+}
 
 const EMPTY_NEW_FORM = {
   name: '',
   email: '',
-  city: '',
-  userType: 'individual',
+  entityType: 'individual',
 };
 
-/**
- * Props:
- *  - open: boolean
- *  - onClose(): closes the modal (also called after a successful add)
- *  - onAdded(result): optional — invoked with the API result, callers
- *      typically use this to refresh their list and surface an invite notice
- *      (result.inviteSent === true means an invitation email was sent).
- */
 export default function AddClientModal({ open, onClose, onAdded }) {
-  const [step, setStep] = useState('lookup'); // lookup | foundUser | newForm
+  const [step, setStep] = useState('lookup');
   const [phone, setPhone] = useState('');
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
   const [foundUser, setFoundUser] = useState(null);
+  const [nonClientRole, setNonClientRole] = useState(null);
   const [newForm, setNewForm] = useState(EMPTY_NEW_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -57,6 +67,7 @@ export default function AddClientModal({ open, onClose, onAdded }) {
     setSearching(false);
     setSearchError('');
     setFoundUser(null);
+    setNonClientRole(null);
     setNewForm(EMPTY_NEW_FORM);
     setSubmitting(false);
     setSubmitError('');
@@ -80,12 +91,14 @@ export default function AddClientModal({ open, onClose, onAdded }) {
     setSearching(true);
     try {
       const result = await clientService.searchByPhone(trimmed);
-      const user = result && result.user;
-      if (user) {
-        setFoundUser(user);
+      if (result && result.user) {
+        setFoundUser(result.user);
         setStep('foundUser');
+      } else if (result && result.existsAsNonClient) {
+        setNonClientRole(result.role || 'user');
+        setStep('nonClientUser');
       } else {
-        setNewForm((f) => ({ ...f, name: '', email: '', city: '' }));
+        setNewForm((f) => ({ ...f, name: '', email: '' }));
         setStep('newForm');
       }
     } catch (err) {
@@ -125,9 +138,19 @@ export default function AddClientModal({ open, onClose, onAdded }) {
         name: newForm.name.trim(),
         email: newForm.email.trim(),
         phone: phone.trim(),
-        city: newForm.city.trim(),
-        userType: newForm.userType,
+        userType: userTypeFor(newForm.entityType),
       });
+      // Seed a compliance profile with the entity type so the manage
+      // page can immediately list applicable docs + services + offer
+      // Save+generate. created.id is the new client's userId.
+      try {
+        const newClientId = created && (created.id || (created.user && created.user.id));
+        if (newClientId && newForm.entityType) {
+          await saveProfile(newClientId, { entityType: newForm.entityType });
+        }
+      } catch {
+        // Profile seed is best-effort — manage page can save it later.
+      }
       if (typeof onAdded === 'function') await onAdded(created);
       reset();
       onClose && onClose();
@@ -143,7 +166,9 @@ export default function AddClientModal({ open, onClose, onAdded }) {
       ? 'Add client'
       : step === 'foundUser'
         ? 'Platform user found'
-        : 'New client details';
+        : step === 'nonClientUser'
+          ? 'Phone in use'
+          : 'New client details';
 
   return (
     <Modal
@@ -153,12 +178,7 @@ export default function AddClientModal({ open, onClose, onAdded }) {
       footer={
         step === 'lookup' ? (
           <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleClose}
-              disabled={searching}
-            >
+            <Button variant="outline" size="sm" onClick={handleClose} disabled={searching}>
               Cancel
             </Button>
             <Button
@@ -173,12 +193,7 @@ export default function AddClientModal({ open, onClose, onAdded }) {
           </>
         ) : step === 'foundUser' ? (
           <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setStep('lookup')}
-              disabled={submitting}
-            >
+            <Button variant="outline" size="sm" onClick={() => setStep('lookup')} disabled={submitting}>
               Back
             </Button>
             <Button
@@ -187,17 +202,16 @@ export default function AddClientModal({ open, onClose, onAdded }) {
               onClick={linkFoundUser}
               disabled={submitting}
             >
-              {submitting ? 'Adding…' : 'Use this user'}
+              {submitting ? 'Adding…' : 'Add to my clients'}
             </Button>
           </>
+        ) : step === 'nonClientUser' ? (
+          <Button variant="outline" size="sm" onClick={() => setStep('lookup')}>
+            Try another number
+          </Button>
         ) : (
           <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setStep('lookup')}
-              disabled={submitting}
-            >
+            <Button variant="outline" size="sm" onClick={() => setStep('lookup')} disabled={submitting}>
               Back
             </Button>
             <Button
@@ -224,17 +238,16 @@ export default function AddClientModal({ open, onClose, onAdded }) {
             hint="We will look this phone up against existing platform users."
           />
           <button type="submit" className="hidden" aria-hidden="true" />
-          {searchError && (
-            <p className="text-xs text-red-600">{searchError}</p>
-          )}
+          {searchError && <p className="text-xs text-red-600">{searchError}</p>}
         </form>
       )}
 
       {step === 'foundUser' && foundUser && (
         <div className="space-y-3">
           <p className="text-sm text-slate-600">
-            We found a platform user with this phone number. Add them as your
-            client.
+            This phone is already a client account on Profirmo. Add them to
+            your client list — they'll appear on your dashboard
+            immediately.
           </p>
           <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
             <Avatar
@@ -255,30 +268,50 @@ export default function AddClientModal({ open, onClose, onAdded }) {
             </div>
             {foundUser.role && <Badge variant="gray">{foundUser.role}</Badge>}
           </div>
+          <p className="text-[11px] text-slate-500">
+            They can be your client AND someone else's client at the same
+            time — Profirmo links them to each professional independently.
+          </p>
           {submitError && <p className="text-xs text-red-600">{submitError}</p>}
+        </div>
+      )}
+
+      {step === 'nonClientUser' && (
+        <div className="space-y-3">
+          <p className="text-sm text-slate-700">
+            This phone number is{' '}
+            <span className="font-semibold">already in the system</span> under
+            a <span className="font-semibold">{nonClientRole}</span> account.
+            We can't add it as a client too — the phone number is the
+            canonical identifier across user types. If this person should
+            also be your client, ask them to sign up with a separate phone,
+            or contact support to merge accounts.
+          </p>
         </div>
       )}
 
       {step === 'newForm' && (
         <form onSubmit={submitNewClient} className="space-y-3">
           <p className="text-sm text-slate-600">
-            No match found. Fill in the details to add this person as a new
-            client.
+            No platform account on this phone. Fill in the basics — we'll
+            also seed a starter compliance profile for the entity type you
+            pick.
           </p>
+          {/* Phone is fixed at this step — the lookup we just ran is
+              what decided we're creating a NEW client, so the user
+              must go Back to change it. */}
           <Input
             label="Phone number"
             name="newPhone"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            required
+            disabled
+            hint="Click Back if you need a different number."
           />
           <Input
             label="Name"
             name="name"
             value={newForm.name}
-            onChange={(e) =>
-              setNewForm((f) => ({ ...f, name: e.target.value }))
-            }
+            onChange={(e) => setNewForm((f) => ({ ...f, name: e.target.value }))}
             required
           />
           <Input
@@ -292,26 +325,15 @@ export default function AddClientModal({ open, onClose, onAdded }) {
             placeholder="Optional"
             hint="Provide an email so the client receives an invitation to claim their account."
           />
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Input
-              label="City"
-              name="city"
-              value={newForm.city}
-              onChange={(e) =>
-                setNewForm((f) => ({ ...f, city: e.target.value }))
-              }
-              placeholder="Optional"
-            />
-            <Select
-              label="Client type"
-              name="userType"
-              value={newForm.userType}
-              onChange={(e) =>
-                setNewForm((f) => ({ ...f, userType: e.target.value }))
-              }
-              options={USER_TYPE_OPTIONS}
-            />
-          </div>
+          <Combobox
+            label="Entity type"
+            name="entityType"
+            value={newForm.entityType}
+            onChange={(e) =>
+              setNewForm((f) => ({ ...f, entityType: e.target.value }))
+            }
+            options={ENTITY_TYPE_OPTIONS}
+          />
           <button type="submit" className="hidden" aria-hidden="true" />
           {submitError && <p className="text-xs text-red-600">{submitError}</p>}
         </form>

@@ -28,6 +28,7 @@ const { generateOtp, hashOtp, verifyOtp } = require('../utils/otp');
 const env = require('../config/env');
 const { enqueue } = require('./queueService');
 const notificationService = require('./notificationService');
+const smsService = require('./smsService');
 const { logAudit } = require('../utils/auditLogger');
 
 // --- Helpers ---------------------------------------------------------------
@@ -1174,10 +1175,40 @@ const MAX_VERIFY_ATTEMPTS = 5;
 // Generic message returned by forgot-password / resend-otp regardless of
 // whether an account actually exists — never leaks account existence.
 const GENERIC_RESET_MESSAGE =
-  'If an account exists for this email, a verification code has been sent.';
+  'If an account exists for the email or phone you entered, a verification code has been sent.';
 
 // RFC5322-ish email check, matching the project's validateRequest rules.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Permissive phone check — anything with at least 7 digits after stripping
+// punctuation. The strict 10-digit Indian-mobile check happens implicitly via
+// findUserByPhone() lookup; here we just want to route "looks like a phone".
+const PHONE_LIKE_RE = /^[+]?[0-9][0-9\s-]{6,15}$/;
+
+/**
+ * Classify an identifier as 'email' or 'phone' (or null if neither matches).
+ * Used by the password-reset flow to route the lookup + OTP dispatch.
+ */
+const classifyIdentifier = (raw) => {
+  const value = String(raw == null ? '' : raw).trim();
+  if (!value) return null;
+  if (EMAIL_RE.test(value)) return 'email';
+  if (PHONE_LIKE_RE.test(value)) return 'phone';
+  return null;
+};
+
+/**
+ * Resolve a user from an email-or-phone identifier. Returns null when the
+ * identifier is malformed or no user matches.
+ */
+const findUserByIdentifier = async (rawIdentifier) => {
+  const kind = classifyIdentifier(rawIdentifier);
+  if (!kind) return null;
+  const value = String(rawIdentifier).trim();
+  if (kind === 'email') {
+    return User.findOne({ where: { email: value.toLowerCase() } });
+  }
+  return findUserByPhone(value);
+};
 
 /**
  * Queue a password-reset OTP email for an address.
@@ -1200,24 +1231,50 @@ const enqueuePasswordResetOtpEmail = async (user, email, otp) => {
 };
 
 /**
+ * Send the password-reset OTP via SMS to the user's mobile number. Falls
+ * through silently when the user has no phone on file — the caller still
+ * returns the generic success message so the existence of the phone field
+ * isn't leaked.
+ */
+const sendPasswordResetOtpSms = async (user, otp) => {
+  const phone = user && user.mobileNumber;
+  if (!phone) return;
+  try {
+    await smsService.sendOtpSms(phone, otp);
+  } catch (err) {
+    console.error(
+      '[Auth] Failed to send password-reset OTP SMS:',
+      err.message || err
+    );
+  }
+};
+
+/**
  * Begin a password reset. Always resolves the same way whether or not the
  * account exists, so it never leaks account existence. When a user exists,
- * any prior un-used OTP rows for the email are invalidated and a single fresh
- * OTP row + email are created.
- * @param {string} rawEmail
+ * any prior un-used OTP rows for that user are invalidated and a single fresh
+ * OTP row + dispatch (email OR SMS, based on the identifier the user typed)
+ * are created.
+ * @param {string} rawIdentifier - email OR phone the user typed
  * @param {object} [opts] - { req } for audit logging
  * @returns {Promise<void>}
  */
-const forgotPassword = async (rawEmail, opts = {}) => {
-  const email = (rawEmail || '').toLowerCase().trim();
-  // Caller (controller) already validated format; bail quietly if missing.
-  if (!email || !EMAIL_RE.test(email)) return;
+const forgotPassword = async (rawIdentifier, opts = {}) => {
+  const channel = classifyIdentifier(rawIdentifier);
+  // Caller (controller) already validated format; bail quietly otherwise.
+  if (!channel) return;
 
-  const user = await User.findOne({ where: { email } });
+  const user = await findUserByIdentifier(rawIdentifier);
   // No user: do NOT reveal it — skip silently.
   if (!user) return;
 
-  // Invalidate any existing un-used OTP rows for this email.
+  // Phone-channel reset requires the user to have an email on file (the
+  // OTP row is keyed by email). Practically every account has one, but
+  // bail quietly if not so the caller's generic-success response stands.
+  const email = user.email ? user.email.toLowerCase().trim() : '';
+  if (!email) return;
+
+  // Invalidate any existing un-used OTP rows for this account.
   await PasswordResetOtp.update(
     { used: true },
     { where: { email, used: false } }
@@ -1239,7 +1296,11 @@ const forgotPassword = async (rawEmail, opts = {}) => {
     lastSentAt: now,
   });
 
-  await enqueuePasswordResetOtpEmail(user, email, otp);
+  if (channel === 'phone') {
+    await sendPasswordResetOtpSms(user, otp);
+  } else {
+    await enqueuePasswordResetOtpEmail(user, email, otp);
+  }
 
   try {
     await notificationService.createNotification({
@@ -1247,8 +1308,11 @@ const forgotPassword = async (rawEmail, opts = {}) => {
       type: 'password_reset',
       title: 'Password reset requested',
       message:
-        'We received a request to reset your password. A verification ' +
-        'code has been sent to your email.',
+        channel === 'phone'
+          ? 'We received a request to reset your password. A verification ' +
+            'code has been sent via SMS.'
+          : 'We received a request to reset your password. A verification ' +
+            'code has been sent to your email.',
       link: '/reset-password',
     });
   } catch (err) {
@@ -1265,29 +1329,36 @@ const forgotPassword = async (rawEmail, opts = {}) => {
     entity: 'user',
     entityId: user.id,
     status: 'success',
-    metadata: { email, otpId: row.id },
+    metadata: { channel, otpId: row.id },
   });
 };
 
 /**
  * Resend a password-reset OTP. Enforces a 60-second cooldown and a hard cap
- * of 5 resends per reset row.
- * @param {string} rawEmail
- * @param {object} [opts] - { req } for audit logging
+ * of 5 resends per reset row. Dispatch channel is inferred from the
+ * identifier (email vs phone) unless the caller explicitly overrides it
+ * via `opts.channel` — e.g. the "Send OTP to phone" fallback button.
+ * @param {string} rawIdentifier - email OR phone
+ * @param {object} [opts] - { req, channel?: 'email'|'phone' } for audit + override
  * @returns {Promise<{ message: string }>}
  * @throws {{ statusCode, message }} on cooldown / limit violations
  */
-const resendOtp = async (rawEmail, opts = {}) => {
-  const email = (rawEmail || '').toLowerCase().trim();
+const resendOtp = async (rawIdentifier, opts = {}) => {
+  const inferred = classifyIdentifier(rawIdentifier);
+  if (!inferred) return { message: GENERIC_RESET_MESSAGE };
 
-  const row = email
-    ? await PasswordResetOtp.findOne({
-        where: { email, used: false },
-        order: [['createdAt', 'DESC']],
-      })
-    : null;
+  const user = await findUserByIdentifier(rawIdentifier);
+  if (!user) return { message: GENERIC_RESET_MESSAGE };
 
-  // No active row — respond with the same generic message, no email.
+  const email = user.email ? user.email.toLowerCase().trim() : '';
+  if (!email) return { message: GENERIC_RESET_MESSAGE };
+
+  const row = await PasswordResetOtp.findOne({
+    where: { email, used: false },
+    order: [['createdAt', 'DESC']],
+  });
+
+  // No active row — respond with the same generic message, no dispatch.
   if (!row) return { message: GENERIC_RESET_MESSAGE };
 
   const now = new Date();
@@ -1323,8 +1394,16 @@ const resendOtp = async (rawEmail, opts = {}) => {
   row.verified = false;
   await row.save();
 
-  const user = await User.findByPk(row.userId);
-  await enqueuePasswordResetOtpEmail(user, email, otp);
+  const channel =
+    opts.channel === 'phone' || opts.channel === 'email'
+      ? opts.channel
+      : inferred;
+
+  if (channel === 'phone') {
+    await sendPasswordResetOtpSms(user, otp);
+  } else {
+    await enqueuePasswordResetOtpEmail(user, email, otp);
+  }
 
   await logAudit({
     req: opts.req,
@@ -1333,7 +1412,7 @@ const resendOtp = async (rawEmail, opts = {}) => {
     entity: 'user',
     entityId: row.userId,
     status: 'success',
-    metadata: { email, otpId: row.id, resendCount: row.resendCount },
+    metadata: { channel, otpId: row.id, resendCount: row.resendCount },
   });
 
   return { message: GENERIC_RESET_MESSAGE };
@@ -1342,15 +1421,19 @@ const resendOtp = async (rawEmail, opts = {}) => {
 /**
  * Verify a password-reset OTP. On success the row is marked verified and a
  * short-lived reset JWT is issued for the final reset-password step.
- * @param {string} rawEmail
+ * @param {string} rawIdentifier - email OR phone the user originally typed
  * @param {string} otp - the candidate 6-digit OTP
  * @param {object} [opts] - { req } for audit logging
  * @returns {Promise<{ resetToken: string }>}
  * @throws {{ statusCode, code, message, data }} on invalid / incorrect OTP
  */
-const verifyPasswordOtp = async (rawEmail, otp, opts = {}) => {
-  const email = (rawEmail || '').toLowerCase().trim();
+const verifyPasswordOtp = async (rawIdentifier, otp, opts = {}) => {
   const code = String(otp == null ? '' : otp).trim();
+
+  // Resolve user from identifier (email or phone) — OTP rows are still
+  // keyed by email since every account has one on file.
+  const user = await findUserByIdentifier(rawIdentifier);
+  const email = user && user.email ? user.email.toLowerCase().trim() : '';
 
   const row = email
     ? await PasswordResetOtp.findOne({

@@ -39,14 +39,11 @@
           "resizeMode": "contain",
           "imageWidth": 200
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "extra": {
-      "apiBaseUrl": "https://profirmo.onrender.com",
-      "eas": {
-        "projectId": "35655f73-2172-4c19-b061-c94899ca263d"
-      }
-    },
-    "owner": "dcexpo"
+      "apiBaseUrl": "https://proapi.profirmo.com"
+    }
   }
 }

@@ -1,6 +1,9 @@
 const caseService = require('../services/caseService');
 const storageService = require('../services/storageService');
 const gates = require('../services/subscriptionGateService');
+const permissionService = require('../services/permissionService');
+const aiClerkService = require('../services/caseAiClerkService');
+const { ACTIONS: PERM } = require('../config/permissions');
 const asyncHandler = require('../utils/asyncHandler');
 const {
   successResponse,
@@ -190,6 +193,38 @@ const getCaseLog = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'Case log fetched', entries);
 });
 
+// PATCH /api/cases/:id/stage — set the case's pipeline + current step.
+// Body: { stageType?: 'civil_suit' | 'criminal_complaint' | ..., stage?: 'evidence_plaintiff' | ... }
+// Either field may be sent independently; an unknown pipeline 422s.
+const updateCaseStage = asyncHandler(async (req, res) => {
+  const before = await caseService.getById(req.params.id);
+  if (!before) throw notFound(req.params.id);
+  const updated = await caseService.setStage(
+    req.params.id,
+    req.body || {},
+    req.user
+  );
+  if (!updated) throw notFound(req.params.id);
+  return successResponse(res, 200, 'Case stage updated', updated);
+});
+
+// GET /api/cases/stages — canonical case-stage list. Common to every
+// case type now (litigation, tax, advisory) — operators wanted a
+// single shared lifecycle, not per-pipeline splits.
+const listStages = asyncHandler(async (req, res) => {
+  // eslint-disable-next-line global-require
+  const caseStages = require('../config/caseStages');
+  return successResponse(res, 200, 'Case stages', caseStages.listStages());
+});
+
+// POST /api/cases/:id/leave — detach the calling pro from a shared
+// case. Refuses if they're the only pro (UI then swaps to Delete).
+const leaveCase = asyncHandler(async (req, res) => {
+  const updated = await caseService.leaveCase(req.params.id, req.user);
+  if (!updated) throw notFound(req.params.id);
+  return successResponse(res, 200, 'You left the case', updated);
+});
+
 // DELETE /api/cases/:id
 const deleteCase = asyncHandler(async (req, res) => {
   // Clients can delete only their own E-Courts-imported cases when no
@@ -213,6 +248,16 @@ const deleteCase = asyncHandler(async (req, res) => {
         statusCode: 403,
         message:
           'A professional is already assigned to this case. Ask them to remove it, or contact support.',
+      };
+    }
+  } else {
+    // Professional path — gate by firm role. Placeholder matrix
+    // restricts case.delete to partners + admins.
+    const canDelete = await permissionService.userCan(req.user, PERM.CASE_DELETE);
+    if (!canDelete) {
+      throw {
+        statusCode: 403,
+        message: 'Only partners can delete cases. Ask a partner to do it.',
       };
     }
   }
@@ -394,11 +439,122 @@ const streamAttachment = require('../utils/asyncHandler')(async (req, res) => {
   return res.end(buf);
 });
 
+// --- AI Clerk -------------------------------------------------------
+
+const aiSummarize = asyncHandler(async (req, res) => {
+  const out = await aiClerkService.summarize(req.params.id, req.user.id);
+  return successResponse(res, 200, 'Case summarised', out);
+});
+
+const aiSuggestNextStep = asyncHandler(async (req, res) => {
+  const out = await aiClerkService.suggestNextStep(req.params.id, req.user.id);
+  return successResponse(res, 200, 'Next-step suggestions', out);
+});
+
+const aiPrompt = asyncHandler(async (req, res) => {
+  const out = await aiClerkService.prompt(
+    req.params.id,
+    (req.body && req.body.instruction) || '',
+    req.user.id
+  );
+  return successResponse(res, 200, 'AI Clerk response', out);
+});
+
+/**
+ * Save an AI Clerk response (typically from /ai/prompt or
+ * /ai/analyse-*) as a CaseUpdate so it lives on the case timeline.
+ * Body: { title?, body, attachments? }.
+ *
+ * When the source was a document analysis we forward the
+ * originating file as an attachment so the timeline entry carries
+ * both the AI narrative AND a tap-to-download copy of what was
+ * analysed. The attachment auth check in
+ * /api/cases/:id/attachments/stream picks the key up from the
+ * update's `attachments[].url` so cross-case leaks aren't possible.
+ */
+const aiSaveAsUpdate = asyncHandler(async (req, res) => {
+  const body = req.body || {};
+  const rawAttachments = Array.isArray(body.attachments) ? body.attachments : [];
+  const attachments = rawAttachments
+    .map((a) => {
+      if (!a || typeof a !== 'object') return null;
+      const url = a.url || a.storagePath || a.key;
+      if (!url) return null;
+      return {
+        url: String(url),
+        name: a.name || a.fileName || null,
+        type: a.type || a.mimeType || null,
+        size: typeof a.size === 'number' ? a.size : null,
+      };
+    })
+    .filter(Boolean);
+  const row = await caseService.addUpdate(req.params.id, req.user, {
+    title: body.title || 'AI Clerk draft',
+    body: body.body || '',
+    attachments,
+  });
+  return successResponse(res, 201, 'Saved as case update', row);
+});
+
+/**
+ * List documents available to analyse for this case — every
+ * ClientDocument belonging to any client on the case. Used by the
+ * AI Clerk's "Analyse document" picker.
+ */
+const aiListDocuments = asyncHandler(async (req, res) => {
+  // eslint-disable-next-line global-require
+  const { ClientDocument, Case } = require('../models');
+  // eslint-disable-next-line global-require
+  const { Op } = require('sequelize');
+  const c = await Case.findByPk(req.params.id, { raw: true });
+  if (!c) throw notFound(req.params.id);
+  const clientIds = [];
+  if (c.clientId) clientIds.push(c.clientId);
+  if (Array.isArray(c.clientIds)) for (const id of c.clientIds) if (id) clientIds.push(id);
+  if (clientIds.length === 0) return successResponse(res, 200, 'Documents', []);
+  const docs = await ClientDocument.findAll({
+    where: { clientUserId: { [Op.in]: clientIds } },
+    order: [['createdAt', 'DESC']],
+    attributes: ['id', 'docKey', 'label', 'fileName', 'mimeType', 'size', 'financialYear', 'createdAt'],
+    raw: true,
+  });
+  return successResponse(res, 200, 'Documents', docs);
+});
+
+const aiAnalyseDocument = asyncHandler(async (req, res) => {
+  const out = await aiClerkService.analyseDocument(
+    req.params.id,
+    req.user.id,
+    (req.body && req.body.documentId) || null
+  );
+  return successResponse(res, 200, 'Document analysis', out);
+});
+
+// One-shot OCR: the pro uploads a fresh file (PDF or image) right
+// inside the AI Clerk panel and Claude returns structured findings
+// without us ever persisting the file. Lets a pro paste a hearing
+// notice / opposing-counsel letter / scanned challan into the case
+// without first stashing it in the client's document bucket.
+const aiAnalyseUploadedDocument = asyncHandler(async (req, res) => {
+  if (!req.file || !req.file.buffer) {
+    throw { statusCode: 422, message: 'No file received.' };
+  }
+  const out = await aiClerkService.analyseUploadedDocument(
+    req.params.id,
+    req.user.id,
+    req.file
+  );
+  return successResponse(res, 200, 'Document analysis', out);
+});
+
 module.exports = {
   listCases,
   getCase,
   createCase,
   updateCase,
+  updateCaseStage,
+  listStages,
+  leaveCase,
   deleteCase,
   getCasesByClient,
   getCasesByProfessional,
@@ -416,4 +572,11 @@ module.exports = {
   editCaseUpdate,
   getAttachmentUrl,
   streamAttachment,
+  aiSummarize,
+  aiSuggestNextStep,
+  aiPrompt,
+  aiSaveAsUpdate,
+  aiListDocuments,
+  aiAnalyseDocument,
+  aiAnalyseUploadedDocument,
 };

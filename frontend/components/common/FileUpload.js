@@ -105,7 +105,17 @@ export default function FileUpload({
         name: data.originalName || file.name || '',
       });
       setSuccess(true);
-      if (typeof onChange === 'function') onChange(data.url || '');
+      // Pass the resolved metadata alongside the URL so callers that
+      // care about the original filename (e.g. note/update attachment
+      // lists) can render a real name instead of having to split the
+      // signed URL. Existing callers ignore the extra arg.
+      const meta = {
+        name: data.originalName || file.name || '',
+        mimeType: data.mimeType || file.type || '',
+        size: data.size || file.size || 0,
+        id: data.id || null,
+      };
+      if (typeof onChange === 'function') onChange(data.url || '', meta);
     } catch (err) {
       setError(err.message || 'Upload failed. Please try again.');
     } finally {

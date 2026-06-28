@@ -61,6 +61,11 @@ function emptyValues() {
     mobileNumber: '',
     password: '',
     confirmPassword: '',
+    // Optional employee_code of the field agent who referred this
+    // professional. When present, the backend stamps employeeId +
+    // employeeCode on the ProfessionalDetail row so admin approval
+    // credits the right employee. Empty for self-service signups.
+    referralCode: '',
     country: '',
     state: '',
     city: '',
@@ -88,7 +93,6 @@ function emptyValues() {
     // Legal fields
     barRegistrationNumber: '',
     enrollmentNumber: '',
-    advocateLicenseNumber: '',
     practiceAreas: '',
     courtPractice: '',
     jurisdiction: '',
@@ -202,11 +206,6 @@ export function valuesFromProfile(data) {
   // legacy LawyerDetail row when nothing's been migrated.
   v.barRegistrationNumber = pick(pro.barRegistrationNumber, legal.barRegistrationNumber);
   v.enrollmentNumber = pick(pro.enrollmentNumber, legal.enrollmentNumber);
-  v.advocateLicenseNumber = pick(
-    pro.licenseNumber,
-    legal.advocateLicenseNumber,
-    legal.licenseNumber
-  );
   v.practiceAreas = toCsv(legal.practiceAreas);
   // Use whichever source has data — courtsPracticing on professionalDetail is
   // the modern home; legacy rows still have courtPractice on lawyerDetail.
@@ -301,7 +300,9 @@ export function buildPayload(values, professionalType, mode) {
   const legal = {
     barRegistrationNumber: values.barRegistrationNumber.trim(),
     enrollmentNumber: values.enrollmentNumber.trim(),
-    advocateLicenseNumber: values.advocateLicenseNumber.trim(),
+    // Bar registration number IS the advocate license number — mirror so any
+    // backend reader of the legacy field keeps working until the column goes.
+    advocateLicenseNumber: values.barRegistrationNumber.trim(),
     practiceAreas: toArray(values.practiceAreas),
     courtPractice: toArray(values.courtPractice),
     jurisdiction: values.jurisdiction.trim(),
@@ -391,7 +392,7 @@ export function buildPayload(values, professionalType, mode) {
         ? values.enrollmentNumber.trim() || null
         : null,
       licenseNumber: isLegal
-        ? values.advocateLicenseNumber.trim() || null
+        ? values.barRegistrationNumber.trim() || null
         : null,
       taxRegistrationNumber: isLegal
         ? null
@@ -434,6 +435,12 @@ export function buildPayload(values, professionalType, mode) {
     professionalType,
     ...professional,
   };
+  // Optional referral — the employee_code of the field agent who
+  // brought this professional. Backend resolves it to an Employee row
+  // and stamps employeeId + employeeCode on the new ProfessionalDetail
+  // so admin approval credits the right person.
+  const referral = String(values.referralCode || '').trim();
+  if (referral) payload.referralCode = referral;
   if (isLegal) payload.legal = legal;
   else payload.tax = tax;
   return payload;
@@ -474,10 +481,19 @@ export function validateValues(values, professionalType, mode) {
   if (professionalType === PROFESSIONAL_TYPES.LEGAL) {
     req('barRegistrationNumber', 'Bar registration number is required.');
     req('enrollmentNumber', 'Enrollment number is required.');
-    req('advocateLicenseNumber', 'Advocate license number is required.');
     req('jurisdiction', 'Jurisdiction is required.');
   } else if (professionalType === PROFESSIONAL_TYPES.TAX) {
     req('taxRegistrationNumber', 'Tax registration number is required.');
+  }
+
+  const subCats = Array.isArray(values.subCategoryIds)
+    ? values.subCategoryIds.filter(Boolean)
+    : [];
+  if (subCats.length === 0) {
+    errors.subCategoryIds =
+      professionalType === PROFESSIONAL_TYPES.TAX
+        ? 'Select at least one tax sub-category.'
+        : 'Select at least one legal sub-category.';
   }
 
   return errors;
@@ -583,8 +599,25 @@ function MultiFileList({ label, hint, category, value, onChange }) {
   );
 }
 
-/** A simple labelled textarea matching the design system. */
-function TextArea({ label, name, value, onChange, placeholder, error }) {
+/**
+ * Labelled textarea with optional character limit + live counter.
+ * - `charLimit`: maps to the native `maxLength` attribute so browsers cap
+ *   typing AND paste at the limit for free; counter still renders below.
+ * - `rows`: height of the field; defaults to 3.
+ */
+function TextArea({
+  label,
+  name,
+  value,
+  onChange,
+  placeholder,
+  error,
+  rows = 3,
+  charLimit,
+}) {
+  const currentChars = (value || '').length;
+  const nearLimit = charLimit && currentChars >= charLimit * 0.9;
+  const atLimit = charLimit && currentChars >= charLimit;
   return (
     <div className="w-full">
       {label && (
@@ -601,14 +634,35 @@ function TextArea({ label, name, value, onChange, placeholder, error }) {
         value={value}
         onChange={onChange}
         placeholder={placeholder}
-        rows={3}
+        rows={rows}
+        maxLength={charLimit || undefined}
         className={`w-full rounded-lg border bg-white px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 transition focus:outline-none focus:ring-2 ${
           error
             ? 'border-red-400 focus:border-red-500 focus:ring-red-200'
             : 'border-slate-300 focus:border-amber-500 focus:ring-amber-200'
         }`}
       />
-      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+      <div className="mt-1 flex items-start justify-between gap-3">
+        {error ? (
+          <p className="text-xs text-red-600">{error}</p>
+        ) : (
+          <span aria-hidden="true" />
+        )}
+        {charLimit ? (
+          <p
+            className={`text-xs ${
+              atLimit
+                ? 'text-red-600'
+                : nearLimit
+                  ? 'text-amber-600'
+                  : 'text-slate-400'
+            }`}
+            aria-live="polite"
+          >
+            {currentChars.toLocaleString()} / {charLimit.toLocaleString()} characters
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -638,6 +692,15 @@ export default function ProfessionalRegistrationForm({
   banner = '',
   serverErrors,
   onSubmit,
+  // Optional. When set, an extension area is rendered directly under
+  // the mobile-number input (employee onboarding uses it for inline
+  // OTP send/verify). Receives the current values object so the
+  // adapter can read `values.mobileNumber`.
+  phoneFieldFooter,
+  // Optional. When true, the "Referred by" employee-code field is
+  // disabled (employee onboarding pre-fills it with the field agent's
+  // own code and locks it so it can't be reassigned).
+  referralLocked = false,
   // Edit mode: optional async (payload, currentStep) => Promise — invoked
   // before advancing to the next step so the visitor's data is persisted
   // immediately instead of waiting for the final submit. If it rejects,
@@ -766,11 +829,11 @@ export default function ProfessionalRegistrationForm({
         'country',
         'state',
         'city',
+        'subCategoryIds',
       ],
       2: [
         'barRegistrationNumber',
         'enrollmentNumber',
-        'advocateLicenseNumber',
         'jurisdiction',
         'taxRegistrationNumber',
       ],
@@ -858,7 +921,6 @@ export default function ProfessionalRegistrationForm({
         2: [
           'barRegistrationNumber',
           'enrollmentNumber',
-          'advocateLicenseNumber',
           'jurisdiction',
           'taxRegistrationNumber',
         ],
@@ -1034,31 +1096,62 @@ export default function ProfessionalRegistrationForm({
                   </button>
                 </div>
               )}
+              {/* Extension slot for callers that need OTP / verify
+                  controls inline (e.g. employee onboarding sends the
+                  OTP to the professional's phone here). */}
+              {typeof phoneFieldFooter === 'function'
+                ? phoneFieldFooter(values)
+                : phoneFieldFooter}
             </div>
           </div>
           {mode === 'register' && (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Input
+                  label="Password"
+                  name="password"
+                  type="password"
+                  value={values.password}
+                  onChange={handleChange}
+                  placeholder="At least 8 characters"
+                  required
+                  error={allErrors.password}
+                />
+                <Input
+                  label="Confirm password"
+                  name="confirmPassword"
+                  type="password"
+                  value={values.confirmPassword}
+                  onChange={handleChange}
+                  placeholder="Re-enter password"
+                  required
+                  error={allErrors.confirmPassword}
+                />
+              </div>
+              {/* Optional employee_code of the field agent who
+                  referred you. The employee earns commission once
+                  the admin approves your profile. Leave blank if you
+                  signed up on your own. Locked + pre-filled when an
+                  employee is onboarding via /join-team. */}
               <Input
-                label="Password"
-                name="password"
-                type="password"
-                value={values.password}
+                label={
+                  referralLocked
+                    ? 'Referred by (your employee code)'
+                    : 'Referred by (optional)'
+                }
+                name="referralCode"
+                value={values.referralCode}
                 onChange={handleChange}
-                placeholder="At least 8 characters"
-                required
-                error={allErrors.password}
+                placeholder="Employee code (e.g. 9876543210)"
+                hint={
+                  referralLocked
+                    ? 'Locked to your employee code so this onboarding is credited to you.'
+                    : 'If a Profirmo team member referred you, paste their employee code here. Leave blank otherwise.'
+                }
+                error={allErrors.referralCode}
+                disabled={referralLocked}
               />
-              <Input
-                label="Confirm password"
-                name="confirmPassword"
-                type="password"
-                value={values.confirmPassword}
-                onChange={handleChange}
-                placeholder="Re-enter password"
-                required
-                error={allErrors.confirmPassword}
-              />
-            </div>
+            </>
           )}
 
           {/* Admin-managed sub-categories filtered by Legal/Tax.
@@ -1070,16 +1163,19 @@ export default function ProfessionalRegistrationForm({
             <MultiCombobox
               label={`${categoryForType.name} sub-categories`}
               name="subCategoryIds"
+              required
               value={values.subCategoryIds || []}
-              onChange={(next) =>
+              onChange={(next) => {
                 setValues((v) => ({
                   ...v,
                   subCategoryIds: Array.from(new Set(next || [])),
-                }))
-              }
+                }));
+                setErrors((er) => ({ ...er, subCategoryIds: undefined }));
+              }}
               options={subCategoryOptions}
               placeholder={`Search ${categoryForType.name.toLowerCase()} areas you practise in…`}
               hint={`Pick every ${categoryForType.name.toLowerCase()} area you practise in.`}
+              error={allErrors.subCategoryIds}
             />
           ) : null}
 
@@ -1153,6 +1249,8 @@ export default function ProfessionalRegistrationForm({
             onChange={handleChange}
             placeholder="A brief introduction about your practice."
             error={allErrors.bio}
+            rows={10}
+            charLimit={5000}
           />
         </div>
       </SectionCard>
@@ -1179,13 +1277,14 @@ export default function ProfessionalRegistrationForm({
               error={allErrors.yearsOfExperience}
             />
             <Input
-              label="Consultation fee (₹)"
+              label="Consultation fee (₹) / per minute call rate"
               name="consultationFee"
               type="number"
               min="0"
               value={values.consultationFee}
               onChange={handleChange}
-              placeholder="1500"
+              placeholder="50"
+              hint="Charged per minute on voice/video consultations"
               error={allErrors.consultationFee}
             />
           </div>
@@ -1365,15 +1464,6 @@ export default function ProfessionalRegistrationForm({
                 error={allErrors.enrollmentNumber}
               />
             </div>
-            <Input
-              label="Advocate license number"
-              name="advocateLicenseNumber"
-              value={values.advocateLicenseNumber}
-              onChange={handleChange}
-              placeholder="ADV-001122"
-              required
-              error={allErrors.advocateLicenseNumber}
-            />
             {/* Practice areas are now covered by the admin-managed
                 sub-categories multi-select above, so this field is no
                 longer collected. */}

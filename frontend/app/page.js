@@ -1,10 +1,10 @@
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
+import LeadGenFloater from '@/components/common/LeadGenFloater';
 import HeroSection from '@/components/home/HeroSection';
 import SearchSection from '@/components/home/SearchSection';
 import StatsSection from '@/components/home/StatsSection';
 import CategorySection from '@/components/home/CategorySection';
-import SmartMatchingSection from '@/components/home/SmartMatchingSection';
 import AIAssistantSection from '@/components/home/AIAssistantSection';
 import HowItWorksSection from '@/components/home/HowItWorksSection';
 import FeaturedProfessionals from '@/components/home/FeaturedProfessionals';
@@ -22,7 +22,6 @@ export default function HomePage() {
         <SearchSection />
         <StatsSection />
         <CategorySection />
-        <SmartMatchingSection />
         <AIAssistantSection />
         <HowItWorksSection />
         <FeaturedProfessionals />
@@ -32,6 +31,7 @@ export default function HomePage() {
         <CTASection />
       </main>
       <Footer />
+      <LeadGenFloater source="home" />
     </div>
   );
 }

@@ -1,0 +1,521 @@
+// gmailService — server-side glue for the Gmail OAuth integration.
+//
+//   * buildAuthUrl(userId)               -> redirect URL for /oauth2/auth
+//   * exchangeCode(code, state)          -> { connection } after consent
+//   * mintAccessToken(connection)        -> short-lived bearer for one call
+//   * listRecentMessages(connection)     -> [{ id, threadId, snippet, ... }]
+//   * autoLinkMessages(userId)           -> attaches matched mail to cases
+//
+// Tokens at rest are plaintext (see GmailConnection model header for
+// the rationale — JWT-bound encryption silently broke on rotation).
+
+const adminSettings = require('./adminSettingsService');
+const {
+  GmailConnection,
+  GmailMessageLink,
+  Case,
+  User,
+} = require('../models');
+const { Op } = require('sequelize');
+
+const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
+const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const GMAIL_API = 'https://gmail.googleapis.com/gmail/v1';
+
+// Scopes: read-only for v1. `gmail.modify` would let us mark as read or
+// add labels later; left out so the consent screen is friendlier.
+//
+// `calendar.events` is upgraded from `calendar.readonly` so we can
+// both READ the user's events for the dashboard overlay AND WRITE
+// Profirmo bookings / hearings / tasks / reminders back into their
+// calendar. `calendar.events` is the narrowest write scope — it
+// doesn't grant access to ACL or calendar metadata. Users connected
+// before this upgrade will see "Reconnect for calendar access" until
+// they re-run the OAuth flow.
+const SCOPES = [
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/calendar.events',
+];
+
+const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+
+/** True if a connection's granted scope string includes the Calendar scope. */
+function hasCalendarScope(connection) {
+  return String((connection && connection.scope) || '').includes(CALENDAR_SCOPE);
+}
+
+// --- Config -----------------------------------------------------------
+
+async function getOAuthConfig() {
+  const [clientId, clientSecret, redirectUri] = await Promise.all([
+    adminSettings.getString('gmail_oauth_client_id'),
+    adminSettings.getString('gmail_oauth_client_secret'),
+    adminSettings.getString('gmail_redirect_uri'),
+  ]);
+  if (!clientId || !clientSecret || !redirectUri) {
+    throw {
+      statusCode: 503,
+      message:
+        'Gmail integration is not configured. Add the GCP OAuth client id, secret and redirect URI under Admin → Integrations / Gmail.',
+    };
+  }
+  return { clientId, clientSecret, redirectUri };
+}
+
+// --- OAuth round-trip -------------------------------------------------
+
+/**
+ * Build the Google consent URL. `state` carries the caller's user id
+ * + the frontend origin (so the callback knows whether to bounce back
+ * to localhost or prod) + a nonce to stop replay. In prod this should
+ * be signed (JWT); v1 relies on the nonce + Google's HTTPS callback
+ * being unguessable.
+ */
+async function buildAuthUrl(userId, frontendOrigin = null) {
+  const cfg = await getOAuthConfig();
+  const nonce = require('crypto').randomBytes(12).toString('hex');
+  // `o` (origin) lets the callback redirect back to whichever frontend
+  // started the flow — important because the same backend serves
+  // both localhost:3000 (dev) and profirmo.com (prod) via different
+  // redirect_uris registered in the OAuth client.
+  const payload = { u: userId, n: nonce };
+  if (frontendOrigin) payload.o = frontendOrigin;
+  const state = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const params = new URLSearchParams({
+    client_id: cfg.clientId,
+    redirect_uri: cfg.redirectUri,
+    response_type: 'code',
+    access_type: 'offline', // we need a refresh_token
+    include_granted_scopes: 'true',
+    // `select_account` forces the Google account picker even if the
+    // user is signed into exactly one Google account in their browser
+    // — important for the "Change account" flow where a connected user
+    // wants to switch to a different mailbox. `consent` also forces
+    // refresh_token re-issuance, so we don't lose it across reconnects.
+    prompt: 'select_account consent',
+    scope: SCOPES.join(' '),
+    state,
+  });
+  return `${GOOGLE_AUTH_URL}?${params.toString()}`;
+}
+
+/**
+ * Exchange the auth code for tokens, then immediately resolve the
+ * user's email address via the userinfo endpoint. Persist the grant
+ * as a GmailConnection row keyed by Profirmo userId.
+ */
+async function exchangeCode(code, state) {
+  const cfg = await getOAuthConfig();
+  let userId = null;
+  let origin = null;
+  try {
+    const parsed = JSON.parse(Buffer.from(state, 'base64url').toString());
+    userId = parsed.u || null;
+    origin = parsed.o || null;
+  } catch {
+    throw { statusCode: 400, message: 'Invalid OAuth state parameter' };
+  }
+  if (!userId) throw { statusCode: 400, message: 'Missing user id in state' };
+
+  const tokenResp = await fetch(GOOGLE_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      code,
+      client_id: cfg.clientId,
+      client_secret: cfg.clientSecret,
+      redirect_uri: cfg.redirectUri,
+      grant_type: 'authorization_code',
+    }),
+  });
+  const tokenJson = await tokenResp.json();
+  if (!tokenResp.ok) {
+    throw {
+      statusCode: 400,
+      message: `Gmail token exchange failed: ${tokenJson.error_description || tokenJson.error || 'unknown'}`,
+    };
+  }
+  if (!tokenJson.refresh_token) {
+    throw {
+      statusCode: 400,
+      message:
+        'Google did not return a refresh_token. Disconnect this account from your Google Apps connected sites and try again.',
+    };
+  }
+
+  // Resolve the connected email address.
+  const userInfoResp = await fetch(
+    'https://openidconnect.googleapis.com/v1/userinfo',
+    { headers: { authorization: `Bearer ${tokenJson.access_token}` } }
+  );
+  const userInfo = await userInfoResp.json();
+  const email = userInfo && userInfo.email;
+  if (!email) {
+    throw { statusCode: 400, message: 'Could not resolve Gmail account email' };
+  }
+
+  // Upsert by Profirmo user — one Gmail account per user for v1.
+  const existing = await GmailConnection.findOne({ where: { userId } });
+  let row;
+  if (existing) {
+    await existing.update({
+      email,
+      refreshToken: tokenJson.refresh_token,
+      scope: tokenJson.scope || SCOPES.join(' '),
+    });
+    row = existing;
+  } else {
+    row = await GmailConnection.create({
+      userId,
+      email,
+      refreshToken: tokenJson.refresh_token,
+      scope: tokenJson.scope || SCOPES.join(' '),
+    });
+  }
+  // Attach the origin we stashed in state so the controller can
+  // redirect back to the right frontend without consulting env vars.
+  const plain = row.get({ plain: true });
+  plain._frontendOrigin = origin;
+  return plain;
+}
+
+/**
+ * Trade the refresh token for a short-lived access token. Google does
+ * not return a new refresh token here, so we don't update the row.
+ */
+async function mintAccessToken(connection) {
+  const cfg = await getOAuthConfig();
+  const resp = await fetch(GOOGLE_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: cfg.clientId,
+      client_secret: cfg.clientSecret,
+      refresh_token: connection.refreshToken,
+      grant_type: 'refresh_token',
+    }),
+  });
+  const j = await resp.json();
+  if (!resp.ok || !j.access_token) {
+    throw {
+      statusCode: 502,
+      message: `Gmail access-token refresh failed: ${j.error_description || j.error || 'unknown'}`,
+    };
+  }
+  return j.access_token;
+}
+
+// --- Message fetch + parse -------------------------------------------
+
+function headerValue(headers, name) {
+  if (!Array.isArray(headers)) return null;
+  const h = headers.find((x) => x.name && x.name.toLowerCase() === name.toLowerCase());
+  return h ? h.value : null;
+}
+
+function extractEmail(fromHeader) {
+  // "Name <addr@x>" or just "addr@x"
+  const m = /<([^>]+)>/.exec(String(fromHeader || ''));
+  return (m ? m[1] : String(fromHeader || '')).trim().toLowerCase();
+}
+
+/**
+ * Pull the most recent N message metadata records for the connected
+ * mailbox. v1: no incremental sync via history; just messages.list
+ * with a small page size. Returns: [{ id, from, subject, snippet, date }].
+ */
+async function listRecentMessages(connection, max = 20) {
+  const token = await mintAccessToken(connection);
+  const listResp = await fetch(
+    `${GMAIL_API}/users/me/messages?maxResults=${max}&q=in:inbox`,
+    { headers: { authorization: `Bearer ${token}` } }
+  );
+  const listJson = await listResp.json();
+  if (!listResp.ok) {
+    throw {
+      statusCode: 502,
+      message: `Gmail messages.list failed: ${(listJson.error && listJson.error.message) || 'unknown'}`,
+    };
+  }
+  const ids = (listJson.messages || []).map((m) => m.id);
+  // Detail fetch in parallel; each call returns the message metadata.
+  const detailResps = await Promise.all(
+    ids.map((id) =>
+      fetch(
+        `${GMAIL_API}/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
+        { headers: { authorization: `Bearer ${token}` } }
+      ).then((r) => r.json())
+    )
+  );
+  return detailResps
+    .filter((d) => d && d.id)
+    .map((d) => {
+      const headers = (d.payload && d.payload.headers) || [];
+      const fromHeader = headerValue(headers, 'From') || '';
+      return {
+        id: d.id,
+        threadId: d.threadId,
+        from: fromHeader,
+        fromEmail: extractEmail(fromHeader),
+        subject: headerValue(headers, 'Subject') || '(no subject)',
+        date: headerValue(headers, 'Date') || null,
+        snippet: d.snippet || '',
+      };
+    });
+}
+
+// --- Auto-link --------------------------------------------------------
+
+/**
+ * Walk the last N inbox messages for the caller's connected mailbox
+ * and try to match each one to a Case via the sender email →
+ * client.email lookup. Matches are returned as a flat list the UI can
+ * render under the corresponding case timeline.
+ *
+ * v1 is read-only — we don't write a CaseUpdate row yet, so a user
+ * can review matches before committing them. v2 will add a "convert
+ * to update" button per match.
+ */
+async function autoLinkRecentMessages(userId, max = 20) {
+  const connection = await GmailConnection.findOne({ where: { userId } });
+  if (!connection) {
+    throw {
+      statusCode: 404,
+      message: 'No Gmail account connected for this user',
+    };
+  }
+  const messages = await listRecentMessages(connection, max);
+  if (messages.length === 0) return { connected: connection.email, matches: [] };
+
+  // Pull every client email that touches a case the caller participates
+  // in. For v1 this is broad — refine in v2 with firm/case scoping.
+  const emails = [...new Set(messages.map((m) => m.fromEmail).filter(Boolean))];
+  if (emails.length === 0) return { connected: connection.email, matches: [] };
+
+  const matchingClients = await User.findAll({
+    where: { email: { [Op.in]: emails } },
+    attributes: ['id', 'email', 'name'],
+    raw: true,
+  });
+  const byEmail = new Map(
+    matchingClients.map((u) => [String(u.email || '').toLowerCase(), u])
+  );
+
+  // Find every case where any matched client is a participant.
+  const clientIds = matchingClients.map((c) => c.id);
+  if (clientIds.length === 0) return { connected: connection.email, matches: [] };
+  const cases = await Case.findAll({
+    where: { [Op.or]: [{ clientId: { [Op.in]: clientIds } }] },
+    attributes: ['id', 'title', 'clientId'],
+    raw: true,
+  });
+  const casesByClient = new Map();
+  for (const c of cases) {
+    if (!c.clientId) continue;
+    if (!casesByClient.has(c.clientId)) casesByClient.set(c.clientId, []);
+    casesByClient.get(c.clientId).push(c);
+  }
+
+  const matches = [];
+  for (const m of messages) {
+    const client = byEmail.get(m.fromEmail);
+    if (!client) continue;
+    const relatedCases = casesByClient.get(client.id) || [];
+    if (relatedCases.length === 0) continue;
+    matches.push({ message: m, client, cases: relatedCases });
+  }
+
+  await connection.update({ lastSyncedAt: new Date() });
+
+  return {
+    connected: connection.email,
+    matches,
+    fetchedMessageCount: messages.length,
+  };
+}
+
+// --- Disconnect -------------------------------------------------------
+
+async function disconnect(userId) {
+  const row = await GmailConnection.findOne({ where: { userId } });
+  if (!row) return { disconnected: false };
+  // Try a best-effort token revocation; ignore failure (we're nuking
+  // the row regardless).
+  try {
+    await fetch(
+      `https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(row.refreshToken)}`,
+      { method: 'POST' }
+    );
+  } catch {
+    /* noop */
+  }
+  await row.destroy();
+  return { disconnected: true };
+}
+
+async function getMine(userId) {
+  const row = await GmailConnection.findOne({
+    where: { userId },
+    attributes: ['email', 'scope', 'lastSyncedAt', 'createdAt'],
+    raw: true,
+  });
+  if (!row) return null;
+  // Decompose the scope string into capability flags so the UI doesn't
+  // have to parse it.
+  return {
+    ...row,
+    hasGmail: String(row.scope || '').includes('gmail.readonly'),
+    hasCalendar: hasCalendarScope(row),
+  };
+}
+
+// --- Per-case fetch + pinning ----------------------------------------
+
+/**
+ * Fetch every client email associated with one case. Used as the
+ * sender-email match filter for per-case Gmail listing.
+ */
+async function caseClientEmails(caseId) {
+  const c = await Case.findOne({ where: { id: caseId }, raw: true });
+  if (!c) return { caseRow: null, emails: [], clientUserIds: [] };
+
+  const clientIds = [];
+  if (c.clientId) clientIds.push(c.clientId);
+  if (Array.isArray(c.clientIds)) {
+    for (const id of c.clientIds) if (id && !clientIds.includes(id)) clientIds.push(id);
+  }
+  if (clientIds.length === 0) return { caseRow: c, emails: [], clientUserIds: [] };
+  const users = await User.findAll({
+    where: { id: { [Op.in]: clientIds } },
+    attributes: ['id', 'email', 'name'],
+    raw: true,
+  });
+  const emails = users
+    .map((u) => String(u.email || '').toLowerCase())
+    .filter(Boolean);
+  return { caseRow: c, emails, users, clientUserIds: clientIds };
+}
+
+/**
+ * Pull recent Gmail messages relevant to one case.
+ *
+ *   1. Filter by sender email = any client email on the case.
+ *   2. Apply manual pins: if a message has a pin elsewhere (other
+ *      case), exclude it from this case's results. If it's pinned to
+ *      THIS case, force-include even if the sender no longer matches
+ *      (rare — handles cases where a client switched email address
+ *      after the message was pinned).
+ *
+ * Returns: { connectedEmail, messages: [{ ...message, pinnedHere, pinnedElsewhere }] }
+ */
+async function listMessagesForCase(userId, caseId, { max = 30 } = {}) {
+  const connection = await GmailConnection.findOne({ where: { userId } });
+  if (!connection) {
+    return { connectedEmail: null, messages: [], connected: false };
+  }
+  if (!String(connection.scope || '').includes('gmail.readonly')) {
+    return {
+      connectedEmail: connection.email,
+      messages: [],
+      connected: true,
+      scopeMissing: true,
+    };
+  }
+
+  const { caseRow, emails: caseEmails } = await caseClientEmails(caseId);
+  if (!caseRow) throw { statusCode: 404, message: 'Case not found' };
+
+  // No client emails on the case → nothing to match against, but we
+  // still surface any messages pinned to this case manually.
+  const pinned = await GmailMessageLink.findAll({
+    where: { userId, caseId },
+    raw: true,
+  });
+  const pinnedHere = new Set(pinned.map((p) => p.messageId));
+
+  // All pins this user has (any case) — to detect "pinned elsewhere".
+  const allPins = await GmailMessageLink.findAll({
+    where: { userId },
+    attributes: ['messageId', 'caseId'],
+    raw: true,
+  });
+  const pinByMessage = new Map(allPins.map((p) => [p.messageId, p.caseId]));
+
+  // Fetch most-recent messages — broader pull, then filter locally.
+  const recent = await listRecentMessages(connection, max);
+
+  const emailSet = new Set(caseEmails);
+  const filtered = recent.filter((m) => {
+    const fromEmail = String(m.fromEmail || '').toLowerCase();
+    const senderMatchesCase = emailSet.has(fromEmail);
+    const pinnedElsewhere =
+      pinByMessage.has(m.id) && pinByMessage.get(m.id) !== caseId;
+    if (pinnedHere.has(m.id)) return true; // force-include pinned-here
+    if (pinnedElsewhere) return false; // hide if pinned to another case
+    return senderMatchesCase;
+  });
+
+  return {
+    connectedEmail: connection.email,
+    connected: true,
+    caseClientEmails: caseEmails,
+    messages: filtered.map((m) => ({
+      ...m,
+      pinnedHere: pinnedHere.has(m.id),
+      pinnedElsewhere:
+        pinByMessage.has(m.id) && pinByMessage.get(m.id) !== caseId,
+      pinnedCaseId: pinByMessage.get(m.id) || null,
+    })),
+  };
+}
+
+/**
+ * Pin a Gmail message to one case for this user. Replaces any prior
+ * pin on the same (user, message). Returns the persisted link row.
+ */
+async function pinMessageToCase(userId, messageId, caseId) {
+  if (!messageId || !caseId) {
+    throw { statusCode: 422, message: 'messageId + caseId required' };
+  }
+  // Validate the user has access to the target case — reuses the
+  // same check the case detail page does.
+  const c = await Case.findOne({ where: { id: caseId }, raw: true });
+  if (!c) throw { statusCode: 404, message: 'Case not found' };
+
+  const existing = await GmailMessageLink.findOne({
+    where: { userId, messageId },
+  });
+  if (existing) {
+    await existing.update({ caseId, pinnedByUserId: userId });
+    return existing.get({ plain: true });
+  }
+  const row = await GmailMessageLink.create({
+    userId,
+    messageId,
+    caseId,
+    pinnedByUserId: userId,
+  });
+  return row.get({ plain: true });
+}
+
+/** Drop a manual pin so default sender-match rules apply again. */
+async function unpinMessage(userId, messageId) {
+  const row = await GmailMessageLink.findOne({ where: { userId, messageId } });
+  if (!row) return { unpinned: false };
+  await row.destroy();
+  return { unpinned: true };
+}
+
+module.exports = {
+  buildAuthUrl,
+  exchangeCode,
+  mintAccessToken,
+  listRecentMessages,
+  autoLinkRecentMessages,
+  listMessagesForCase,
+  pinMessageToCase,
+  unpinMessage,
+  disconnect,
+  getMine,
+};

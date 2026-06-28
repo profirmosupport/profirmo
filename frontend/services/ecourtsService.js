@@ -2,7 +2,7 @@
 // to https://webapi.ecourtsindia.com). The partner API key lives on
 // the backend; this client never sees it.
 
-import { get, post, del, API_BASE_URL } from '@/services/api';
+import { get, post, del, getApiBaseUrl } from '@/services/api';
 
 // CNR validation — partner schema is 16 alphanumeric chars (e.g.
 // `UPHC052793522026`). We use a slightly loose 12-20 window so the
@@ -40,7 +40,7 @@ export async function getCaseByCnr(cnr) {
  * blob() trickery needed.
  */
 export function orderDownloadUrl(cnr, filename) {
-  return `${API_BASE_URL}/api/ecourts/case/${encodeURIComponent(
+  return `${getApiBaseUrl()}/api/ecourts/case/${encodeURIComponent(
     cnr
   )}/order/${encodeURIComponent(filename)}/download`;
 }
@@ -121,8 +121,15 @@ export async function removeFavorite(cnr) {
 
 // --- Import / Sync the user's own Case row ------------------------------
 
-export async function importCaseFromEcourts(cnr) {
-  const res = await post('/api/ecourts/cases/import', { cnr });
+export async function importCaseFromEcourts(cnr, opts = {}) {
+  const body = { cnr };
+  if (Array.isArray(opts.clientIds) && opts.clientIds.length > 0) {
+    body.clientIds = opts.clientIds;
+  }
+  if (opts.overrides && typeof opts.overrides === 'object') {
+    body.overrides = opts.overrides;
+  }
+  const res = await post('/api/ecourts/cases/import', body);
   return unwrap(res);
 }
 

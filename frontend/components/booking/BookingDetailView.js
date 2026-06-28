@@ -23,6 +23,10 @@ import {
   Paperclip,
   X,
   Loader2,
+  BadgeCheck,
+  MapPin,
+  ArrowUpRight,
+  CreditCard,
 } from 'lucide-react';
 import Card from '@/components/common/Card';
 import Avatar from '@/components/common/Avatar';
@@ -34,9 +38,12 @@ import ConnectChips from '@/components/booking/ConnectChips';
 import ReviewForm from '@/components/reviews/ReviewForm';
 import PlanLimitBanner from '@/components/common/PlanLimitBanner';
 import bookingService from '@/services/bookingService';
-import { formatINR } from '@/services/paymentService';
+import { formatINR, payForBooking } from '@/services/paymentService';
+import { useAuth } from '@/components/AuthProvider';
+import InstantBadge, { isInstantBooking } from '@/components/booking/InstantBadge';
 import { uploadFile, resolveFileUrl } from '@/services/fileService';
-import { formatDate, formatTime } from '@/utils/formatters';
+import { formatDate, formatCurrency } from '@/utils/formatters';
+import { formatSlotLabel } from '@/utils/availability';
 
 const BOOKING_STATUS_VARIANT = {
   pending: 'amber',
@@ -80,6 +87,12 @@ export default function BookingDetailView({ detail, viewer, onReload }) {
   const [convertErrorObj, setConvertErrorObj] = useState(null);
   const [convertSuccess, setConvertSuccess] = useState('');
 
+  // Pay-again retry state — only relevant on the client viewer when an
+  // earlier Razorpay order was created but never captured.
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState('');
+  const { user: authUser } = useAuth();
+
   if (!detail) return null;
   const {
     booking,
@@ -100,6 +113,49 @@ export default function BookingDetailView({ detail, viewer, onReload }) {
 
   const counterparty = viewer === 'client' ? professional : client;
   const counterpartyLabel = viewer === 'client' ? 'Professional' : 'Client';
+
+  // Payment status — `payment` is null when no order was ever created.
+  // Status 'created'/'failed' both mean "money has not landed", which is
+  // when the Pay-again CTA appears (client viewer only) and when we lock
+  // down contact details + the add-note form for everyone. 'paid' and
+  // 'refunded' unlock those.
+  const paymentStatus = (payment && payment.status) || (payment ? 'created' : null);
+  const isPaymentPending =
+    booking.status !== 'cancelled' &&
+    booking.status !== 'completed' &&
+    (paymentStatus === null ||
+      paymentStatus === 'created' ||
+      paymentStatus === 'failed');
+  const canPayAgain = viewer === 'client' && isPaymentPending;
+
+  async function handlePayAgain() {
+    if (paying) return;
+    setPayError('');
+    setPaying(true);
+    try {
+      const result = await payForBooking({
+        bookingId: booking.id,
+        prefill: {
+          name: (authUser && authUser.name) || '',
+          email: (authUser && authUser.email) || '',
+          phone: (authUser && authUser.mobileNumber) || '',
+        },
+      });
+      // User dismissed the Razorpay modal — silently leave the page state
+      // unchanged so they can click again.
+      if (result && result.cancelled) {
+        setPaying(false);
+        return;
+      }
+      // Successful capture — reload the detail so the badge flips to "paid"
+      // and the Pay-again CTA disappears.
+      if (typeof onReload === 'function') await onReload();
+    } catch (err) {
+      setPayError(err.message || 'Payment could not be processed. Try again.');
+    } finally {
+      setPaying(false);
+    }
+  }
 
   async function handleAttachmentChange(e) {
     const files = Array.from((e.target && e.target.files) || []);
@@ -219,7 +275,12 @@ export default function BookingDetailView({ detail, viewer, onReload }) {
         </div>
       )}
 
-      {/* 1. Counter-party basic details + Connect */}
+      {/* 1. Counter-party basic details + Connect.
+          For clients viewing a booking, the top card mirrors the
+          marketplace listing — photo, name, verified pill, professional
+          type, rating + reviews, city, years of experience, fee, and a
+          "View profile" link. The professional viewer still sees a
+          simpler client identity card (no rating/fee/profile link). */}
       <Card>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 items-start gap-4">
@@ -227,28 +288,93 @@ export default function BookingDetailView({ detail, viewer, onReload }) {
               src={counterparty && counterparty.profilePhoto}
               name={counterparty ? counterparty.name : ''}
               size="lg"
+              priority
             />
             <div className="min-w-0">
               <p className="text-xs uppercase tracking-wide text-slate-400">
                 {counterpartyLabel}
               </p>
-              <h2 className="mt-1 text-lg font-bold text-slate-900">
-                {counterparty ? counterparty.name : '—'}
-              </h2>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                <h2 className="text-lg font-bold text-slate-900">
+                  {counterparty ? counterparty.name : '—'}
+                </h2>
+                {viewer === 'client' && counterparty && counterparty.verified && (
+                  <BadgeCheck
+                    size={16}
+                    className="shrink-0 text-blue-600"
+                    aria-label="Verified"
+                  />
+                )}
+              </div>
               {counterparty && counterparty.designation && (
                 <p className="text-sm text-slate-600">
                   {counterparty.designation}
                 </p>
               )}
-              {counterparty && counterparty.professionalType && (
-                <Badge variant="blue" className="mt-1.5">
-                  {counterparty.professionalType}
-                </Badge>
-              )}
-              {counterparty && counterparty.bio && (
-                <p className="mt-3 max-w-prose text-sm text-slate-600">
-                  {counterparty.bio}
-                </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {counterparty && counterparty.professionalType && (
+                  <Badge variant="blue">{counterparty.professionalType}</Badge>
+                )}
+                {viewer === 'client' &&
+                  counterparty &&
+                  counterparty.city && (
+                    <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+                      <MapPin size={12} className="text-slate-400" />
+                      {counterparty.city}
+                    </span>
+                  )}
+                {viewer === 'client' &&
+                  counterparty &&
+                  Number(counterparty.yearsOfExperience) > 0 && (
+                    <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+                      <Briefcase size={12} className="text-slate-400" />
+                      {counterparty.yearsOfExperience}+ yrs
+                    </span>
+                  )}
+                {viewer === 'client' &&
+                  counterparty &&
+                  Number(counterparty.rating) > 0 && (
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-700">
+                      <Star
+                        size={12}
+                        className="fill-amber-400 text-amber-500"
+                      />
+                      {Number(counterparty.rating).toFixed(1)}
+                      {Number(counterparty.reviewsCount) > 0 && (
+                        <span className="text-slate-400">
+                          ({counterparty.reviewsCount})
+                        </span>
+                      )}
+                    </span>
+                  )}
+              </div>
+              {/* Bio intentionally omitted on the booking-detail card —
+                  the client can click "View full profile" for the long
+                  read. Keeps this card tight.
+                  consultationFee is stored as RUPEES on the professional
+                  record (DECIMAL(10,2)) — use formatCurrency, NOT formatINR
+                  (which divides paise/100 and was producing "₹0.20"). */}
+              {viewer === 'client' &&
+                counterparty &&
+                Number(counterparty.consultationFee) > 0 && (
+                  <p className="mt-3 flex items-center gap-1 text-xs font-semibold text-slate-700">
+                    <CreditCard size={12} className="text-slate-400" />
+                    {formatCurrency(counterparty.consultationFee)} per minute
+                  </p>
+                )}
+              {viewer === 'client' && counterparty && counterparty.id && (
+                <a
+                  href={`/professionals/${counterparty.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="group mt-4 inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 shadow-sm transition hover:border-amber-400 hover:bg-amber-100 hover:text-amber-800"
+                >
+                  View full profile
+                  <ArrowUpRight
+                    size={13}
+                    className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+                  />
+                </a>
               )}
             </div>
           </div>
@@ -256,7 +382,15 @@ export default function BookingDetailView({ detail, viewer, onReload }) {
             <p className="mb-2 text-xs font-medium text-slate-500">
               Connect
             </p>
-            {counterparty ? (
+            {/* Contact details unlock only after payment lands — keeps
+                clients from bypassing the platform fee while the booking
+                is still in escrow-pending. Both viewers see the same lock. */}
+            {isPaymentPending ? (
+              <span className="inline-flex max-w-[14rem] items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] leading-snug text-amber-800">
+                <ShieldCheck size={12} className="mt-0.5 shrink-0" />
+                Contact details unlock after payment is confirmed.
+              </span>
+            ) : counterparty ? (
               <ConnectChips
                 phone={counterparty.phone}
                 email={counterparty.email}
@@ -271,12 +405,76 @@ export default function BookingDetailView({ detail, viewer, onReload }) {
         </div>
       </Card>
 
+      {/* 1b. Pay-again banner — appears when the client has an open
+          booking with no successful payment yet. The Razorpay modal opens
+          on click; on success the detail reloads and the banner vanishes. */}
+      {canPayAgain && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-2.5">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-amber-500 text-white">
+              <CreditCard size={16} />
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-amber-900">
+                {paymentStatus === 'failed'
+                  ? 'Last payment attempt failed'
+                  : 'Payment pending for this booking'}
+              </p>
+              <p className="mt-0.5 text-xs leading-snug text-amber-800">
+                {(() => {
+                  // Prefer the live pending-payment amount (already in
+                  // paise from Razorpay); fall back to booking.estimatedCost
+                  // in rupees so we always show what the client owes —
+                  // includes the 2× multiplier for instant bookings.
+                  const paise =
+                    payment && payment.amount
+                      ? payment.amount
+                      : Number(booking.estimatedCost) > 0
+                        ? Number(booking.estimatedCost) * 100
+                        : null;
+                  return paise ? `Amount due: ${formatINR(paise)}. ` : '';
+                })()}
+                Complete the payment to confirm the slot. The professional
+                isn&apos;t notified until payment lands.
+              </p>
+              {payError && (
+                <p className="mt-1.5 text-xs font-medium text-red-700">
+                  {payError}
+                </p>
+              )}
+            </div>
+          </div>
+          <Button
+            onClick={handlePayAgain}
+            disabled={paying}
+            variant="primary"
+            size="md"
+            className="shrink-0"
+          >
+            {paying ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                Opening…
+              </>
+            ) : (
+              <>
+                <CreditCard size={14} />
+                {paymentStatus === 'failed' ? 'Try payment again' : 'Pay now'}
+              </>
+            )}
+          </Button>
+        </div>
+      )}
+
       {/* 2. Booking summary */}
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold text-slate-900">
-            Booking summary
-          </h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold text-slate-900">
+              Booking summary
+            </h3>
+            {isInstantBooking(booking) && <InstantBadge size="sm" />}
+          </div>
           <Badge variant={BOOKING_STATUS_VARIANT[booking.status] || 'gray'}>
             {booking.status}
           </Badge>
@@ -291,7 +489,7 @@ export default function BookingDetailView({ detail, viewer, onReload }) {
                 ? 'Instant — Now'
                 : booking.date
                 ? `${formatDate(booking.date)}${
-                    booking.time ? `, ${formatTime(booking.time)}` : ''
+                    booking.time ? `, ${formatSlotLabel(booking.time)}` : ''
                   }`
                 : '—'}
             </dd>
@@ -304,16 +502,47 @@ export default function BookingDetailView({ detail, viewer, onReload }) {
               {booking.duration ? `${booking.duration} min` : '—'}
             </dd>
           </div>
-          {payment && (
+          {/* Only show "Amount paid" when the money actually landed —
+              created/failed payments live alongside, but render in the
+              Pay-again banner above instead. */}
+          {payment && (payment.status === 'paid' || payment.status === 'refunded') && (
             <div>
               <dt className="text-xs uppercase tracking-wide text-slate-400">
                 Amount paid
               </dt>
-              <dd className="mt-1 text-slate-800">
+              <dd className="mt-1 flex flex-wrap items-center gap-1.5 text-slate-800">
                 {formatINR(payment.amount)}
+                {isInstantBooking(booking) && (
+                  <span className="text-[11px] font-medium text-amber-700">
+                    (includes 2× instant rate)
+                  </span>
+                )}
               </dd>
             </div>
           )}
+          {/* Pending/failed bookings expose the amount due so the booking
+              summary still shows what the client owes (in addition to the
+              banner up top). Uses the latest pending payment when one
+              exists, else booking.estimatedCost (now stores the
+              already-multiplied value for instant bookings). */}
+          {(!payment || (payment.status !== 'paid' && payment.status !== 'refunded')) &&
+            (Number((payment && payment.amount) || booking.estimatedCost) > 0) && (
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-slate-400">
+                  Amount due
+                </dt>
+                <dd className="mt-1 flex flex-wrap items-center gap-1.5 text-slate-800">
+                  {payment && payment.amount
+                    ? formatINR(payment.amount)
+                    : formatINR(Number(booking.estimatedCost) * 100)}
+                  {isInstantBooking(booking) && (
+                    <span className="text-[11px] font-medium text-amber-700">
+                      (includes 2× instant rate)
+                    </span>
+                  )}
+                </dd>
+              </div>
+            )}
           {escrow && (
             <div>
               <dt className="text-xs uppercase tracking-wide text-slate-400">
@@ -384,7 +613,17 @@ export default function BookingDetailView({ detail, viewer, onReload }) {
           </p>
         )}
 
-        {permissions.canAddNote && (
+        {/* Locked while payment is pending — note-thread + uploads only
+            open up once the booking is actually paid. Existing notes
+            (rendered above) stay visible either way. */}
+        {isPaymentPending && permissions.canAddNote && (
+          <p className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <ShieldCheck size={12} className="text-amber-600" />
+            Notes &amp; messages will open after payment is confirmed.
+          </p>
+        )}
+
+        {!isPaymentPending && permissions.canAddNote && (
           <form onSubmit={handleAddNote} className="mt-4 space-y-2">
             <label
               htmlFor="booking-note"

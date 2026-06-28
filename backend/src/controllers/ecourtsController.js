@@ -120,8 +120,11 @@ const getImportedCase = asyncHandler(async (req, res) => {
 // --- Import into the Cases module (signed-in users; gated by plan) ------
 
 const importCase = asyncHandler(async (req, res) => {
-  const { cnr } = req.body || {};
-  const result = await ecourtsService.importCase(req.user, cnr);
+  const { cnr, clientIds, overrides } = req.body || {};
+  const result = await ecourtsService.importCase(req.user, cnr, {
+    clientIds,
+    overrides,
+  });
   return successResponse(
     res,
     result.reused ? 200 : 201,

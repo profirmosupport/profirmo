@@ -1,0 +1,50 @@
+# Profirmo
+
+> Profirmo is a verified directory and booking platform for lawyers,
+> advocates, tax consultants, GST experts, and legal/tax firms in India.
+> Users describe their case to an AI matcher and are connected with the
+> most suitable verified professional or firm, with end-to-end booking,
+> consultation, and case-management workflows.
+
+## What Profirmo is for
+
+- **Clients** searching for a verified legal or tax professional in India
+  can describe their case, get AI-matched to vetted lawyers/CAs/GST
+  consultants, book consultations, and manage cases entirely on the
+  platform.
+- **Professionals** (advocates, tax consultants, GST experts) can create
+  a verified profile, manage their availability, receive case leads, and
+  earn from consultations.
+- **Firms** can onboard their professionals, manage cases collectively,
+  and handle billing and case workflows at a firm level.
+
+## Key sections
+
+- [Find a professional](https://profirmo.com/professionals) — searchable
+  directory of verified lawyers, advocates, tax/GST consultants.
+- [Find a firm](https://profirmo.com/firms) — directory of legal and tax
+  firms onboarded to Profirmo.
+- [Search](https://profirmo.com/search) — keyword + filter search across
+  professionals, firms, services, and locations.
+- [How it works](https://profirmo.com/how-it-works) — the AI matching +
+  consultation + case-management flow explained step by step.
+- [About](https://profirmo.com/about) — company background.
+- [Blog](https://profirmo.com/blog) — legal/tax explainers and guides.
+- [Contact](https://profirmo.com/contact) — reach the Profirmo team.
+
+## Coverage and verification
+
+- All professionals listed on Profirmo are verified — Bar Council /
+  Advocate license numbers for lawyers, ICAI / GSTIN credentials for tax
+  consultants are validated during onboarding.
+- City coverage spans major and tier-2/3 Indian cities; see the
+  [city listings under /professionals/city/](https://profirmo.com/professionals).
+
+## Machine-readable resources
+
+- [Sitemap](https://profirmo.com/sitemap.xml)
+- [Robots policy](https://profirmo.com/robots.txt)
+
+## Contact
+
+For partnership, press, or content corrections: support@profirmo.com

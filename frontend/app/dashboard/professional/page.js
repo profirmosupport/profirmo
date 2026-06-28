@@ -7,11 +7,14 @@ import StatsCard from '@/components/dashboard/StatsCard';
 import CurrentPlanCard from '@/components/dashboard/CurrentPlanCard';
 import AvailabilityManager from '@/components/dashboard/AvailabilityManager';
 import OnlineBookingToggle from '@/components/dashboard/OnlineBookingToggle';
+import DashboardCalendar from '@/components/dashboard/DashboardCalendar';
+import GmailIntegrationCard from '@/components/dashboard/GmailIntegrationCard';
 import Card from '@/components/common/Card';
 import { useLanguage } from '@/components/LanguageProvider';
 import { useAuth } from '@/hooks/useAuth';
 import reviewService from '@/services/reviewService';
 import caseService from '@/services/caseService';
+import bookingService from '@/services/bookingService';
 import professionalService from '@/services/professionalService';
 import { getProfile } from '@/services/profileService';
 import { ROLES } from '@/utils/constants';
@@ -25,6 +28,7 @@ export default function ProfessionalDashboardPage() {
   // own professional record (for availability / rate).
   const [myReviews, setMyReviews] = useState([]);
   const [myCases, setMyCases] = useState([]);
+  const [myBookings, setMyBookings] = useState([]);
   const [myProfessional, setMyProfessional] = useState(null);
   // `profileCompletion` is computed server-side using the 10% photo +
   // 3×30% steps model, so the dashboard widget stays in sync with the
@@ -54,9 +58,10 @@ export default function ProfessionalDashboardPage() {
   }, [loadProfessional]);
 
   const loadStats = useCallback(async () => {
-    const [reviewsRes, casesRes] = await Promise.allSettled([
+    const [reviewsRes, casesRes, bookingsRes] = await Promise.allSettled([
       reviewService.getMine(),
       caseService.getMyCases(),
+      bookingService.getMyAssignedBookings(),
     ]);
     setMyReviews(
       reviewsRes.status === 'fulfilled' && Array.isArray(reviewsRes.value)
@@ -66,6 +71,11 @@ export default function ProfessionalDashboardPage() {
     setMyCases(
       casesRes.status === 'fulfilled' && Array.isArray(casesRes.value)
         ? casesRes.value
+        : []
+    );
+    setMyBookings(
+      bookingsRes.status === 'fulfilled' && Array.isArray(bookingsRes.value)
+        ? bookingsRes.value
         : []
     );
   }, []);
@@ -138,8 +148,21 @@ export default function ProfessionalDashboardPage() {
           </div>
         </Card>
 
+        {/* Calendar — availability + bookings + reminders. Sits directly
+            under the profile completion card so the pro lands on it
+            immediately after the wizard nudge. */}
+        <DashboardCalendar
+          availability={professional.availability || []}
+          bookings={myBookings}
+          cases={myCases}
+        />
+
         {/* Pause / resume online bookings */}
         <OnlineBookingToggle compact />
+
+        {/* Gmail integration — connect / sync / disconnect. Inbound
+            mail auto-matches to a case by sender email (v1). */}
+        <GmailIntegrationCard />
 
         {/* Availability */}
         <AvailabilityManager

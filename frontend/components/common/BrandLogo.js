@@ -55,10 +55,19 @@ export default function BrandLogo({
     <span className={`group flex items-center gap-2.5 ${className}`}>
       {/* Mobile / tablet: brand mark image with a live-dot overlay. */}
       <span className={`relative inline-block lg:hidden ${mark}`}>
+        {/* LCP image on mobile — eager + high priority so the browser
+            schedules the fetch alongside CSS instead of after layout. The
+            `<link rel="preload">` in app/layout.js does the same for the
+            first hit; this hint pairs with it. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/images/profirmo-logo.png"
           alt="Pro Firmo"
+          width="48"
+          height="48"
+          loading="eager"
+          fetchPriority="high"
+          decoding="async"
           className="h-full w-full object-contain"
         />
         <LiveDot />

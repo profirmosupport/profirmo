@@ -16,6 +16,7 @@ import AuthStack from './AuthStack';
 import GuestTabs from './GuestTabs';
 import AdminUnsupportedScreen from '../screens/auth/AdminUnsupportedScreen';
 import SplashView from '../components/common/SplashView';
+import AppUpdateGate from '../components/common/AppUpdateGate';
 import { ROLES } from '../config/constants';
 import { ensureAssetsReady } from '../utils/assetPreloader';
 
@@ -76,6 +77,12 @@ export default function RootNavigator() {
           <AuthStack />
         )}
       </NavigationContainer>
+      {/* AppUpdateGate fetches the backend's version config on cold
+          start and overlays a force / optional update prompt on top
+          of the entire navigation stack when a newer build is in the
+          store. Mounted outside NavigationContainer so it can't be
+          dismissed by a stray router action. */}
+      <AppUpdateGate />
     </View>
   );
 }

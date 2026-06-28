@@ -1,8 +1,9 @@
 'use client';
 
-// Forgot-password — step 1 of the email-OTP password-reset flow.
-// Collects the account email, asks the backend to send a verification code,
-// stashes the email in sessionStorage and hands off to /verify-password-otp.
+// Forgot-password — step 1 of the OTP password-reset flow.
+// Collects an account identifier (email OR phone), asks the backend to send a
+// verification code via the matching channel, stashes the identifier in
+// sessionStorage and hands off to /verify-password-otp.
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -10,7 +11,7 @@ import { useRouter } from 'next/navigation';
 import {
   AlertCircle,
   ArrowRight,
-  Mail,
+  AtSign,
   Loader2,
   MailCheck,
   ArrowLeft,
@@ -18,16 +19,16 @@ import {
 import BrandLogo from '@/components/common/BrandLogo';
 import { useAuth } from '@/components/AuthProvider';
 import { forgotPassword } from '@/services/authService';
-import { isEmail } from '@/utils/validators';
+import { isEmail, isPhone } from '@/utils/validators';
 
 // sessionStorage key shared with /verify-password-otp.
-const RESET_EMAIL_KEY = 'pf_reset_email';
+const RESET_IDENTIFIER_KEY = 'pf_reset_identifier';
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
   const { isAuthenticated, loading } = useAuth();
 
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [error, setError] = useState('');
   const [banner, setBanner] = useState('');
   const [notice, setNotice] = useState('');
@@ -46,28 +47,28 @@ export default function ForgotPasswordPage() {
     setBanner('');
     setNotice('');
 
-    const trimmed = email.trim();
+    const trimmed = identifier.trim();
     if (!trimmed) {
-      setError('Email is required.');
+      setError('Email or phone is required.');
       return;
     }
-    if (!isEmail(trimmed)) {
-      setError('Enter a valid email address.');
+    if (!isEmail(trimmed) && !isPhone(trimmed)) {
+      setError('Enter a valid email or 10-digit mobile number.');
       return;
     }
 
     setSubmitting(true);
     try {
       const data = await forgotPassword(trimmed);
-      // Stash the email for the OTP-verification step (NOT in the URL).
+      // Stash the identifier for the OTP-verification step (NOT in the URL).
       try {
-        window.sessionStorage.setItem(RESET_EMAIL_KEY, trimmed);
+        window.sessionStorage.setItem(RESET_IDENTIFIER_KEY, trimmed);
       } catch {
         /* storage unavailable — ignore */
       }
       setNotice(
         (data && data.message) ||
-          'If an account exists for this email, a verification code has been sent.'
+          'If an account exists for the email or phone you entered, a verification code has been sent.'
       );
       // Briefly show the confirmation, then advance to the OTP step.
       setTimeout(() => {
@@ -104,8 +105,8 @@ export default function ForgotPasswordPage() {
               Forgot your password?
             </h1>
             <p className="mt-1.5 text-sm text-slate-500">
-              Enter your email and we&apos;ll send you a 6-digit verification
-              code to reset it.
+              Enter your email or mobile number and we&apos;ll send you a
+              6-digit verification code to reset it.
             </p>
           </div>
 
@@ -127,24 +128,24 @@ export default function ForgotPasswordPage() {
             <form onSubmit={handleSubmit} className="space-y-4" noValidate>
               <div>
                 <label
-                  htmlFor="email"
+                  htmlFor="identifier"
                   className="mb-1.5 block text-sm font-medium text-slate-700"
                 >
-                  Email address
+                  Email or mobile number
                 </label>
                 <div className="relative">
-                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <AtSign className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <input
-                    id="email"
-                    name="email"
-                    type="email"
-                    value={email}
+                    id="identifier"
+                    name="identifier"
+                    type="text"
+                    value={identifier}
                     onChange={(e) => {
-                      setEmail(e.target.value);
+                      setIdentifier(e.target.value);
                       setError('');
                     }}
-                    placeholder="you@example.com"
-                    autoComplete="email"
+                    placeholder="you@example.com or 98xxxxxxxx"
+                    autoComplete="username"
                     disabled={submitting}
                     className={`w-full rounded-lg border bg-white py-2.5 pl-9 pr-3 text-sm text-slate-800 placeholder-slate-400 transition focus:outline-none focus:ring-2 disabled:bg-slate-50 ${
                       error
@@ -153,6 +154,10 @@ export default function ForgotPasswordPage() {
                     }`}
                   />
                 </div>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  We&apos;ll send the OTP via email if you enter an email, or
+                  via SMS if you enter a phone number.
+                </p>
                 {error && (
                   <p className="mt-1 text-xs text-red-600">{error}</p>
                 )}

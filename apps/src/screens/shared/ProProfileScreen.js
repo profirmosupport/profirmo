@@ -74,7 +74,6 @@ function blankForm() {
     availability: '',
     barRegistrationNumber: '',
     enrollmentNumber: '',
-    advocateLicenseNumber: '',
     practiceAreas: '',
     courtPractice: '',
     jurisdiction: '',
@@ -220,7 +219,6 @@ export default function ProProfileScreen({ navigation }) {
         // Legal-specific
         barRegistrationNumber: pd.barRegistrationNumber || '',
         enrollmentNumber: pd.enrollmentNumber || '',
-        advocateLicenseNumber: pd.advocateLicenseNumber || '',
         courtPractice: pd.courtsPracticing || '',
         jurisdiction: pd.jurisdiction || '',
         chamberAddress: pd.chamberAddress || '',
@@ -369,7 +367,9 @@ export default function ProProfileScreen({ navigation }) {
         Object.assign(base, {
           barRegistrationNumber: form.barRegistrationNumber || undefined,
           enrollmentNumber: form.enrollmentNumber || undefined,
-          advocateLicenseNumber: form.advocateLicenseNumber || undefined,
+          // Bar reg IS the advocate license number; mirror so legacy
+          // backend readers keep working.
+          advocateLicenseNumber: form.barRegistrationNumber || undefined,
           courtsPracticing: form.courtPractice || undefined,
           jurisdiction: form.jurisdiction || undefined,
           chamberAddress: form.chamberAddress || undefined,

@@ -201,7 +201,19 @@ function SignupInner() {
 
   // Auth gate: send finished users to /dashboard, BUT keep professionals
   // with an incomplete signup on this page so they can finish.
+  // An active /join-team employee session also bounces here — they
+  // belong on the employee dashboard, not the user signup wizard.
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const empToken = window.localStorage.getItem('pf.employee.access');
+      if (empToken) {
+        router.replace('/join-team/dashboard');
+        return;
+      }
+    } catch {
+      /* localStorage unavailable — fall through */
+    }
     if (loading || !isAuthenticated) return;
     const incompletePro =
       user && user.role === 'professional' && user.signupComplete === false;
@@ -344,7 +356,9 @@ function SignupInner() {
         ? legal.barRegistrationNumber || null
         : null,
       enrollmentNumber: isLegal ? legal.enrollmentNumber || null : null,
-      licenseNumber: isLegal ? legal.advocateLicenseNumber || null : null,
+      // Bar registration number IS the advocate license number; the legacy
+      // licenseNumber column mirrors the bar reg so any old reader keeps working.
+      licenseNumber: isLegal ? legal.barRegistrationNumber || null : null,
       taxRegistrationNumber: !isLegal ? tax.taxRegistrationNumber || null : null,
       chamberAddress: isLegal ? legal.chamberAddress || null : null,
       consultancyType: isLegal

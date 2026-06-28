@@ -14,6 +14,54 @@ import ProfessionalReviews from '@/components/professionals/ProfessionalReviews'
 import ProfessionalCard from '@/components/professionals/ProfessionalCard';
 import { useLanguage } from '@/components/LanguageProvider';
 import professionalService from '@/services/professionalService';
+import { JsonLd, buildProfessionalJsonLd } from '@/utils/seo';
+import { formatDate } from '@/utils/formatters';
+
+// Display labels for the public "Legal practice details" section. Keys not
+// in this map are hidden — internal IDs, document URLs, duplicates of
+// header data (consultation fee), and legacy mirrors (licenseNumber,
+// advocateLicenseNumber — bar reg covers both) all stay off the profile.
+const LAWYER_FIELD_LABELS = {
+  barRegistrationNumber: 'Bar registration number',
+  enrollmentNumber: 'Enrollment number',
+  practiceAreas: 'Practice areas',
+  courtPractice: 'Courts you practice in',
+  jurisdiction: 'Jurisdiction',
+  lawDegree: 'Degrees',
+  chamberAddress: 'Chamber address',
+  availability: 'Availability',
+  consultationType: 'Consultation type',
+  yearsOfPractice: 'Years of practice',
+  createdAt: 'Member since',
+  updatedAt: 'Updated at',
+};
+
+const LAWYER_DATE_KEYS = new Set(['createdAt', 'updatedAt']);
+
+// Format a value from the `lawyer` detail object for display.
+// Date keys go through formatDate; plain strings/numbers go straight through;
+// arrays get comma-joined; empty or object-shaped values render as
+// "Information not provided" — without this, `availability: {}` (and similar)
+// would stringify to `[object Object]`.
+function formatLawyerValue(key, value) {
+  if (value === null || value === undefined || value === '') {
+    return 'Information not provided';
+  }
+  if (LAWYER_DATE_KEYS.has(key)) {
+    return formatDate(value);
+  }
+  if (Array.isArray(value)) {
+    return value.length ? value.join(', ') : 'Information not provided';
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value).filter(
+      ([, v]) => v !== null && v !== undefined && v !== ''
+    );
+    if (entries.length === 0) return 'Information not provided';
+    return entries.map(([k, v]) => `${k}: ${v}`).join(', ');
+  }
+  return String(value);
+}
 
 /** Render a section with a labelled list of strings. */
 function ChipSection({ icon, title, items }) {
@@ -40,6 +88,20 @@ function ChipSection({ icon, title, items }) {
   );
 }
 
+// Whether a profile should be marked noindex per the BCI Rule 36 / P.N.
+// Vignesh framework. Lawyers + Legal Consultants default to noindex; CAs,
+// tax consultants, CS, and other non-advocate professions stay indexable.
+function isAdvocateProfile(p) {
+  if (!p) return false;
+  const t = String(p.professionalType || '').toLowerCase();
+  if (t.includes('lawyer') || t.includes('advocate') || t.includes('legal')) {
+    return true;
+  }
+  // Lawyer-specific record present → treat as advocate even if type is set
+  // to something generic.
+  return !!(p.lawyer && p.lawyer.barRegistrationNumber);
+}
+
 export default function ProfessionalProfilePage() {
   const { t } = useLanguage();
   const { id } = useParams();
@@ -49,6 +111,22 @@ export default function ProfessionalProfilePage() {
   const [similar, setSimilar] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Inject <meta name="robots" content="noindex,nofollow"> into <head>
+  // when the loaded profile is an advocate. Cleans up on unmount so the
+  // tag doesn't leak into the next page after client-side nav.
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    if (!isAdvocateProfile(professional)) return undefined;
+    const meta = document.createElement('meta');
+    meta.name = 'robots';
+    meta.content = 'noindex,nofollow';
+    meta.setAttribute('data-pf-advocate-noindex', '1');
+    document.head.appendChild(meta);
+    return () => {
+      if (meta.parentNode) meta.parentNode.removeChild(meta);
+    };
+  }, [professional]);
 
   useEffect(() => {
     if (!id) return;
@@ -157,15 +235,88 @@ export default function ProfessionalProfilePage() {
     return null;
   }
 
-  const aboutText = professional.about || professional.bio;
+  // The About section is a *short* bio. Prefer the dedicated bio field;
+  // fall back to the longer about/long-form text when bio isn't set.
+  const aboutText = professional.bio || professional.about;
   const { education, certifications, achievements, lawyer } = professional;
+
+  // Build a merged view of legal practice details. The canonical home for
+  // bar reg / enrollment / chamber / courts / consultation type / availability
+  // is now the promoted top-level columns on ProfessionalDetail (see
+  // backend/src/models/ProfessionalDetail.js). The legacy LawyerDetail row
+  // is kept as a fallback for old data that hasn't been backfilled.
+  const legalDetails = lawyer
+    ? {
+        barRegistrationNumber:
+          professional.barRegistrationNumber || lawyer.barRegistrationNumber,
+        enrollmentNumber:
+          professional.enrollmentNumber || lawyer.enrollmentNumber,
+        practiceAreas: lawyer.practiceAreas,
+        courtPractice:
+          (Array.isArray(professional.courtsPracticing) &&
+          professional.courtsPracticing.length
+            ? professional.courtsPracticing
+            : null) || lawyer.courtPractice,
+        jurisdiction: lawyer.jurisdiction,
+        lawDegree: lawyer.lawDegree,
+        chamberAddress: professional.chamberAddress || lawyer.chamberAddress,
+        availability:
+          (Array.isArray(professional.availability) &&
+          professional.availability.length
+            ? professional.availability
+            : null) || lawyer.availability,
+        consultationType:
+          professional.consultancyType || lawyer.consultationType,
+        yearsOfPractice:
+          lawyer.yearsOfPractice || professional.yearsOfExperience,
+        createdAt: lawyer.createdAt,
+        updatedAt: lawyer.updatedAt,
+      }
+    : null;
 
   return (
     <div className="flex min-h-screen flex-col">
+      {/* Structured data — gives Googlebot / Bingbot / ChatGPT / Claude /
+          Perplexity a machine-readable view of the professional so they can
+          cite the profile in answers (rating, fee, specialties, location). */}
+      <JsonLd
+        id="professional-jsonld"
+        data={buildProfessionalJsonLd(professional)}
+      />
       <Header />
       <main className="flex-1 bg-slate-50">
         <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
           <ProfessionalProfileHeader professional={professional} />
+
+          {/* Lawyer / tax specifics — shown above About so the credentials
+              (bar registration, jurisdiction, practice areas) lead the
+              profile narrative. */}
+          {legalDetails && (
+            <Card>
+              <h2 className="mb-3 text-base font-semibold text-slate-900">
+                Legal practice details
+              </h2>
+              <dl className="grid gap-3 sm:grid-cols-2">
+                {Object.entries(LAWYER_FIELD_LABELS)
+                  .filter(([key]) => {
+                    const v = legalDetails[key];
+                    if (v === null || v === undefined || v === '') return false;
+                    if (Array.isArray(v) && v.length === 0) return false;
+                    return true;
+                  })
+                  .map(([key, label]) => (
+                    <div key={key}>
+                      <dt className="text-xs uppercase tracking-wide text-slate-400">
+                        {label}
+                      </dt>
+                      <dd className="text-sm text-slate-700">
+                        {formatLawyerValue(key, legalDetails[key])}
+                      </dd>
+                    </div>
+                  ))}
+              </dl>
+            </Card>
+          )}
 
           {(aboutText ||
             (Array.isArray(professional.subCategoryTree) &&
@@ -178,7 +329,7 @@ export default function ProfessionalProfilePage() {
                 </h2>
               </div>
               {aboutText && (
-                <p className="text-sm leading-relaxed text-slate-600">
+                <p className="whitespace-pre-line text-sm leading-relaxed text-slate-600">
                   {aboutText}
                 </p>
               )}
@@ -253,30 +404,6 @@ export default function ProfessionalProfilePage() {
             items={achievements}
           />
 
-          {/* Lawyer / tax specifics, if present on the detail payload. */}
-          {lawyer && (
-            <Card>
-              <h2 className="mb-3 text-base font-semibold text-slate-900">
-                Legal practice details
-              </h2>
-              <dl className="grid gap-3 sm:grid-cols-2">
-                {Object.entries(lawyer)
-                  .filter(([, v]) => v !== null && v !== undefined && v !== '')
-                  .map(([key, value]) => (
-                    <div key={key}>
-                      <dt className="text-xs uppercase tracking-wide text-slate-400">
-                        {key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) =>
-                          c.toUpperCase()
-                        )}
-                      </dt>
-                      <dd className="text-sm text-slate-700">
-                        {Array.isArray(value) ? value.join(', ') : String(value)}
-                      </dd>
-                    </div>
-                  ))}
-              </dl>
-            </Card>
-          )}
           {/* Tax practice details section was removed — the identifiers
               we surface to clients (consultation fee, sub-categories,
               languages, etc.) already render in the header / about cards. */}

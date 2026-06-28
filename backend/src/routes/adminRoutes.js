@@ -7,6 +7,7 @@ const payoutController = require('../controllers/payoutController');
 const adminSettings = require('../controllers/adminSettingsController');
 const blog = require('../controllers/blogController');
 const subscription = require('../controllers/subscriptionController');
+const adminEmployee = require('../controllers/adminEmployeeController');
 const { uploadSingle, handleUploadErrors } = require('../middleware/uploadMiddleware');
 const { authenticate } = require('../middleware/authMiddleware');
 const { authorize } = require('../middleware/roleMiddleware');
@@ -252,5 +253,22 @@ router.get(
   '/subscription-plans/:id/subscribers',
   subscription.adminListSubscribers
 );
+
+// --- Employee module --------------------------------------------------
+// Listing + detail + status / basic-field updates.
+router.get('/employees', adminEmployee.list);
+router.post('/employees', adminEmployee.create);
+router.get('/employees/:id', adminEmployee.get);
+router.get('/employees/:id/professionals', adminEmployee.getProfessionals);
+router.patch('/employees/:id', adminEmployee.update);
+router.delete('/employees/:id', adminEmployee.remove);
+
+// Payout queue: list all, take a decision on one.
+router.get('/employee-payouts', adminEmployee.listPayouts);
+router.patch('/employee-payouts/:id', adminEmployee.decidePayout);
+
+// Commission / payout-limit settings (key/value rows in AdminSetting).
+router.get('/employee-settings', adminEmployee.readSettings);
+router.put('/employee-settings', adminEmployee.writeSettings);
 
 module.exports = router;

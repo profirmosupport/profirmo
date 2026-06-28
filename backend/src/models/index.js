@@ -31,6 +31,15 @@ const SupportTicket = require('./SupportTicket');
 // --- Phase-6 jobs / notifications models -----------------------------------
 const Job = require('./Job');
 const Notification = require('./Notification');
+const ProfessionalReminder = require('./ProfessionalReminder');
+const CaseTask = require('./CaseTask');
+const GmailConnection = require('./GmailConnection');
+const GmailMessageLink = require('./GmailMessageLink');
+const UserPreference = require('./UserPreference');
+const ClientComplianceProfile = require('./ClientComplianceProfile');
+const ComplianceObligation = require('./ComplianceObligation');
+const ClientDocument = require('./ClientDocument');
+const ClientDocumentAccess = require('./ClientDocumentAccess');
 
 // --- Phase-2 profile / firm models ----------------------------------------
 const Address = require('./Address');
@@ -107,6 +116,14 @@ const SubscriptionPayment = require('./SubscriptionPayment');
 // Lightweight bookmarks of cases looked up via the partner API. No
 // associations — userId + cnr are plain indexed columns.
 const ECourtsFavorite = require('./ECourtsFavorite');
+
+// --- Employee module: field agents who onboard professionals -------------
+// Independent of User. Commissions + payouts reference the employee
+// row directly. ProfessionalDetail picks up an additive employeeId /
+// employeeCode column via the migration runner.
+const Employee = require('./Employee');
+const EmployeeCommission = require('./EmployeeCommission');
+const EmployeePayout = require('./EmployeePayout');
 
 // Optional relationship — clearing the parent nulls the foreign key.
 const fkSetNull = (foreignKey) => ({
@@ -436,4 +453,16 @@ module.exports = {
   ProfessionalSubscription,
   SubscriptionPayment,
   ECourtsFavorite,
+  Employee,
+  EmployeeCommission,
+  EmployeePayout,
+  ProfessionalReminder,
+  CaseTask,
+  GmailConnection,
+  GmailMessageLink,
+  UserPreference,
+  ClientComplianceProfile,
+  ComplianceObligation,
+  ClientDocument,
+  ClientDocumentAccess,
 };

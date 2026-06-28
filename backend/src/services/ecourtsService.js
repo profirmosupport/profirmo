@@ -417,6 +417,8 @@ async function getOrderPdf(cnr, filename) {
 // -------------------------------------------------------------------------
 // Local persistence helpers: favourites + full-case import + sync.
 // -------------------------------------------------------------------------
+const { Op } = require('sequelize');
+const sequelize = require('../config/database');
 const { ECourtsFavorite, Case } = require('../models');
 const gates = require('./subscriptionGateService');
 
@@ -550,14 +552,36 @@ async function findImportedCase(user, cnr) {
   if (!user || !user.id || !cnr) return null;
   const role = String(user.role || '').toLowerCase();
   const isProfessional = role === 'professional';
-  const where = isProfessional
-    ? { professionalId: user.linkedId || user.id, cnr, source: 'ecourts' }
-    : { clientId: user.id, cnr, source: 'ecourts' };
-  const row = await Case.findOne({ where });
+  // Match the CNR against any case the user owns — including ones
+  // they created manually and later attached a CNR to. We drop the
+  // legacy `source: 'ecourts'` filter so a CNR added via the case
+  // edit form is still picked up here.
+  const normalisedCnr = String(cnr).trim().toUpperCase();
+  if (isProfessional) {
+    const proKey = user.linkedId || user.id;
+    const safe = String(proKey).replace(/'/g, "''");
+    // Pro can be the primary `professionalId` or in the multi-assignee
+    // `professionalIds` JSON array (firm-shared case).
+    const row = await Case.findOne({
+      where: {
+        cnr: normalisedCnr,
+        [Op.or]: [
+          { professionalId: proKey },
+          sequelize.literal(
+            `JSON_CONTAINS(professionalIds, JSON_QUOTE('${safe}'))`
+          ),
+        ],
+      },
+    });
+    return row ? row.get({ plain: true }) : null;
+  }
+  const row = await Case.findOne({
+    where: { clientId: user.id, cnr: normalisedCnr },
+  });
   return row ? row.get({ plain: true }) : null;
 }
 
-async function importCase(user, cnr) {
+async function importCase(user, cnr, opts = {}) {
   if (!user || !user.id) {
     throw { statusCode: 401, message: 'Sign in required to save a case.' };
   }
@@ -567,19 +591,15 @@ async function importCase(user, cnr) {
   // clients fall open (no `professionalId` linkage).
   await gates.enforceCanCreateCase(user.id);
 
-  // De-dup: a single user shouldn't import the same CNR twice. Look up by
-  // (owner, cnr) and reuse the existing case if found.
+  // De-dup: a single user shouldn't end up with two cases on the same
+  // CNR. We reuse a row regardless of how it was created — the legacy
+  // 'ecourts' source filter would miss a case the pro created
+  // manually and later attached this CNR to.
   const role = String(user.role || '').toLowerCase();
   const isProfessional = role === 'professional';
-  const ownerWhere = isProfessional
-    ? { professionalId: user.linkedId || user.id }
-    : { clientId: user.id };
-
-  const dup = await Case.findOne({
-    where: { ...ownerWhere, cnr, source: 'ecourts' },
-  });
+  const dup = await findImportedCase(user, cnr);
   if (dup) {
-    return { case: dup.get({ plain: true }), reused: true };
+    return { case: dup, reused: true };
   }
 
   // Fetch the full upstream blob so the new row carries a real snapshot.
@@ -590,14 +610,53 @@ async function importCase(user, cnr) {
   }
 
   const mapped = mapEciToCaseFields(eciCase);
+  // Optional client attachment — when a pro imports via the New-case
+  // form's CNR lookup they pick the client(s) up front so we don't
+  // end up with an orphan case row.
+  const requestedClientIds = Array.isArray(opts.clientIds)
+    ? [...new Set(opts.clientIds.map((s) => String(s || '').trim()).filter(Boolean))]
+    : [];
   const ownerColumns = isProfessional
     ? {
         professionalId: user.linkedId || user.id,
         professionalIds: [user.linkedId || user.id],
+        ...(requestedClientIds.length > 0
+          ? { clientId: requestedClientIds[0], clientIds: requestedClientIds }
+          : {}),
       }
     : { clientId: user.id, clientIds: [user.id] };
 
-  const created = await Case.create({ ...mapped, ...ownerColumns });
+  // Optional caller overrides — the New-case form lets the pro edit
+  // the prefilled fields before saving (e.g. retitle from "Petitioner
+  // vs Respondent" to a friendlier label). Only a small whitelist is
+  // accepted; everything else stays as the ECI-mapped value.
+  const OVERRIDABLE = [
+    'title',
+    'category',
+    'description',
+    'priority',
+    'caseNumber',
+    'courtName',
+    'opposingParty',
+    'nextHearingDate',
+  ];
+  const overrides = {};
+  if (opts.overrides && typeof opts.overrides === 'object') {
+    for (const key of OVERRIDABLE) {
+      const val = opts.overrides[key];
+      // Treat empty string the same as absent — falling back to the
+      // ECI-mapped value is almost always what the pro wants.
+      if (val !== undefined && val !== null && val !== '') {
+        overrides[key] = val;
+      }
+    }
+  }
+
+  const created = await Case.create({
+    ...mapped,
+    ...ownerColumns,
+    ...overrides,
+  });
   return { case: created.get({ plain: true }), reused: false };
 }
 
@@ -612,10 +671,14 @@ async function syncCase(caseId, user) {
   }
   const row = await Case.findByPk(caseId);
   if (!row) throw { statusCode: 404, message: 'Case not found.' };
-  if (row.source !== 'ecourts' || !row.cnr) {
+  // Any case with a CNR can sync — the case doesn't have to have been
+  // imported from E-Courts originally. When a manually-added CNR pulls
+  // a successful snapshot the row is promoted to `source='ecourts'` so
+  // downstream consumers treat it as live-linked.
+  if (!row.cnr) {
     throw {
       statusCode: 400,
-      message: 'This case was not imported from E-Courts.',
+      message: 'Add a CNR to this case before syncing from E-Courts.',
     };
   }
 
@@ -642,6 +705,13 @@ async function syncCase(caseId, user) {
 
   const diff = computeDiff(oldSnap, eciCase);
   const mapped = mapEciToCaseFields(eciCase);
+  // Promote a manually-added CNR case to `source='ecourts'` on the
+  // first successful sync — keeps every downstream consumer (dashboard
+  // badges, attachment streams, eCourts UI deep-links) treating it as
+  // a live-linked case from this point on.
+  if (row.source !== 'ecourts') {
+    mapped.source = 'ecourts';
+  }
   await row.update(mapped);
   return { case: row.get({ plain: true }), diff };
 }

@@ -12,7 +12,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, AlertCircle } from 'lucide-react';
+import { ArrowLeft, AlertCircle, KeyRound } from 'lucide-react';
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
 import Card from '@/components/common/Card';
@@ -185,6 +185,16 @@ export default function ProfileEditPage() {
       try {
         if (currentStep === 1) {
           await updateProfile(personalPart(payload));
+          // Bio lives on the Step 1 UI even though the column is on
+          // professional_details. Forward it (and `about`, if present) so
+          // the user's edit doesn't silently vanish on Continue.
+          const proExtras = {};
+          if (payload.bio !== undefined) proExtras.bio = payload.bio;
+          if (payload.about !== undefined) proExtras.about = payload.about;
+          if (Object.keys(proExtras).length > 0) {
+            const refreshed = await updateProfessionalDetails(proExtras);
+            if (refreshed) setProfile(refreshed);
+          }
           setSuccess('Step 1 saved — personal info updated.');
         } else if (currentStep === 2) {
           const refreshed = await updateProfessionalDetails(
@@ -283,6 +293,23 @@ export default function ProfileEditPage() {
                 <ArrowLeft className="h-4 w-4" />
                 Back to dashboard
               </Button>
+            </div>
+
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                  <KeyRound className="h-4 w-4" />
+                </div>
+                <div className="text-sm text-amber-900">
+                  <p className="font-semibold">Want to change your password?</p>
+                  <p className="mt-0.5 text-amber-800">
+                    Log out and use{' '}
+                    <span className="font-semibold">Forgot password</span> on
+                    the login screen. You can request the OTP via your email
+                    or your registered mobile number.
+                  </p>
+                </div>
+              </div>
             </div>
 
             {isProfessional ? (

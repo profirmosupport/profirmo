@@ -2,6 +2,12 @@ const express = require('express');
 const caseController = require('../controllers/caseController');
 const { authenticate } = require('../middleware/authMiddleware');
 const { validateBody } = require('../middleware/validateRequest');
+const requirePermission = require('../middleware/requirePermission');
+const { ACTIONS } = require('../config/permissions');
+const {
+  uploadSingle,
+  handleUploadErrors,
+} = require('../middleware/uploadMiddleware');
 
 const router = express.Router();
 
@@ -21,6 +27,11 @@ router.get(
   caseController.getCasesByProfessional
 );
 
+// Common case stages — one shared lifecycle across litigation + tax +
+// advisory matters. Drives both the case-detail stepper and the
+// Kanban board on /dashboard/professional/cases.
+router.get('/stages', caseController.listStages);
+
 router.post(
   '/',
   // Accept either a single `clientId` or a multi-client `clientIds[]` array.
@@ -34,6 +45,27 @@ router.post(
 
 router.get('/:id', caseController.getCase);
 router.patch('/:id', caseController.updateCase);
+router.patch('/:id/stage', caseController.updateCaseStage);
+router.post('/:id/leave', caseController.leaveCase);
+
+// AI Clerk — per-case Claude-powered helpers. All four authenticate
+// + go through caseService.userCanAccessCase implicitly via the
+// services they call.
+router.post('/:id/ai/summarize', caseController.aiSummarize);
+router.post('/:id/ai/suggest-next-step', caseController.aiSuggestNextStep);
+router.post('/:id/ai/prompt', caseController.aiPrompt);
+router.post('/:id/ai/save-as-update', caseController.aiSaveAsUpdate);
+router.get('/:id/ai/documents', caseController.aiListDocuments);
+router.post('/:id/ai/analyse-document', caseController.aiAnalyseDocument);
+router.post(
+  '/:id/ai/analyse-uploaded',
+  uploadSingle,
+  handleUploadErrors,
+  caseController.aiAnalyseUploadedDocument
+);
+// Delete case — RBAC happens inside the controller because clients
+// have a self-serve carve-out (own unassigned case) that the firm
+// permission middleware can't model cleanly.
 router.delete('/:id', caseController.deleteCase);
 
 // Notes + log.

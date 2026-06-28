@@ -165,6 +165,12 @@ const buildProfessionalDetailFields = (data = {}) => ({
   qualificationCertDoc: data.qualificationCertDoc || null,
   professionalLicenseDoc: data.professionalLicenseDoc || null,
   governmentIdDoc: data.governmentIdDoc || data.governmentId || null,
+  // Employee-onboarding link. Set when /api/employee/onboard-professional
+  // is the entry point; null for self-service signups. The commission
+  // credit hook on admin-approve reads this pair to decide whether to
+  // book an EmployeeCommission row.
+  employeeId: data.employeeId || null,
+  employeeCode: data.employeeCode || null,
 });
 
 // Build the LawyerDetail attributes from the `legal` section.
@@ -276,6 +282,32 @@ async function registerProfessional(data = {}) {
   const existing = await User.findOne({ where: { email } });
   if (existing) {
     throw { statusCode: 409, message: 'Email already registered' };
+  }
+
+  // 2a. Resolve optional referral. The signup form accepts a
+  // `referralCode` — the employee_code of the field agent who
+  // brought this professional. If it matches an ACTIVE Employee row
+  // we stamp employeeId + employeeCode on the ProfessionalDetail so
+  // admin approval credits the right person. Invalid codes are
+  // silently ignored — a typo shouldn't block signup; the employee
+  // simply won't be credited.
+  const referralCode = String(data.referralCode || '').replace(/\D/g, '');
+  if (referralCode) {
+    try {
+      const { Employee } = require('../models');
+      const emp = await Employee.findOne({
+        where: { employeeCode: referralCode, status: 'active' },
+      });
+      if (emp) {
+        data.employeeId = emp.id;
+        data.employeeCode = emp.employeeCode;
+      }
+    } catch (err) {
+      console.warn(
+        '[registerProfessional] referral lookup failed:',
+        err.message || err
+      );
+    }
   }
 
   const firstName = String(data.firstName || '').trim();

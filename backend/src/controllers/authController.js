@@ -600,20 +600,42 @@ const claimAccount = asyncHandler(async (req, res) => {
 
 // Basic email-format check, matching the project's validation rules.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_LIKE_RE = /^[+]?[0-9][0-9\s-]{6,15}$/;
+
+// Accepts either an email address or a phone-ish string. The service layer
+// re-validates and runs the user lookup; this is purely a 422 guard.
+const isValidIdentifier = (raw) => {
+  const value = String(raw == null ? '' : raw).trim();
+  if (!value) return false;
+  return EMAIL_RE.test(value) || PHONE_LIKE_RE.test(value);
+};
+
+// Read the identifier from either `identifier` (new contract) or `email`
+// (legacy contract) so older clients in flight still work for a release.
+const readIdentifier = (body) => {
+  if (!body) return '';
+  if (typeof body.identifier === 'string' && body.identifier.trim()) {
+    return body.identifier.trim();
+  }
+  if (typeof body.email === 'string' && body.email.trim()) {
+    return body.email.trim();
+  }
+  return '';
+};
 
 // POST /api/auth/forgot-password
 // Always responds with the same generic 200 message so it never reveals
-// whether an account exists for the supplied email.
+// whether an account exists for the supplied identifier.
 const forgotPassword = asyncHandler(async (req, res) => {
-  const email = req.body && req.body.email;
-  if (!email || !EMAIL_RE.test(String(email).trim())) {
+  const identifier = readIdentifier(req.body);
+  if (!isValidIdentifier(identifier)) {
     return res.status(422).json({
       success: false,
-      message: 'A valid email address is required.',
-      errors: { email: 'A valid email address is required.' },
+      message: 'A valid email or phone number is required.',
+      errors: { identifier: 'A valid email or phone number is required.' },
     });
   }
-  await authService.forgotPassword(email, { req });
+  await authService.forgotPassword(identifier, { req });
   return successResponse(
     res,
     200,
@@ -623,20 +645,23 @@ const forgotPassword = asyncHandler(async (req, res) => {
 });
 
 // POST /api/auth/resend-otp
-// Re-sends the OTP for an in-progress reset. Cooldown / resend-limit
-// violations surface as 429 with a specific message; everything else returns
-// the same generic success message.
+// Re-sends the OTP for an in-progress reset. The optional `channel` field
+// ('phone') forces an SMS dispatch even if the original identifier was an
+// email — used by the "Send OTP to phone" fallback button.
 const resendOtp = asyncHandler(async (req, res) => {
-  const email = req.body && req.body.email;
-  if (!email || !EMAIL_RE.test(String(email).trim())) {
+  const identifier = readIdentifier(req.body);
+  if (!isValidIdentifier(identifier)) {
     return res.status(422).json({
       success: false,
-      message: 'A valid email address is required.',
-      errors: { email: 'A valid email address is required.' },
+      message: 'A valid email or phone number is required.',
+      errors: { identifier: 'A valid email or phone number is required.' },
     });
   }
+  const rawChannel = req.body && req.body.channel;
+  const channel =
+    rawChannel === 'phone' || rawChannel === 'email' ? rawChannel : undefined;
   try {
-    const result = await authService.resendOtp(email, { req });
+    const result = await authService.resendOtp(identifier, { req, channel });
     return successResponse(res, 200, result.message, {});
   } catch (err) {
     if (err && err.statusCode === 429) {
@@ -653,7 +678,7 @@ const resendOtp = asyncHandler(async (req, res) => {
 // POST /api/auth/verify-password-otp
 // Verifies the 6-digit OTP and, on success, issues a short-lived resetToken.
 const verifyPasswordOtp = asyncHandler(async (req, res) => {
-  const email = req.body && req.body.email;
+  const identifier = readIdentifier(req.body);
   const otp = req.body && req.body.otp;
   if (!otp || !/^\d{6}$/.test(String(otp).trim())) {
     return res.status(422).json({
@@ -662,15 +687,17 @@ const verifyPasswordOtp = asyncHandler(async (req, res) => {
       errors: { otp: 'A valid 6-digit verification code is required.' },
     });
   }
-  if (!email || !EMAIL_RE.test(String(email).trim())) {
+  if (!isValidIdentifier(identifier)) {
     return res.status(422).json({
       success: false,
-      message: 'A valid email address is required.',
-      errors: { email: 'A valid email address is required.' },
+      message: 'A valid email or phone number is required.',
+      errors: { identifier: 'A valid email or phone number is required.' },
     });
   }
   try {
-    const result = await authService.verifyPasswordOtp(email, otp, { req });
+    const result = await authService.verifyPasswordOtp(identifier, otp, {
+      req,
+    });
     return successResponse(res, 200, 'Verification code accepted.', {
       resetToken: result.resetToken,
     });

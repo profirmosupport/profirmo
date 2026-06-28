@@ -112,6 +112,34 @@ const SYNC_ORDER = [
   db.SubscriptionPayment,
   // E-Courts India bookmarks — no FK dependency, plain user_id index.
   db.ECourtsFavorite,
+  // --- Employee module: field agents who onboard professionals -------
+  // Employee is independent of User; commissions + payouts reference
+  // it. Professional onboarded by an employee carries employeeId /
+  // employeeCode columns on ProfessionalDetail (additive migration).
+  db.Employee,
+  db.EmployeeCommission,
+  db.EmployeePayout,
+  // Professional dashboard calendar reminders — soft links (no FKs) to
+  // bookings + cases, so order vs. those tables doesn't matter, but it
+  // does need to exist for the calendar widget to load.
+  db.ProfessionalReminder,
+  // Case-scoped tasks. Soft link to Case + User (assignee). Must come
+  // after Case + User in this list — both already declared above.
+  db.CaseTask,
+  // Per-user Gmail OAuth grants.
+  db.GmailConnection,
+  // Manual pins from a Gmail message to a specific case (multi-case
+  // clients disambiguation).
+  db.GmailMessageLink,
+  // Per-user small UI preferences (kv store).
+  db.UserPreference,
+  // Tax / legal compliance: per-client entity profile drives the rule
+  // generator; obligations are the resulting per-period due-date rows.
+  db.ClientComplianceProfile,
+  db.ComplianceObligation,
+  // Per-client document store + the per-pro access permission rows.
+  db.ClientDocument,
+  db.ClientDocumentAccess,
 ];
 
 // Boot the Profirmo HTTP server.

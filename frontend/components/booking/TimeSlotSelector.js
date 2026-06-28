@@ -1,23 +1,19 @@
 'use client';
 
-import { formatTime } from '@/utils/formatters';
+import { formatSlotLabel } from '@/utils/availability';
 
+// Default fallback used only when no slots are passed in. Hour-long ranges
+// (HH:MM-HH:MM) — matches the format the booking page feeds in after
+// expandSlotsToHourly().
 const DEFAULT_SLOTS = [
-  '09:00',
-  '09:30',
-  '10:00',
-  '10:30',
-  '11:00',
-  '11:30',
-  '12:00',
-  '14:00',
-  '14:30',
-  '15:00',
-  '15:30',
-  '16:00',
-  '16:30',
-  '17:00',
-  '17:30',
+  '09:00-10:00',
+  '10:00-11:00',
+  '11:00-12:00',
+  '12:00-13:00',
+  '14:00-15:00',
+  '15:00-16:00',
+  '16:00-17:00',
+  '17:00-18:00',
 ];
 
 /**
@@ -40,13 +36,13 @@ export default function TimeSlotSelector({ slots, selectedSlot, onSelectSlot }) 
             key={slot}
             type="button"
             onClick={() => onSelectSlot(slot)}
-            className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+            className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors sm:text-sm ${
               isSelected
                 ? 'border-blue-600 bg-blue-600 text-white shadow-sm'
                 : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50'
             }`}
           >
-            {formatTime(slot)}
+            {formatSlotLabel(slot)}
           </button>
         );
       })}

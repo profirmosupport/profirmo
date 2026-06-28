@@ -8,6 +8,28 @@ const {
 const { Op } = require('sequelize');
 const { paginate } = require('./professionalService');
 const notificationService = require('./notificationService');
+const googleCalendarService = require('./googleCalendarService');
+const { effectiveRateFor } = require('../config/booking');
+
+/**
+ * Resolve a Booking → owning professional's userId so we can push the
+ * event onto THEIR Google Calendar. Best-effort; never throws.
+ */
+async function pushBookingToCalendar(booking) {
+  try {
+    if (!booking || !booking.professionalId) return;
+    const detail = await ProfessionalDetail.findOne({
+      where: { id: booking.professionalId },
+      attributes: ['userId'],
+      raw: true,
+    });
+    if (!detail || !detail.userId) return;
+    await googleCalendarService.pushBooking(detail.userId, booking);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[bookingService.calendar]', err.message || err);
+  }
+}
 
 // Attach `consultationId` to a list of bookings via a single bulk lookup.
 const attachConsultations = async (bookings) => {
@@ -150,7 +172,14 @@ const create = async (data = {}, actor = null) => {
     'A client';
 
   const duration = Number(data.duration) || 0;
-  const estimatedCost = duration * (pro.rate || 0);
+  const bookingType = data.type || 'scheduled';
+  // Instant bookings cost the client (and earn the pro) 2× the base rate.
+  // See backend/src/config/booking.js for the multiplier constant — kept
+  // in sync with frontend/utils/constants.js so the displayed cost on the
+  // booking page exactly equals the Razorpay order amount and the
+  // estimatedCost we store on the row.
+  const effectiveRate = effectiveRateFor(pro.rate, bookingType);
+  const estimatedCost = duration * effectiveRate;
 
   const booking = await Booking.create({
     clientId: resolvedClientId,
@@ -158,7 +187,7 @@ const create = async (data = {}, actor = null) => {
     date: data.date || '',
     time: data.time || '',
     duration,
-    type: data.type || 'scheduled',
+    type: bookingType,
     estimatedCost,
     status: data.status || 'pending',
   });
@@ -189,7 +218,10 @@ const create = async (data = {}, actor = null) => {
     });
   }
 
-  return { ...booking.get({ plain: true }), consultationId: consultation.id };
+  const plain = { ...booking.get({ plain: true }), consultationId: consultation.id };
+  // Mirror to the professional's Google Calendar — best-effort.
+  pushBookingToCalendar(plain);
+  return plain;
 };
 
 /** Bookings made by the calling client user (clientId = users.id). */
@@ -360,7 +392,10 @@ const updateStatus = async (id, status) => {
       console.warn(`[bookingService] escrow lifecycle hook failed: ${err.message}`);
     }
   }
-  return booking.get({ plain: true });
+  const plain = booking.get({ plain: true });
+  // Mirror to Google Calendar — best-effort, never blocks.
+  pushBookingToCalendar(plain);
+  return plain;
 };
 
 /** Get all bookings for a given client. */

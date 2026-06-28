@@ -1,10 +1,22 @@
 'use client';
 
-import { Users } from 'lucide-react';
+import { Users, Settings } from 'lucide-react';
 import Badge from '@/components/common/Badge';
 import EmptyState from '@/components/common/EmptyState';
 import { useLanguage } from '@/components/LanguageProvider';
 import { getInitials } from '@/utils/formatters';
+
+const ENTITY_TYPE_LABEL = {
+  individual: 'Individual',
+  sole_proprietor: 'Sole proprietor',
+  partnership: 'Partnership',
+  llp: 'LLP',
+  private_ltd: 'Private limited',
+  public_ltd: 'Public limited',
+  huf: 'HUF',
+  trust: 'Trust',
+  society: 'Society',
+};
 
 const AVATAR_COLORS = [
   'bg-blue-600',
@@ -23,7 +35,10 @@ function colorFor(id) {
 }
 
 /**
- * ClientTable — responsive table of clients.
+ * ClientTable — responsive table of clients. Each row links to the
+ * full client detail / compliance editor page; the "Compliance"
+ * button on the right is a shortcut to the same destination.
+ *
  * Props: { clients }
  */
 export default function ClientTable({ clients }) {
@@ -49,15 +64,20 @@ export default function ClientTable({ clients }) {
               <th className="px-4 py-3">{t('dash.table.client')}</th>
               <th className="px-4 py-3">{t('dash.table.email')}</th>
               <th className="px-4 py-3">{t('dash.table.phone')}</th>
-              <th className="px-4 py-3">{t('dash.table.city')}</th>
-              <th className="px-4 py-3">{t('dash.table.type')}</th>
+              {/* City + the old "client type" column dropped — the
+                  compliance-derived Entity type replaces them. */}
+              <th className="px-4 py-3">Entity type</th>
+              <th className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {list.map((c) => (
               <tr key={c.id} className="hover:bg-slate-50">
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
+                  <a
+                    href={`/dashboard/professional/clients/${encodeURIComponent(c.id)}`}
+                    className="flex items-center gap-3 hover:underline"
+                  >
                     <span
                       className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white ${colorFor(
                         c.id
@@ -68,17 +88,32 @@ export default function ClientTable({ clients }) {
                     <span className="font-medium text-slate-800">
                       {c.name}
                     </span>
-                  </div>
+                  </a>
                 </td>
                 <td className="px-4 py-3 text-slate-600">{c.email || '—'}</td>
                 <td className="px-4 py-3 text-slate-600">{c.phone || '—'}</td>
-                <td className="px-4 py-3 text-slate-600">{c.city || '—'}</td>
                 <td className="px-4 py-3">
-                  <Badge variant={c.userType === 'business' ? 'blue' : 'gray'}>
-                    {c.userType === 'business'
-                      ? t('dash.table.business')
-                      : t('dash.table.individual')}
-                  </Badge>
+                  {c.entityType ? (
+                    <Badge
+                      variant={
+                        c.entityType === 'individual' ? 'gray' : 'blue'
+                      }
+                    >
+                      {ENTITY_TYPE_LABEL[c.entityType] || c.entityType}
+                    </Badge>
+                  ) : (
+                    <span className="text-xs text-slate-400">— Not set —</span>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <a
+                    href={`/dashboard/professional/clients/${encodeURIComponent(c.id)}`}
+                    className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                    title="Edit client profile + compliance + documents"
+                  >
+                    <Settings size={12} />
+                    Manage
+                  </a>
                 </td>
               </tr>
             ))}

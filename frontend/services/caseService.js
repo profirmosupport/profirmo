@@ -36,9 +36,33 @@ export async function update(id, data) {
   return unwrap(res);
 }
 
+/** Canonical case-stage list — same across every case type. */
+export async function listStages() {
+  const res = await get(`${BASE}/stages`);
+  const data = unwrap(res);
+  return Array.isArray(data) ? data : [];
+}
+
+/** Update the case's stage (intake → preparation → … → closed). */
+export async function setStage(id, { stage } = {}) {
+  const res = await patch(`${BASE}/${id}/stage`, { stage });
+  return unwrap(res);
+}
+
 /** Delete a case (auth required). */
 export async function remove(id) {
   const res = await del(`${BASE}/${id}`);
+  return unwrap(res);
+}
+
+/**
+ * Step off a firm-shared case — the professional removes themselves
+ * from the assignment list. Server rejects with 422 LAST_PROFESSIONAL
+ * when the caller is the only pro left (use {@link remove} in that
+ * case).
+ */
+export async function leave(id) {
+  const res = await post(`${BASE}/${id}/leave`, {});
   return unwrap(res);
 }
 
@@ -168,7 +192,10 @@ export default {
   getById,
   create,
   update,
+  setStage,
+  listStages,
   remove,
+  leave,
   getByClient,
   getByProfessional,
   getAttachmentUrl,

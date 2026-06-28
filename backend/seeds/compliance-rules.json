@@ -1,0 +1,239 @@
+{
+  "_meta": {
+    "description": "Reference data for the upcoming compliance calendar + case-stage modules. Every rule below MUST be signed off by a practising CA (tax) and a litigator (court stages) before it drives any production deadline computation. Authority is cited inline so the reviewer can verify against current law.",
+    "status": "DRAFT — pending CA + litigator review",
+    "version": "0.1.0",
+    "lastUpdated": "2026-06-22",
+    "reviewers": [
+      { "name": "TBD", "domain": "Direct + indirect tax", "signedOff": false },
+      { "name": "TBD", "domain": "Civil + criminal litigation", "signedOff": false }
+    ]
+  },
+
+  "indirectTax": {
+    "gstr1": {
+      "title": "GSTR-1 — outward supplies return",
+      "appliesTo": ["regular_taxpayer"],
+      "frequency": "monthly OR quarterly (QRMP)",
+      "dueDates": {
+        "monthly": "11th of the following month",
+        "qrmpQuarterly": "13th of the month after quarter-end",
+        "qrmpMonthly_IFF": "13th of the following month (optional)"
+      },
+      "authority": "CGST Rules r.59 + notifications",
+      "notes": "QRMP eligible if aggregate turnover ≤ ₹5 crore in previous FY."
+    },
+    "gstr3b": {
+      "title": "GSTR-3B — summary return + tax payment",
+      "appliesTo": ["regular_taxpayer"],
+      "frequency": "monthly OR quarterly (QRMP)",
+      "dueDates": {
+        "monthly": "20th of the following month",
+        "qrmpQuarterly_categoryA": "22nd of the month after quarter-end (specific states)",
+        "qrmpQuarterly_categoryB": "24th of the month after quarter-end (other states)"
+      },
+      "authority": "CGST Rules r.61",
+      "notes": "State categorisation per CBIC notification 21/2019-CT."
+    },
+    "gstr9": {
+      "title": "GSTR-9 — annual return",
+      "appliesTo": ["regular_taxpayer"],
+      "frequency": "annual",
+      "dueDate": "31 December of the next FY",
+      "authority": "Section 44 of CGST Act",
+      "notes": "Aggregate turnover threshold for optional filing currently ₹2 crore."
+    },
+    "gstr9c": {
+      "title": "GSTR-9C — reconciliation statement",
+      "appliesTo": ["regular_taxpayer_turnover_above_5cr"],
+      "frequency": "annual",
+      "dueDate": "31 December of the next FY",
+      "authority": "Section 44 of CGST Act",
+      "notes": "Mandatory if aggregate turnover > ₹5 crore."
+    },
+    "cmp08": {
+      "title": "CMP-08 — composition quarterly statement",
+      "appliesTo": ["composition_taxpayer"],
+      "frequency": "quarterly",
+      "dueDate": "18th of the month after quarter-end",
+      "authority": "CGST Rules r.62"
+    }
+  },
+
+  "directTax": {
+    "advanceTax": {
+      "title": "Advance tax instalments",
+      "appliesTo": ["all_assessees_above_threshold"],
+      "frequency": "quarterly",
+      "instalments": [
+        { "due": "15 June", "cumulativePct": 15 },
+        { "due": "15 September", "cumulativePct": 45 },
+        { "due": "15 December", "cumulativePct": 75 },
+        { "due": "15 March", "cumulativePct": 100 }
+      ],
+      "authority": "Section 211 of Income-tax Act, 1961",
+      "notes": "Threshold: total tax liability ≥ ₹10,000 for the FY."
+    },
+    "tdsQuarterly": {
+      "title": "TDS quarterly returns (24Q / 26Q / 27Q / 27EQ)",
+      "appliesTo": ["all_deductors"],
+      "frequency": "quarterly",
+      "dueDates": {
+        "Q1_AprToJun": "31 July",
+        "Q2_JulToSep": "31 October",
+        "Q3_OctToDec": "31 January",
+        "Q4_JanToMar": "31 May"
+      },
+      "authority": "Rule 31A of Income-tax Rules"
+    },
+    "tdsPayment": {
+      "title": "Monthly TDS deposit",
+      "appliesTo": ["all_deductors"],
+      "frequency": "monthly",
+      "dueDate": "7th of the following month (30 April for March deductions)",
+      "authority": "Rule 30 of Income-tax Rules"
+    },
+    "itrIndividual": {
+      "title": "ITR — non-audit individual / HUF",
+      "appliesTo": ["individual_huf_non_audit"],
+      "frequency": "annual",
+      "dueDate": "31 July following FY-end",
+      "authority": "Section 139(1) of Income-tax Act"
+    },
+    "itrAudit": {
+      "title": "ITR — tax-audit cases",
+      "appliesTo": ["audit_required"],
+      "frequency": "annual",
+      "dueDate": "31 October following FY-end",
+      "authority": "Section 139(1) of Income-tax Act"
+    },
+    "itrTransferPricing": {
+      "title": "ITR — transfer pricing report cases",
+      "appliesTo": ["transfer_pricing_required"],
+      "frequency": "annual",
+      "dueDate": "30 November following FY-end",
+      "authority": "Section 92E + 139(1) of Income-tax Act"
+    },
+    "taxAuditReport3CD": {
+      "title": "Tax audit report (Form 3CA/3CB-3CD)",
+      "appliesTo": ["audit_required"],
+      "frequency": "annual",
+      "dueDate": "30 September following FY-end (per recent extensions; verify against current AY notification)",
+      "authority": "Section 44AB of Income-tax Act",
+      "notes": "Historically extended several times — driver should consult current CBDT notification."
+    }
+  },
+
+  "roc": {
+    "aoc4": {
+      "title": "AOC-4 — financial statement filing",
+      "appliesTo": ["companies"],
+      "frequency": "annual",
+      "dueDateRule": "Within 30 days of AGM",
+      "authority": "Section 137 of Companies Act, 2013"
+    },
+    "mgt7": {
+      "title": "MGT-7 — annual return",
+      "appliesTo": ["companies"],
+      "frequency": "annual",
+      "dueDateRule": "Within 60 days of AGM",
+      "authority": "Section 92 of Companies Act, 2013"
+    },
+    "dir3Kyc": {
+      "title": "DIR-3 KYC — director KYC",
+      "appliesTo": ["directors_with_active_din"],
+      "frequency": "annual",
+      "dueDate": "30 September each FY",
+      "authority": "Rule 12A of Companies (Appointment & Qualification of Directors) Rules"
+    },
+    "msmeReturn": {
+      "title": "MSME-1 — half-yearly outstanding-payments return",
+      "appliesTo": ["companies_with_msme_creditors"],
+      "frequency": "half-yearly",
+      "dueDates": {
+        "H1_AprToSep": "31 October",
+        "H2_OctToMar": "30 April"
+      },
+      "authority": "MCA notification 22 January 2019"
+    }
+  },
+
+  "courtStages": {
+    "civil_suit": {
+      "label": "Civil suit",
+      "stages": [
+        { "key": "institution", "label": "Institution / filing" },
+        { "key": "service", "label": "Service of summons" },
+        { "key": "appearance", "label": "Appearance / WS filed" },
+        { "key": "framing_of_issues", "label": "Framing of issues" },
+        { "key": "evidence_plaintiff", "label": "Plaintiff's evidence" },
+        { "key": "evidence_defendant", "label": "Defendant's evidence" },
+        { "key": "arguments", "label": "Final arguments" },
+        { "key": "judgment", "label": "Judgment" },
+        { "key": "appeal", "label": "Appeal" }
+      ]
+    },
+    "criminal_complaint": {
+      "label": "Criminal complaint / FIR",
+      "stages": [
+        { "key": "fir", "label": "FIR registered" },
+        { "key": "investigation", "label": "Investigation" },
+        { "key": "chargesheet", "label": "Chargesheet filed" },
+        { "key": "cognizance", "label": "Cognizance" },
+        { "key": "committal", "label": "Committal to sessions (if applicable)" },
+        { "key": "framing_of_charges", "label": "Framing of charges" },
+        { "key": "prosecution_evidence", "label": "Prosecution evidence" },
+        { "key": "defence_evidence", "label": "Defence evidence" },
+        { "key": "arguments", "label": "Final arguments" },
+        { "key": "judgment", "label": "Judgment" },
+        { "key": "appeal", "label": "Appeal" }
+      ]
+    },
+    "writ_petition": {
+      "label": "Writ petition (Art. 226 / 32)",
+      "stages": [
+        { "key": "filing", "label": "Filing + numbering" },
+        { "key": "mention", "label": "Mention / first listing" },
+        { "key": "notice", "label": "Notice to respondents" },
+        { "key": "counter", "label": "Counter affidavit" },
+        { "key": "rejoinder", "label": "Rejoinder" },
+        { "key": "arguments", "label": "Final hearing" },
+        { "key": "judgment", "label": "Judgment" }
+      ]
+    },
+    "matrimonial": {
+      "label": "Matrimonial petition",
+      "stages": [
+        { "key": "petition", "label": "Petition filed" },
+        { "key": "notice", "label": "Notice + reply" },
+        { "key": "mediation", "label": "Mediation referral" },
+        { "key": "evidence", "label": "Evidence" },
+        { "key": "arguments", "label": "Arguments" },
+        { "key": "decree", "label": "Decree" }
+      ]
+    },
+    "tax_appeal_cit_a": {
+      "label": "Income tax appeal — CIT(A)",
+      "stages": [
+        { "key": "filing", "label": "Form 35 filed" },
+        { "key": "defects", "label": "Defect notice (if any)" },
+        { "key": "hearing_notice", "label": "Hearing notice" },
+        { "key": "submission", "label": "Written submissions" },
+        { "key": "hearing", "label": "Hearing" },
+        { "key": "order", "label": "Appellate order" },
+        { "key": "appeal_itat", "label": "Further appeal to ITAT (if pursued)" }
+      ]
+    },
+    "gst_appeal": {
+      "label": "GST appeal — Appellate Authority",
+      "stages": [
+        { "key": "filing", "label": "Form APL-01 filed" },
+        { "key": "predeposit", "label": "Pre-deposit (10 %) verified" },
+        { "key": "admission", "label": "Admission" },
+        { "key": "hearing", "label": "Hearing" },
+        { "key": "order", "label": "Appellate order" },
+        { "key": "appeal_tribunal", "label": "Appeal to Tribunal (when constituted)" }
+      ]
+    }
+  }
+}

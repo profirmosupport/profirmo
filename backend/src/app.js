@@ -24,6 +24,15 @@ const profileRoutes = require('./routes/profileRoutes');
 const lawFirmRoutes = require('./routes/lawFirmRoutes');
 const fileRoutes = require('./routes/fileRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const reminderRoutes = require('./routes/reminderRoutes');
+const {
+  perCaseRouter: caseTaskPerCaseRouter,
+  flatRouter: caseTaskFlatRouter,
+} = require('./routes/caseTaskRoutes');
+const userPreferenceRoutes = require('./routes/userPreferenceRoutes');
+const complianceRoutes = require('./routes/complianceRoutes');
+const clientDocumentRoutes = require('./routes/clientDocumentRoutes');
+const integrationsRoutes = require('./routes/integrationsRoutes');
 const invitationRoutes = require('./routes/invitationRoutes');
 const firmJoinRoutes = require('./routes/firmJoinRoutes');
 const appSettingsRoutes = require('./routes/appSettingsRoutes');
@@ -37,6 +46,7 @@ const ecourtsRoutes = require('./routes/ecourtsRoutes');
 const attestrRoutes = require('./routes/attestrRoutes');
 const newsletterRoutes = require('./routes/newsletterRoutes');
 const supportRoutes = require('./routes/supportRoutes');
+const employeeRoutes = require('./routes/employeeRoutes');
 const paymentController = require('./controllers/paymentController');
 
 const app = express();
@@ -167,6 +177,13 @@ app.use('/api/profile', profileRoutes);
 app.use('/api/law-firm', lawFirmRoutes);
 app.use('/api/files', fileRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/reminders', reminderRoutes);
+app.use('/api/cases/:caseId/tasks', caseTaskPerCaseRouter);
+app.use('/api/case-tasks', caseTaskFlatRouter);
+app.use('/api/user-prefs', userPreferenceRoutes);
+app.use('/api/compliance', complianceRoutes);
+app.use('/api/client-documents', clientDocumentRoutes);
+app.use('/api/integrations', integrationsRoutes);
 app.use('/api/invitations', invitationRoutes);
 app.use('/api/firm-join', firmJoinRoutes);
 app.use('/api/app-settings', appSettingsRoutes);
@@ -179,6 +196,7 @@ app.use('/api/ecourts', ecourtsRoutes);
 app.use('/api/attestr', attestrRoutes);
 app.use('/api/newsletter', newsletterRoutes);
 app.use('/api/support', supportRoutes);
+app.use('/api/employee', employeeRoutes);
 // Subscription routes — /api/subscription-plans is public, the rest are
 // auth-gated inside the router.
 app.use('/api', subscriptionRoutes);

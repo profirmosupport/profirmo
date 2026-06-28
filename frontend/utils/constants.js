@@ -48,11 +48,44 @@ export const SITE = {
     'Pro Firmo lets you explain your case to AI first, then instantly matches you with the most suitable verified lawyer, advocate, tax expert or professional firm.',
 };
 
+// Header nav. Items can be flat links OR dropdowns:
+//   { label, href }                         -> single link
+//   { label, key, dropdown: [{ label, href, description? }] }  -> dropdown
+// "Firms" moved to the footer Explore section per product spec.
 export const NAV_LINKS = [
   { label: 'Professionals', href: '/professionals' },
-  { label: 'Firms', href: '/firms' },
+  {
+    label: 'Knowledge',
+    key: 'knowledge',
+    dropdown: [
+      { label: 'All services', href: '/services', description: 'Browse every consultation service we offer.' },
+      { label: 'Blog', href: '/blog', description: 'Plain-English explainers on Indian law.' },
+      { label: 'How it works', href: '/how-it-works', description: 'AI matching, then a verified professional.' },
+      // PILLAR PAGES (Phase B) — comprehensive category authority hubs.
+      { label: 'GST Consultation', href: '/services/gst-consultation' },
+      { label: 'Income Tax & ITR', href: '/services/income-tax-itr' },
+      { label: 'Company Registration & ROC', href: '/services/company-registration-and-roc' },
+      { label: 'Startup Compliance', href: '/services/startup-compliance' },
+      // LOW-RISK conversion pages.
+      { label: 'GST Notices', href: '/services/gst-notice-consultation' },
+      { label: 'ITR Filing Help', href: '/services/income-tax-filing-help' },
+      { label: 'Company Registration (Quick)', href: '/services/company-registration' },
+      { label: 'Trademark', href: '/services/trademark-consultation' },
+      { label: 'Rental Agreement', href: '/services/rental-agreement-drafting' },
+      { label: 'Business Contract Review', href: '/services/business-contract-review' },
+      { label: 'Tax Notice', href: '/services/tax-notice-help' },
+      { label: 'Startup Legal', href: '/services/startup-legal-consultation' },
+      // ADVOCATE-TIER pages — "Information & options", access-only framing.
+      { label: 'Property Disputes — Info', href: '/services/property-dispute-consultation' },
+      { label: 'Divorce & Family — Info', href: '/services/divorce-and-family-consultation' },
+      { label: 'Legal Notices — Info', href: '/services/legal-notice-drafting' },
+      { label: 'Cheque Bounce — Info', href: '/services/cheque-bounce-matter' },
+      { label: 'Consumer Complaint — Info', href: '/services/consumer-complaint-consultation' },
+      { label: 'Employment Dispute — Info', href: '/services/employment-and-salary-dispute' },
+      { label: 'NRI Property — Info', href: '/services/nri-property-legal-help' },
+    ],
+  },
   { label: 'E-Courts India', href: '/ecourts' },
-  { label: 'Blog', href: '/blog' },
   { label: 'Pricing', href: '/pricing' },
   { label: 'Contact', href: '/contact' },
 ];
@@ -81,6 +114,13 @@ export const FOOTER_LINKS = [
       { label: 'Firms', href: '/firms' },
       { label: 'Search', href: '/search' },
       { label: 'Unified cases', href: '/unified-cases' },
+    ],
+  },
+  {
+    heading: 'Free Tools',
+    links: [
+      { label: 'GST Calculator', href: '/tools/gst-calculator' },
+      // More tools land here: ITR deadline tracker, stamp-duty calc, etc.
     ],
   },
 ];
@@ -152,6 +192,13 @@ export const BOOKING_TYPES = {
   INSTANT: 'instant',
   SCHEDULED: 'scheduled',
 };
+
+// Instant bookings interrupt a professional mid-flow and require them to
+// drop whatever they're doing — so they're priced at 2x the per-minute
+// rate the pro set for scheduled bookings. Surfaced on the booking page
+// (toggle copy + estimated-cost line + right-side ConsultationSummary)
+// so the client sees the multiplier before confirming.
+export const INSTANT_BOOKING_MULTIPLIER = 2;
 
 export const FIRM_TYPES = ['Legal Firm', 'Tax Firm'];
 
