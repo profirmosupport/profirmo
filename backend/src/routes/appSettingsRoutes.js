@@ -21,5 +21,8 @@ router.get('/cause-list-types', ctrl.publicListCauseListTypes);
 // bare S3 keys (e.g. `profile-images/<uuid>.jpg`) to absolute URLs.
 // Never exposes credentials.
 router.get('/storage', ctrl.publicGetStorage);
+// Latest + minimum supported mobile app version per platform plus the
+// store URL. Drives the in-app update prompt + forced-update gate.
+router.get('/mobile-version', ctrl.publicGetMobileVersion);
 
 module.exports = router;
