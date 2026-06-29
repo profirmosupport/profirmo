@@ -7,24 +7,23 @@
 //                               (Indian legal + tax professionals).
 //   3. draftPost(pick)          Claude generates title + slug + body
 //                               HTML + SEO + OG meta.
-//   4. attachFeaturedImage(p)   Claude generates 3 search keywords →
-//                               Unsplash search → download → upload to
-//                               S3 → write URL onto the post.
+//   4. attachFeaturedImage(p)   Pollinations.ai (free, no key) renders
+//                               a featured image from the post title +
+//                               excerpt; uploaded to S3.
 //   5. publishAsDraft(p, url)   INSERT into blog_posts, status=draft.
 //
 // Orchestrator: generateBlogPostDraft() runs all five and returns the
 // inserted row. Used by the admin "AI Generate" button (sync) and by
 // the daily job handler (background).
 //
-// Image gen note: Claude has no native image generation, so we use
-// Unsplash Search for legal-themed real photography. If
-// unsplash_access_key is empty, the post still saves — featuredImage
-// stays null and the public page falls back to the site OG default.
+// Image gen note: image step is best-effort — if Pollinations is down
+// or returns a non-image response, the post still saves with
+// featuredImage = null and the public page falls back to the site OG
+// default.
 
 const https = require('https');
 const adminSettings = require('./adminSettingsService');
-const storageService = require('./storageService');
-const geminiImageService = require('./geminiImageService');
+const pollinationsImageService = require('./pollinationsImageService');
 const BlogPost = require('../models/BlogPost');
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
@@ -363,274 +362,47 @@ function estimateReadingMinutes(html) {
   return Math.max(1, Math.round(words / 220));
 }
 
-// --- 4. Image: Claude → keywords → Unsplash → S3 -----------------------
+// --- 4. Image: Pollinations.ai (free, no API key) → S3 -----------------
 
-async function generateImageKeywords(draft) {
-  const { text } = await callClaude({
-    system:
-      'You return 3 concise Unsplash search queries (each 1-3 words) for a featured photo to go with a legal blog post. Prefer concrete imagery: courtroom, gavel, statute book, contract signing, Parliament, RBI building, etc. Avoid abstract concepts. Return JSON ONLY.',
-    userMessage:
-      `BLOG TITLE: ${draft.title}\n` +
-      `EXCERPT: ${draft.excerpt}\n\n` +
-      'Return STRICT JSON (wrapped in ```json fences):\n' +
-      '{ "queries": ["query 1", "query 2", "query 3"] }',
-    maxTokens: 400,
-  });
-  let parsed = { queries: [] };
-  try {
-    parsed = extractJson(text);
-  } catch {}
-  const list = Array.isArray(parsed.queries) ? parsed.queries : [];
-  // Fallbacks ensure we always have something to query Unsplash with.
-  return [...list, 'law book', 'courtroom india', 'gavel'].slice(0, 5);
-}
-
-function unsplashSearch(query, accessKey) {
-  return new Promise((resolve, reject) => {
-    const url =
-      'https://api.unsplash.com/search/photos' +
-      `?query=${encodeURIComponent(query)}&per_page=5&content_filter=high&orientation=landscape`;
-    const req = https.get(
-      url,
-      {
-        headers: {
-          Authorization: `Client-ID ${accessKey}`,
-          'Accept-Version': 'v1',
-          'User-Agent': 'Profirmo-AI-Blog/1.0',
-        },
-        timeout: 10000,
-      },
-      (resp) => {
-        const chunks = [];
-        resp.on('data', (c) => chunks.push(c));
-        resp.on('end', () => {
-          if (!resp.statusCode || resp.statusCode >= 400) {
-            reject(
-              new Error(
-                `Unsplash HTTP ${resp.statusCode}: ${Buffer.concat(chunks).toString('utf8').slice(0, 200)}`
-              )
-            );
-            return;
-          }
-          try {
-            resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
-          } catch (err) {
-            reject(err);
-          }
-        });
-        resp.on('error', reject);
-      }
-    );
-    req.on('timeout', () => req.destroy(new Error('Unsplash timeout')));
-    req.on('error', reject);
-  });
-}
-
-function downloadBinary(url, { timeoutMs = 20000 } = {}) {
-  return new Promise((resolve, reject) => {
-    const req = https.get(
-      url,
-      {
-        headers: { 'User-Agent': 'Profirmo-AI-Blog/1.0' },
-        timeout: timeoutMs,
-      },
-      (resp) => {
-        if (resp.statusCode && resp.statusCode >= 300 && resp.statusCode < 400 && resp.headers.location) {
-          downloadBinary(resp.headers.location, { timeoutMs }).then(resolve, reject);
-          return;
-        }
-        if (!resp.statusCode || resp.statusCode >= 400) {
-          reject(new Error(`HTTP ${resp.statusCode} downloading image`));
-          resp.resume();
-          return;
-        }
-        const chunks = [];
-        resp.on('data', (c) => chunks.push(c));
-        resp.on('end', () => resolve({
-          buffer: Buffer.concat(chunks),
-          mimeType: resp.headers['content-type'] || 'image/jpeg',
-        }));
-        resp.on('error', reject);
-      }
-    );
-    req.on('timeout', () => req.destroy(new Error('Download timeout')));
-    req.on('error', reject);
-  });
-}
-
-// Step 4 in full. Image-source preference:
-//   1. Gemini (gemini_api_key) — generates a unique image per post.
-//   2. Unsplash (unsplash_access_key) — searches real photos.
-//   3. null — post saves without a featuredImage.
-// Never throws — blog generation must succeed even if image fails.
+// Best-effort featured-image attachment. NEVER throws — blog
+// generation must succeed even if the image step fails (Pollinations
+// occasionally times out on cold starts). Returns
+// { url, attribution, source } where attribution is always null
+// (Pollinations doesn't require credit) and source is 'pollinations'
+// when an image was produced.
 async function attachFeaturedImage(draft) {
-  // Try Gemini first when configured.
-  const geminiKey = await adminSettings.getString('gemini_api_key');
-  if (geminiKey) {
-    try {
-      const gen = await geminiImageService.generateAndStoreBlogImage({
-        title: draft.title,
-        excerpt: draft.excerpt,
-      });
-      return { url: gen.url, attribution: null, source: 'gemini' };
-    } catch (err) {
-      console.warn(
-        '[aiBlog] Gemini image generation failed; falling back to Unsplash:',
-        err.message
-      );
-    }
-  }
-  const accessKey = await adminSettings.getString('unsplash_access_key');
-  if (!accessKey) {
+  try {
+    const gen = await pollinationsImageService.generateAndStoreBlogImage({
+      title: draft.title,
+      excerpt: draft.excerpt,
+    });
+    return { url: gen.url, attribution: null, source: 'pollinations' };
+  } catch (err) {
     console.warn(
-      '[aiBlog] Neither gemini_api_key nor unsplash_access_key set — skipping image.'
+      '[aiBlog] Pollinations image generation failed (continuing without image):',
+      err.message
     );
     return { url: null, attribution: null, source: null };
   }
-  let queries = [];
-  try {
-    queries = await generateImageKeywords(draft);
-  } catch (err) {
-    console.warn('[aiBlog] image-keyword call failed:', err.message);
-    queries = ['law book', 'gavel'];
-  }
-  for (const q of queries) {
-    try {
-      const res = await unsplashSearch(q, accessKey);
-      const results = (res && res.results) || [];
-      if (results.length === 0) continue;
-      // Prefer the top result.
-      const photo = results[0];
-      const downloadUrl =
-        (photo.urls && (photo.urls.full || photo.urls.regular)) || photo.urls?.raw;
-      if (!downloadUrl) continue;
-      const { buffer, mimeType } = await downloadBinary(downloadUrl);
-      // Use the Unsplash download endpoint to track the API hit (required
-      // by Unsplash ToS). Fire-and-forget; we already have the bytes.
-      if (photo.links && photo.links.download_location) {
-        try {
-          await unsplashTrack(photo.links.download_location, accessKey);
-        } catch {}
-      }
-      const stored = await storageService.uploadFile({
-        buffer,
-        mimeType,
-        originalName: `blog-${normaliseSlug(draft.title)}.jpg`,
-        type: 'blog_image',
-      });
-      const cfg = await storageService.getPublicConfig();
-      const publicUrl =
-        cfg.driver === 's3' && cfg.baseUrl
-          ? `${cfg.baseUrl.replace(/\/$/, '')}/${stored.key}`
-          : `/uploads/${stored.storedName}`;
-      const attribution =
-        photo.user && photo.user.name
-          ? `Photo by ${photo.user.name} on Unsplash`
-          : 'Photo from Unsplash';
-      return { url: publicUrl, attribution, source: 'unsplash' };
-    } catch (err) {
-      console.warn(`[aiBlog] image attempt failed for "${q}":`, err.message);
-    }
-  }
-  return { url: null, attribution: null, source: null };
 }
 
 // Generate a fresh featured image for an EXISTING blog post. Used by
-// the "Generate image" button on the admin edit page. Updates
-// featuredImage + ogImage in one shot and appends an attribution
-// paragraph for Unsplash images only (Gemini originals don't need one).
-async function regenerateImageForPost(postId, { source } = {}) {
+// the "Generate with AI" button on the admin edit page. Updates
+// featuredImage + ogImage in one shot. Throws on failure so the
+// caller can surface the message in a toast.
+async function regenerateImageForPost(postId) {
   const post = await BlogPost.findByPk(postId);
   if (!post) throw { statusCode: 404, message: 'Blog post not found.' };
-  const wantGemini = source === 'gemini' || !source;
-  const wantUnsplash = source === 'unsplash' || !source;
-
-  if (wantGemini) {
-    const geminiKey = await adminSettings.getString('gemini_api_key');
-    if (geminiKey) {
-      try {
-        const gen = await geminiImageService.generateAndStoreBlogImage({
-          title: post.title,
-          excerpt: post.excerpt,
-        });
-        await post.update({ featuredImage: gen.url, ogImage: gen.url });
-        return {
-          url: gen.url,
-          source: 'gemini',
-          prompt: gen.prompt,
-        };
-      } catch (err) {
-        if (source === 'gemini') {
-          // Caller explicitly asked for Gemini — surface the error.
-          throw err;
-        }
-        console.warn(
-          '[aiBlog] Gemini image (re-)generation failed; trying Unsplash:',
-          err.message
-        );
-      }
-    } else if (source === 'gemini') {
-      throw {
-        statusCode: 422,
-        message:
-          'Gemini API key not set. Configure it at /admin/settings → AI / Anthropic → Google Gemini API key.',
-      };
-    }
-  }
-
-  if (wantUnsplash) {
-    const accessKey = await adminSettings.getString('unsplash_access_key');
-    if (!accessKey) {
-      throw {
-        statusCode: 422,
-        message:
-          'No image source configured. Add Gemini or Unsplash key at /admin/settings → AI / Anthropic.',
-      };
-    }
-    // Reuse the existing attachFeaturedImage flow by passing a draft-
-    // shaped object so the Unsplash branch fires.
-    const result = await attachFeaturedImage({
-      title: post.title,
-      excerpt: post.excerpt,
-    });
-    if (!result.url) {
-      throw {
-        statusCode: 502,
-        message: 'Unsplash did not return a usable image. Try again.',
-      };
-    }
-    await post.update({ featuredImage: result.url, ogImage: result.url });
-    // Append attribution if it isn't already on the body.
-    if (
-      result.attribution &&
-      !String(post.content || '').includes(result.attribution)
-    ) {
-      await post.update({
-        content: appendAttribution(post.content, result.attribution),
-      });
-    }
-    return { url: result.url, source: 'unsplash' };
-  }
-
-  throw {
-    statusCode: 500,
-    message: 'No image source ran. Check admin settings.',
-  };
-}
-
-function unsplashTrack(url, accessKey) {
-  return new Promise((resolve, reject) => {
-    const req = https.get(
-      url,
-      { headers: { Authorization: `Client-ID ${accessKey}` }, timeout: 5000 },
-      (resp) => {
-        resp.resume();
-        resolve();
-      }
-    );
-    req.on('timeout', () => req.destroy(new Error('Unsplash track timeout')));
-    req.on('error', reject);
+  const gen = await pollinationsImageService.generateAndStoreBlogImage({
+    title: post.title,
+    excerpt: post.excerpt,
   });
+  await post.update({ featuredImage: gen.url, ogImage: gen.url });
+  return {
+    url: gen.url,
+    source: 'pollinations',
+    prompt: gen.prompt,
+  };
 }
 
 // --- 5. Persist as draft -------------------------------------------------
@@ -711,7 +483,7 @@ async function generateBlogPostDraft({ authorUserId = null, logger = console } =
     `[aiBlog] step 3 done — title="${draft.title}", slug=${draft.slug}, ~${draft.readingMinutes}min read`
   );
 
-  logger.log('[aiBlog] step 4: attaching featured image (Unsplash)…');
+  logger.log('[aiBlog] step 4: attaching featured image (Pollinations)…');
   let image = { url: null, attribution: null };
   try {
     image = await attachFeaturedImage(draft);

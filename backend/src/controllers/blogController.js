@@ -88,14 +88,12 @@ const adminDeletePost = asyncHandler(async (req, res) => {
 });
 
 // POST /api/admin/blog/posts/:id/generate-image
-// Regenerates the featured image for ONE existing post. Body may
-// include { source: 'gemini' | 'unsplash' } to force a specific
-// engine; omit to use the default chain (Gemini → Unsplash → error).
+// Regenerates the featured image for ONE existing post via
+// Pollinations.ai (free, no API key). No body params.
 const adminRegenerateImage = asyncHandler(async (req, res) => {
   const adminId = req.user && req.user.id;
-  const source = req.body && req.body.source;
   try {
-    const result = await aiBlogService.regenerateImageForPost(req.params.id, { source });
+    const result = await aiBlogService.regenerateImageForPost(req.params.id);
     await logAudit({
       req,
       userId: adminId,

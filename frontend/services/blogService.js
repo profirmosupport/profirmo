@@ -106,20 +106,17 @@ export async function adminCreatePost(body) {
 
 // Trigger the 4-step AI generation flow (research → pick → draft →
 // image → persist as draft). Synchronous on the server side — takes
-// 30-90s depending on Claude latency and Unsplash response time.
+// 30-90s depending on Claude latency and Pollinations response time.
 // Returns { post, pick, image, elapsedSeconds }.
 export async function adminAiGeneratePost() {
   const res = await post('/api/admin/blog/posts/ai-generate', {});
   return unwrap(res);
 }
 
-// Regenerate the featured image for one existing post. Optional
-// `source` arg forces a specific engine ('gemini' | 'unsplash'); omit
-// to use the default chain (Gemini → Unsplash). Returns
-// { url, source, prompt? }.
-export async function adminRegenerateBlogImage(id, source) {
-  const body = source ? { source } : {};
-  const res = await post(`/api/admin/blog/posts/${id}/generate-image`, body);
+// Regenerate the featured image for one existing post via
+// Pollinations.ai. Returns { url, source, prompt }.
+export async function adminRegenerateBlogImage(id) {
+  const res = await post(`/api/admin/blog/posts/${id}/generate-image`, {});
   return unwrap(res);
 }
 
