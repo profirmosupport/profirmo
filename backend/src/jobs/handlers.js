@@ -5,7 +5,7 @@
 // should throw on failure so the worker can retry / mark the job failed.
 
 const emailService = require('../services/emailService');
-const { renderTemplate } = require('../emails/templates');
+const emailTemplateService = require('../services/emailTemplateService');
 const notificationService = require('../services/notificationService');
 
 /**
@@ -21,7 +21,13 @@ async function emailHandler(payload = {}) {
 
   let message;
   if (payload.template) {
-    const rendered = renderTemplate(payload.template, payload.vars || {});
+    // emailTemplateService.renderForSend prefers the admin-edited row
+    // from `email_templates`; falls back to the hardcoded TEMPLATES
+    // registry when no custom version exists or it's disabled.
+    const rendered = await emailTemplateService.renderForSend(
+      payload.template,
+      payload.vars || {}
+    );
     message = { to, ...rendered };
   } else {
     message = {

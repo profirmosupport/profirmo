@@ -100,6 +100,8 @@ const BookingNote = require('./BookingNote');
 
 // --- Admin-managed platform settings (markup %, etc.) ---------------------
 const AdminSetting = require('./AdminSetting');
+// Admin-editable subject + body for every transactional email.
+const EmailTemplate = require('./EmailTemplate');
 
 // --- Blog / news content --------------------------------------------------
 const BlogCategory = require('./BlogCategory');
@@ -445,6 +447,7 @@ module.exports = {
   PayoutRequest,
   BookingNote,
   AdminSetting,
+  EmailTemplate,
   BlogCategory,
   BlogTag,
   BlogPost,

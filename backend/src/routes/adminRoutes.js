@@ -204,6 +204,17 @@ router.patch('/settings/:key', adminSettings.update);
 // One-click connectivity test for AWS S3 — puts + deletes a small file
 // in temp/ to verify credentials and bucket permissions.
 router.post('/settings/storage/test', adminSettings.testStorage);
+// One-click test send via the configured SMTP transport. Body: { to }.
+router.post('/settings/email/test', adminSettings.testEmail);
+
+// --- Email templates -----------------------------------------------------
+const emailTemplates = require('../controllers/emailTemplateController');
+router.get('/email-templates', emailTemplates.list);
+router.get('/email-templates/:key', emailTemplates.get);
+router.put('/email-templates/:key', emailTemplates.update);
+router.delete('/email-templates/:key', emailTemplates.reset);
+router.post('/email-templates/:key/preview', emailTemplates.preview);
+router.post('/email-templates/:key/test', emailTemplates.test);
 
 // --- Payouts -------------------------------------------------------------
 router.get('/payouts', payoutController.adminList);

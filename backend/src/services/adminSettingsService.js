@@ -189,6 +189,110 @@ const SETTINGS = {
     format: stringCoerce,
   },
 
+  // --- SMTP (outgoing mail) --------------------------------------------
+  // Live-editable transport config used by services/emailService.js. The
+  // service reads these on every send (cheap in-process getString lookup)
+  // so a credentials change takes effect on the next message without
+  // restarting the API.
+  //
+  // smtp_pass carries the (Gmail app password / provider secret) so it's
+  // marked secret + masked from the admin GET response. Empty values
+  // here fall back to the SMTP_* env vars in env.js, preserving the
+  // env-only behaviour of older deployments.
+  smtp_host: {
+    label: 'SMTP host',
+    description:
+      'Outgoing-mail server. For Gmail with an app password use smtp.gmail.com.',
+    defaultGetter: () => process.env.SMTP_HOST || '',
+    type: 'string',
+    group: 'SMTP (outgoing mail)',
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  smtp_port: {
+    label: 'SMTP port',
+    description:
+      'TCP port. 587 for STARTTLS (most providers, recommended); 465 for legacy implicit-TLS; 25 for unencrypted (avoid).',
+    defaultGetter: () => process.env.SMTP_PORT || '587',
+    type: 'number',
+    group: 'SMTP (outgoing mail)',
+    coerce: (raw) => {
+      const n = Number(stringCoerce(raw));
+      if (!Number.isFinite(n) || n <= 0 || n > 65535) {
+        throw { statusCode: 422, message: 'smtp_port must be a TCP port (1-65535).' };
+      }
+      return String(n);
+    },
+    format: stringCoerce,
+  },
+  smtp_secure: {
+    label: 'SMTP encryption',
+    description:
+      'Set "true" for implicit TLS (port 465). Leave "false" for STARTTLS (port 587, gmail.com).',
+    defaultGetter: () =>
+      String(process.env.SMTP_SECURE || 'false').toLowerCase() === 'true'
+        ? 'true'
+        : 'false',
+    type: 'string',
+    group: 'SMTP (outgoing mail)',
+    options: [
+      { value: 'false', label: 'false — STARTTLS (port 587)' },
+      { value: 'true', label: 'true — implicit TLS (port 465)' },
+    ],
+    coerce: (raw) => {
+      const v = stringCoerce(raw).toLowerCase();
+      if (v && v !== 'true' && v !== 'false') {
+        throw { statusCode: 422, message: 'smtp_secure must be "true" or "false".' };
+      }
+      return v || 'false';
+    },
+    format: stringCoerce,
+  },
+  smtp_user: {
+    label: 'SMTP username',
+    description:
+      'Authenticating mailbox. For Gmail this is the full address (e.g. support@profirmo.com).',
+    defaultGetter: () => process.env.SMTP_USER || '',
+    type: 'string',
+    group: 'SMTP (outgoing mail)',
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  smtp_pass: {
+    label: 'SMTP password',
+    description:
+      'Authenticating password. For Gmail this MUST be an App Password (16 chars, generated at https://myaccount.google.com/apppasswords). Stored plaintext on the row; masked from the admin GET response via `secret: true`. Re-enter to rotate.',
+    defaultGetter: () => process.env.SMTP_PASS || '',
+    type: 'string',
+    group: 'SMTP (outgoing mail)',
+    secret: true,
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  smtp_from_email: {
+    label: 'Default From email',
+    description:
+      'Address that appears in the "From:" header on every system email. Usually identical to smtp_user; Gmail rewrites mismatches to the authenticating mailbox.',
+    defaultGetter: () =>
+      process.env.SMTP_FROM_EMAIL ||
+      process.env.SMTP_USER ||
+      'support@profirmo.com',
+    type: 'string',
+    group: 'SMTP (outgoing mail)',
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  smtp_from_name: {
+    label: 'Default From name',
+    description:
+      'Display name on the "From:" header. Example: "Profirmo Support".',
+    defaultGetter: () => process.env.SMTP_FROM_NAME || 'Profirmo',
+    type: 'string',
+    group: 'SMTP (outgoing mail)',
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+
   // --- Support / contact form ------------------------------------------
   // Destination inbox for the /contact page submissions. Defaults to the
   // public-facing support address; admin can route the notifications
@@ -572,6 +676,16 @@ async function set(key, value, actorUserId) {
       description: spec.description,
       updatedByUserId: actorUserId || null,
     });
+  }
+  // Side effects: drop caches that depend on this key so the change is
+  // picked up on the next read without a process restart.
+  if (key.startsWith('smtp_')) {
+    try {
+      // eslint-disable-next-line global-require
+      require('./emailService').invalidateSmtpTransport();
+    } catch {
+      // Best-effort: emailService is optional during early bootstrap.
+    }
   }
   return coerced;
 }

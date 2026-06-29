@@ -6,6 +6,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const { successResponse } = require('../utils/responseHandler');
 const adminSettingsService = require('../services/adminSettingsService');
 const storageService = require('../services/storageService');
+const emailService = require('../services/emailService');
 const { logAudit } = require('../utils/auditLogger');
 
 // GET /api/admin/settings
@@ -69,4 +70,58 @@ const testStorage = asyncHandler(async (req, res) => {
   }
 });
 
-module.exports = { list, update, testStorage };
+// POST /api/admin/settings/email/test  body: { to }
+// Sends a one-off "Profirmo SMTP test" email using the live admin
+// settings — runs even when env.emailTransport is still 'dev', so the
+// admin can validate credentials before flipping to production sends.
+const testEmail = asyncHandler(async (req, res) => {
+  const adminId = req.user && req.user.id;
+  const to = (req.body && req.body.to) || (req.user && req.user.email);
+  if (!to) {
+    throw {
+      statusCode: 422,
+      message: 'Recipient email is required.',
+    };
+  }
+  try {
+    const info = await emailService.sendTestEmail({
+      to,
+      subject: 'Profirmo SMTP test',
+      html:
+        '<p>This is a test message from the Profirmo admin SMTP panel.</p>' +
+        '<p>If you got this, outgoing mail is wired up correctly.</p>',
+      text:
+        'This is a test message from the Profirmo admin SMTP panel.\n' +
+        'If you got this, outgoing mail is wired up correctly.',
+    });
+    await logAudit({
+      req,
+      userId: adminId,
+      action: 'admin.email_test_ok',
+      entity: 'smtp',
+      entityId: to,
+      status: 'success',
+      metadata: { messageId: info.messageId, from: info.from },
+    });
+    return successResponse(res, 200, 'Test email accepted by the SMTP server', {
+      to,
+      messageId: info.messageId,
+      accepted: info.accepted,
+      response: info.response,
+      from: info.from,
+    });
+  } catch (err) {
+    await logAudit({
+      req,
+      userId: adminId,
+      action: 'admin.email_test_failed',
+      entity: 'smtp',
+      entityId: to,
+      status: 'failure',
+      metadata: { message: err && err.message },
+    });
+    throw err;
+  }
+});
+
+module.exports = { list, update, testStorage, testEmail };

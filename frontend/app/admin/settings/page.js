@@ -16,6 +16,7 @@ import {
   EyeOff,
   ChevronDown,
   Cloud,
+  Mail,
   Loader2,
 } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
@@ -27,6 +28,7 @@ import {
   listSettings,
   updateSetting,
   testStorageConnection,
+  testEmailConnection,
 } from '@/services/adminSettingsService';
 import { invalidateStorageConfig } from '@/services/fileService';
 import { ROLES } from '@/utils/constants';
@@ -125,6 +127,35 @@ export default function AdminSettingsPage() {
     }
   }
 
+  // SMTP connection test — sends a one-off "Profirmo SMTP test" through
+  // the live admin-configured transport. Recipient defaults to the
+  // admin's own email (resolved server-side); admin can override via
+  // the inline input.
+  const [emailTesting, setEmailTesting] = useState(false);
+  const [emailTestMsg, setEmailTestMsg] = useState(null); // { ok, message }
+  const [emailTestTo, setEmailTestTo] = useState('');
+  async function runEmailTest() {
+    if (emailTesting) return;
+    setEmailTesting(true);
+    setEmailTestMsg(null);
+    try {
+      const result = await testEmailConnection(emailTestTo.trim() || undefined);
+      setEmailTestMsg({
+        ok: true,
+        message:
+          `Sent to ${result?.to}. messageId=${result?.messageId || '(n/a)'}` +
+          (result?.response ? ` · server: ${result.response}` : ''),
+      });
+    } catch (err) {
+      setEmailTestMsg({
+        ok: false,
+        message: err?.message || 'SMTP test failed.',
+      });
+    } finally {
+      setEmailTesting(false);
+    }
+  }
+
   // Group items by their `group` tag so related rows render together.
   const groups = useMemo(() => {
     const byGroup = new Map();
@@ -179,6 +210,7 @@ export default function AdminSettingsPage() {
           groups.map(([groupName, rows]) => {
             const collapsed = groupCollapsed(groupName);
             const isStorageGroup = groupName === 'Storage / AWS S3';
+            const isSmtpGroup = groupName === 'SMTP (outgoing mail)';
             return (
               <section key={groupName} className="space-y-3">
                 <button
@@ -194,6 +226,7 @@ export default function AdminSettingsPage() {
                 >
                   <span className="flex items-center gap-2">
                     {isStorageGroup && <Cloud size={14} className="text-amber-600" />}
+                    {isSmtpGroup && <Mail size={14} className="text-amber-600" />}
                     <span className="text-xs font-bold uppercase tracking-widest text-slate-700">
                       {groupName}
                     </span>
@@ -255,6 +288,68 @@ export default function AdminSettingsPage() {
                           <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                         )}
                         <span>{storageTestMsg.message}</span>
+                      </div>
+                    )}
+                  </Card>
+                )}
+                {!collapsed && isSmtpGroup && (
+                  <Card>
+                    <div className="flex flex-col gap-3">
+                      <div className="text-xs text-slate-600">
+                        <p className="font-semibold text-slate-800">
+                          Send a test email
+                        </p>
+                        <p>
+                          Uses the SMTP credentials above (including any
+                          unsaved drafts already written to the rows) to
+                          send a quick "Profirmo SMTP test" message. Leave
+                          the recipient blank to send to your own admin
+                          inbox.
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <Input
+                          type="email"
+                          value={emailTestTo}
+                          onChange={(e) => setEmailTestTo(e.target.value)}
+                          placeholder="recipient@example.com (defaults to your admin email)"
+                          className="flex-1"
+                          disabled={emailTesting}
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={runEmailTest}
+                          disabled={emailTesting}
+                        >
+                          {emailTesting ? (
+                            <>
+                              <Loader2 size={14} className="animate-spin" />
+                              Sending…
+                            </>
+                          ) : (
+                            <>
+                              <Mail size={14} />
+                              Send test email
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                    {emailTestMsg && (
+                      <div
+                        className={`mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs ${
+                          emailTestMsg.ok
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                            : 'border-red-200 bg-red-50 text-red-700'
+                        }`}
+                      >
+                        {emailTestMsg.ok ? (
+                          <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+                        ) : (
+                          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                        )}
+                        <span>{emailTestMsg.message}</span>
                       </div>
                     )}
                   </Card>

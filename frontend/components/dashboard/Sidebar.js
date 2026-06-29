@@ -356,6 +356,11 @@ const NAV_BY_ROLE = {
           icon: Settings,
         },
         {
+          labelKey: 'dash.nav.emailTemplates',
+          href: '/admin/email-templates',
+          icon: Mail,
+        },
+        {
           labelKey: 'dash.nav.categories',
           href: '/admin/categories',
           icon: ListTree,
