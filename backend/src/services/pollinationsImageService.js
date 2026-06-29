@@ -41,7 +41,9 @@ function pickSceneAnchor(title) {
     return 'modern glass office tower in BKC Mumbai, financial district at dusk, India';
   if (check('contract', 'agreement', 'mou', 'deed'))
     return 'fountain pen signing a printed legal contract on a leather desk pad, blurred bookshelf behind, warm light';
-  if (check('parliament', 'lok sabha', 'rajya sabha', 'bill ', ' act '))
+  if (check('cyber', 'data protection', 'dpdp', 'privacy', 'digital personal'))
+    return 'a glowing padlock motif overlaid on Indian map outlines, deep blue backdrop, subtle circuit traces, professional editorial style';
+  if (check('parliament', 'lok sabha', 'rajya sabha', 'bill passed', 'bill introduced', 'new law'))
     return 'sandstone exterior of the Indian Parliament building in New Delhi, soft early morning light';
   if (check('supreme court'))
     return 'wide colonnade of the Supreme Court of India, New Delhi, soft daylight, no people in foreground';
@@ -59,22 +61,55 @@ function pickSceneAnchor(title) {
     return 'glowing circuit-board motif overlaid on the Indian rupee symbol, deep navy background, subtle neon accents';
   if (check('arbitrat', 'mediation', 'adr'))
     return 'two chairs across a long boardroom table, papers and water glasses, neutral lighting, calm tone';
+  if (check(' ev ', 'electric vehicle', 'e-vehicle', 'evs ', 'mobility', 'transport policy'))
+    return 'a modern electric vehicle parked outside a sleek Indian government office building, charging station in view, soft daylight';
+  if (check('environment', 'pollution', 'emission', 'climate', 'green '))
+    return 'wide aerial view of a green city skyline in India, soft haze, tree-lined avenues, calm morning light';
+  if (check('labour', 'labor', 'employment', 'wage', 'employee'))
+    return 'an office floor in an Indian corporate building, rows of desks softly out of focus, foreground a printed labour-law statute book';
+  if (check('consumer', 'cci', 'competition'))
+    return 'a marketplace scene in an Indian city with shops in soft focus and a consumer-rights pamphlet in the foreground, warm light';
   // Fallback — neutral, evocative, still clearly Indian-legal.
   return 'open law book and a brass gavel on a polished wood desk, an Indian advocate\'s chambers in the background, warm soft natural light';
 }
 
+// Trim a string to a word boundary so the rendered headline never
+// ends mid-word ("businesse" instead of "businesses"). Returns the
+// original if it's already under the limit.
+function truncateAtWord(s, maxLen) {
+  const str = String(s || '');
+  if (str.length <= maxLen) return str;
+  const cut = str.slice(0, maxLen);
+  const lastSpace = cut.lastIndexOf(' ');
+  return lastSpace > maxLen * 0.6 ? cut.slice(0, lastSpace) : cut;
+}
+
 // Tag-style prompt: scene first (front-loaded = highest weight on SD/
-// flux/sana), then style + composition, then a one-line hook to the
-// actual post title so different posts produce different images.
+// flux/sana), then a magazine-cover-style title overlay reading
+// "Profirmo: <Title>", then style + composition tags. The title text
+// drives the rendered headline; the scene anchor + excerpt drive the
+// background imagery so the picture actually matches the post.
 function buildPromptFromPost({ title, excerpt }) {
-  const scene = pickSceneAnchor(title);
-  const subject = String(title || '').trim().slice(0, 140);
-  const hint = String(excerpt || '').trim().slice(0, 160);
+  const subject = String(title || '').trim();
+  const hint = String(excerpt || '').trim().slice(0, 140);
+  const scene = pickSceneAnchor(subject);
+  // Keep the rendered headline short — diffusion models render the
+  // first few words legibly and start to hallucinate after that.
+  // Truncate the *title* to ~50 chars at a word boundary so
+  // "Profirmo: <…>" stays under ~62 chars total.
+  const shortTitle = truncateAtWord(subject, 50);
+  const headline = `Profirmo: ${shortTitle}`;
   const tags = [
+    // SCENE (highest weight — drives the actual picture)
     scene,
-    // editorial photo aesthetic
+    // HEADLINE OVERLAY (explicit text-rendering instructions; the
+    // quoted-exact-text trick works on flux/sana for short strings)
+    `large bold sans-serif white text overlay across the lower third reading exactly: "${headline}"`,
+    'clean modern magazine-cover typography',
+    'dark gradient band behind the text for legibility',
+    'text is sharp, perfectly spelled, professionally kerned',
+    // PHOTOGRAPHIC STYLE
     'editorial photography',
-    'documentary style',
     'cinematic composition',
     '16:9 wide framing',
     'shallow depth of field',
@@ -85,26 +120,28 @@ function buildPromptFromPost({ title, excerpt }) {
     'realistic photograph',
     'sharp focus',
     '4k',
-    // contextual anchor
-    `topic: ${subject}`,
+    // contextual anchor for the background imagery
     hint ? `context: ${hint}` : '',
   ].filter(Boolean);
   return tags.join(', ');
 }
 
-// Negative prompt — what we DON'T want. Passed as a separate URL
-// param (Pollinations honours `negative_prompt`). Suppresses the
-// failure modes we kept seeing: garbled text, fake watermarks,
-// cartoonish styling, and impersonations of real political figures.
+// Negative prompt — what we DON'T want. We now WANT readable text on
+// the image (the "Profirmo: <title>" headline), so the negatives
+// instead target the failure modes diffusion text-rendering produces:
+// garbled, misspelled, illegible glyphs. Other negatives (watermarks,
+// cartoon styling, impersonations) stay.
 const NEGATIVE_PROMPT = [
-  'text',
-  'words',
-  'letters',
-  'captions',
-  'subtitles',
+  'misspelled text',
+  'garbled letters',
+  'gibberish text',
+  'illegible',
+  'random characters',
+  'duplicate text',
+  'overlapping letters',
   'watermark',
-  'logo',
-  'signature',
+  'website url',
+  'extra logo',
   'low quality',
   'blurry',
   'distorted',
