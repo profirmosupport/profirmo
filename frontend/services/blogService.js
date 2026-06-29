@@ -104,6 +104,15 @@ export async function adminCreatePost(body) {
   return unwrap(res);
 }
 
+// Trigger the 4-step AI generation flow (research → pick → draft →
+// image → persist as draft). Synchronous on the server side — takes
+// 30-90s depending on Claude latency and Unsplash response time.
+// Returns { post, pick, image, elapsedSeconds }.
+export async function adminAiGeneratePost() {
+  const res = await post('/api/admin/blog/posts/ai-generate', {});
+  return unwrap(res);
+}
+
 export async function adminUpdatePost(id, body) {
   const res = await patch(`/api/admin/blog/posts/${id}`, body);
   return unwrap(res);

@@ -182,7 +182,52 @@ async function start() {
     // Start the background-job worker once the HTTP server is up. Handler
     // errors are caught inside the worker and never crash the process.
     startWorker();
+
+    // Ensure exactly one ai-blog-generate job is queued. The handler
+    // self-reschedules every successful run, so this only inserts
+    // when the chain has somehow been broken (fresh DB, last job
+    // permanently failed, etc).
+    ensureAiBlogJobQueued().catch((err) =>
+      console.warn('[server] ai-blog-generate bootstrap failed:', err.message)
+    );
   });
+}
+
+async function ensureAiBlogJobQueued() {
+  const { Job } = require('./models');
+  const { Op } = require('sequelize');
+  const pending = await Job.findOne({
+    where: {
+      type: 'ai-blog-generate',
+      status: { [Op.in]: ['pending', 'processing'] },
+    },
+  });
+  if (pending) {
+    console.log(
+      `[server] ai-blog-generate already scheduled for ${new Date(pending.runAt).toISOString()}.`
+    );
+    return;
+  }
+  const queueService = require('./services/queueService');
+  // First boot — schedule the next 03:00 IST. Same helper the handler
+  // uses for self-rescheduling, kept inline to avoid a circular require.
+  const now = new Date();
+  const next = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+    21, // 03:00 IST = 21:30 UTC the previous day
+    30,
+    0,
+    0
+  ));
+  if (next.getTime() <= now.getTime()) {
+    next.setUTCDate(next.getUTCDate() + 1);
+  }
+  await queueService.enqueue('ai-blog-generate', {}, { runAt: next });
+  console.log(
+    `[server] ai-blog-generate scheduled for ${next.toISOString()} (03:00 IST tomorrow).`
+  );
 }
 
 start();

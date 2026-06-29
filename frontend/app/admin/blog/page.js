@@ -13,10 +13,14 @@ import {
   Trash2,
   RefreshCw,
   AlertTriangle,
+  CheckCircle2,
   Eye,
   Search,
   ExternalLink,
+  Sparkles,
+  Loader2,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import Card from '@/components/common/Card';
 import Button from '@/components/common/Button';
@@ -28,6 +32,7 @@ import EmptyState from '@/components/common/EmptyState';
 import {
   adminListPosts,
   adminDeletePost,
+  adminAiGeneratePost,
 } from '@/services/blogService';
 import { formatDate } from '@/utils/formatters';
 import { ROLES } from '@/utils/constants';
@@ -46,6 +51,7 @@ const STATUS_OPTIONS = [
 ];
 
 export default function AdminBlogPage() {
+  const router = useRouter();
   const [rows, setRows] = useState([]);
   const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -55,6 +61,43 @@ export default function AdminBlogPage() {
   const [searchInput, setSearchInput] = useState('');
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+
+  // AI generate flow — synchronous server call (~30-90s). Banner
+  // tracks progress + result; "Open draft" routes the admin straight
+  // to the editor when the post lands.
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiResult, setAiResult] = useState(null); // { ok, message, postId?, slug?, topic? }
+  async function runAiGenerate() {
+    if (aiGenerating) return;
+    setAiGenerating(true);
+    setAiResult({
+      ok: null,
+      message:
+        'Researching trending legal topics, drafting the post, fetching a featured image, saving as draft… this usually takes 30-90 seconds.',
+    });
+    try {
+      const res = await adminAiGeneratePost();
+      const post = res && res.post;
+      setAiResult({
+        ok: true,
+        message:
+          `Draft created: "${(post && post.title) || 'untitled'}". ` +
+          (res.image && res.image.url ? 'Featured image attached.' : 'No image attached.') +
+          ` Took ${Number(res.elapsedSeconds || 0).toFixed(1)}s.`,
+        postId: post && post.id,
+        slug: post && post.slug,
+        topic: res.pick && res.pick.topic,
+      });
+      await load();
+    } catch (err) {
+      setAiResult({
+        ok: false,
+        message: err?.message || 'AI generation failed.',
+      });
+    } finally {
+      setAiGenerating(false);
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -150,12 +193,81 @@ export default function AdminBlogPage() {
               <RefreshCw size={15} />
               Refresh
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={runAiGenerate}
+              disabled={aiGenerating}
+              title="Research → draft → image → save as draft. Uses Claude + Unsplash."
+            >
+              {aiGenerating ? (
+                <>
+                  <Loader2 size={15} className="animate-spin" />
+                  AI is writing…
+                </>
+              ) : (
+                <>
+                  <Sparkles size={15} />
+                  Create with AI
+                </>
+              )}
+            </Button>
             <Button href="/admin/blog/posts/new" size="sm">
               <Plus size={15} />
               New post
             </Button>
           </div>
         </div>
+
+        {aiResult && (
+          <div
+            className={`flex flex-col gap-2 rounded-lg border px-3 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between ${
+              aiResult.ok === true
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                : aiResult.ok === false
+                  ? 'border-red-200 bg-red-50 text-red-700'
+                  : 'border-indigo-200 bg-indigo-50 text-indigo-800'
+            }`}
+          >
+            <div className="flex items-start gap-2">
+              {aiResult.ok === true ? (
+                <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+              ) : aiResult.ok === false ? (
+                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              ) : (
+                <Loader2 size={16} className="mt-0.5 shrink-0 animate-spin" />
+              )}
+              <div>
+                {aiResult.topic && (
+                  <p className="text-xs font-semibold uppercase tracking-wide">
+                    Topic: {aiResult.topic}
+                  </p>
+                )}
+                <p>{aiResult.message}</p>
+              </div>
+            </div>
+            {aiResult.ok === true && aiResult.postId ? (
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setAiResult(null)}
+                >
+                  Dismiss
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    router.push(`/admin/blog/posts/${aiResult.postId}/edit`)
+                  }
+                >
+                  <ExternalLink size={13} />
+                  Open draft
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        )}
 
         {error && (
           <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">

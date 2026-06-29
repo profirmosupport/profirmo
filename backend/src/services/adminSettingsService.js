@@ -465,6 +465,23 @@ const SETTINGS = {
     coerce: stringCoerce,
     format: stringCoerce,
   },
+  // --- Unsplash (free image search for AI-generated blog posts) -----
+  // Used by aiBlogService to find a relevant photo for each
+  // auto-drafted post. 50 req/hr on the free demo tier — plenty for a
+  // daily cron + occasional manual runs. Register at
+  // unsplash.com/developers; we only need the Access Key (the Secret
+  // Key is for OAuth, which we don't use).
+  unsplash_access_key: {
+    label: 'Unsplash Access Key',
+    description:
+      'Free at unsplash.com/developers (demo tier = 50 req/hr). Used by the AI Blog Generator to fetch a featured photo for each auto-drafted post. If empty, posts are still created but featuredImage stays null.',
+    defaultGetter: () => process.env.UNSPLASH_ACCESS_KEY || '',
+    type: 'string',
+    group: 'AI / Anthropic',
+    secret: true,
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
   claude_model: {
     label: 'Claude model',
     description:
