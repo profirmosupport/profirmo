@@ -31,7 +31,27 @@ const BlogPost = sequelize.define(
     categoryId: { type: DataTypes.STRING(64), allowNull: true },
     // JSON list of BlogTag.id. Avoids a join table for what is essentially
     // a small set per post; admin UI fans them out to chips on read.
-    tagIds: { type: DataTypes.JSON, allowNull: true },
+    //
+    // The underlying column is LONGTEXT (not native MySQL JSON) — when
+    // declared as DataTypes.JSON, Sequelize stringifies on write but
+    // never parses on read because the SQL type doesn't trigger the
+    // auto-parser. We parse explicitly in the getter and tolerate
+    // already-array values so consumers see a real array either way.
+    tagIds: {
+      type: DataTypes.JSON,
+      allowNull: true,
+      get() {
+        const raw = this.getDataValue('tagIds');
+        if (raw == null) return null;
+        if (Array.isArray(raw)) return raw;
+        try {
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed : null;
+        } catch {
+          return null;
+        }
+      },
+    },
 
     authorUserId: { type: DataTypes.STRING(64), allowNull: true },
     authorName: { type: DataTypes.STRING(255), allowNull: true },
