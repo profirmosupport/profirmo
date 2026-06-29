@@ -15,6 +15,7 @@ import {
   Image as ImageIcon,
   X,
   Loader2,
+  Sparkles,
 } from 'lucide-react';
 import Card from '@/components/common/Card';
 import Input from '@/components/common/Input';
@@ -26,6 +27,7 @@ import {
   adminUploadImage,
   adminCreatePost,
   adminUpdatePost,
+  adminRegenerateBlogImage,
 } from '@/services/blogService';
 
 const STATUS_OPTIONS = [
@@ -61,6 +63,29 @@ export default function BlogPostForm({ post, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  // Gemini "Generate image" — only available on edit (need a post id).
+  const [aiImageBusy, setAiImageBusy] = useState(false);
+  async function runAiImage() {
+    if (!isEdit || !post || !post.id || aiImageBusy) return;
+    setAiImageBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const res = await adminRegenerateBlogImage(post.id);
+      if (res && res.url) {
+        update('featuredImage', res.url);
+        setNotice(
+          'Featured image generated via ' + (res.source || 'AI') + '.'
+        );
+      } else {
+        setError('AI returned no image URL.');
+      }
+    } catch (err) {
+      setError(err?.message || 'AI image generation failed.');
+    } finally {
+      setAiImageBusy(false);
+    }
+  }
 
   useEffect(() => {
     setForm(buildInitial(post));
@@ -331,12 +356,38 @@ export default function BlogPostForm({ post, onSaved }) {
           </Card>
 
           <Card>
-            <h3 className="text-sm font-semibold text-slate-900">
-              Featured image
-            </h3>
-            <p className="mt-1 text-xs text-slate-500">
-              Uploaded files land in <code className="rounded bg-slate-100 px-1">frontend/public/blog-images/</code> so Next.js serves them as static assets.
-            </p>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-slate-900">
+                  Featured image
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Uploaded files land in <code className="rounded bg-slate-100 px-1">frontend/public/blog-images/</code> so Next.js serves them as static assets.
+                </p>
+              </div>
+              {isEdit ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={runAiImage}
+                  disabled={aiImageBusy}
+                  title="Generate a new featured image with Gemini (falls back to Unsplash if Gemini isn't configured)."
+                >
+                  {aiImageBusy ? (
+                    <>
+                      <Loader2 size={13} className="animate-spin" />
+                      Generating…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={13} />
+                      Generate with AI
+                    </>
+                  )}
+                </Button>
+              ) : null}
+            </div>
             {form.featuredImage ? (
               <div className="mt-3">
                 <img

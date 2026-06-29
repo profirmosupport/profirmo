@@ -87,6 +87,39 @@ const adminDeletePost = asyncHandler(async (req, res) => {
   return successResponse(res, 200, 'Post deleted', post);
 });
 
+// POST /api/admin/blog/posts/:id/generate-image
+// Regenerates the featured image for ONE existing post. Body may
+// include { source: 'gemini' | 'unsplash' } to force a specific
+// engine; omit to use the default chain (Gemini → Unsplash → error).
+const adminRegenerateImage = asyncHandler(async (req, res) => {
+  const adminId = req.user && req.user.id;
+  const source = req.body && req.body.source;
+  try {
+    const result = await aiBlogService.regenerateImageForPost(req.params.id, { source });
+    await logAudit({
+      req,
+      userId: adminId,
+      action: 'admin.blog_image_regenerated',
+      entity: 'blog_post',
+      entityId: req.params.id,
+      status: 'success',
+      metadata: { source: result.source, url: result.url },
+    });
+    return successResponse(res, 200, 'Featured image regenerated', result);
+  } catch (err) {
+    await logAudit({
+      req,
+      userId: adminId,
+      action: 'admin.blog_image_regenerate_failed',
+      entity: 'blog_post',
+      entityId: req.params.id,
+      status: 'failure',
+      metadata: { message: err && err.message, source },
+    });
+    throw err;
+  }
+});
+
 // POST /api/admin/blog/posts/ai-generate
 // Runs the 4-step AI generation flow synchronously (research → pick →
 // draft → image → persist as draft). Returns the created row so the
@@ -253,6 +286,7 @@ module.exports = {
   adminUpdatePost,
   adminDeletePost,
   adminAiGeneratePost,
+  adminRegenerateImage,
   adminListCategories,
   adminCreateCategory,
   adminUpdateCategory,

@@ -24,6 +24,7 @@
 const https = require('https');
 const adminSettings = require('./adminSettingsService');
 const storageService = require('./storageService');
+const geminiImageService = require('./geminiImageService');
 const BlogPost = require('../models/BlogPost');
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
@@ -457,14 +458,34 @@ function downloadBinary(url, { timeoutMs = 20000 } = {}) {
   });
 }
 
-// Step 4 in full: find a photo + persist it to S3. Returns the URL or
-// null when Unsplash isn't configured / no result found. Never throws —
-// blog generation must succeed even if image fetch fails.
+// Step 4 in full. Image-source preference:
+//   1. Gemini (gemini_api_key) — generates a unique image per post.
+//   2. Unsplash (unsplash_access_key) — searches real photos.
+//   3. null — post saves without a featuredImage.
+// Never throws — blog generation must succeed even if image fails.
 async function attachFeaturedImage(draft) {
+  // Try Gemini first when configured.
+  const geminiKey = await adminSettings.getString('gemini_api_key');
+  if (geminiKey) {
+    try {
+      const gen = await geminiImageService.generateAndStoreBlogImage({
+        title: draft.title,
+        excerpt: draft.excerpt,
+      });
+      return { url: gen.url, attribution: null, source: 'gemini' };
+    } catch (err) {
+      console.warn(
+        '[aiBlog] Gemini image generation failed; falling back to Unsplash:',
+        err.message
+      );
+    }
+  }
   const accessKey = await adminSettings.getString('unsplash_access_key');
   if (!accessKey) {
-    console.warn('[aiBlog] unsplash_access_key not set — skipping image.');
-    return { url: null, attribution: null };
+    console.warn(
+      '[aiBlog] Neither gemini_api_key nor unsplash_access_key set — skipping image.'
+    );
+    return { url: null, attribution: null, source: null };
   }
   let queries = [];
   try {
@@ -506,12 +527,95 @@ async function attachFeaturedImage(draft) {
         photo.user && photo.user.name
           ? `Photo by ${photo.user.name} on Unsplash`
           : 'Photo from Unsplash';
-      return { url: publicUrl, attribution };
+      return { url: publicUrl, attribution, source: 'unsplash' };
     } catch (err) {
       console.warn(`[aiBlog] image attempt failed for "${q}":`, err.message);
     }
   }
-  return { url: null, attribution: null };
+  return { url: null, attribution: null, source: null };
+}
+
+// Generate a fresh featured image for an EXISTING blog post. Used by
+// the "Generate image" button on the admin edit page. Updates
+// featuredImage + ogImage in one shot and appends an attribution
+// paragraph for Unsplash images only (Gemini originals don't need one).
+async function regenerateImageForPost(postId, { source } = {}) {
+  const post = await BlogPost.findByPk(postId);
+  if (!post) throw { statusCode: 404, message: 'Blog post not found.' };
+  const wantGemini = source === 'gemini' || !source;
+  const wantUnsplash = source === 'unsplash' || !source;
+
+  if (wantGemini) {
+    const geminiKey = await adminSettings.getString('gemini_api_key');
+    if (geminiKey) {
+      try {
+        const gen = await geminiImageService.generateAndStoreBlogImage({
+          title: post.title,
+          excerpt: post.excerpt,
+        });
+        await post.update({ featuredImage: gen.url, ogImage: gen.url });
+        return {
+          url: gen.url,
+          source: 'gemini',
+          prompt: gen.prompt,
+        };
+      } catch (err) {
+        if (source === 'gemini') {
+          // Caller explicitly asked for Gemini — surface the error.
+          throw err;
+        }
+        console.warn(
+          '[aiBlog] Gemini image (re-)generation failed; trying Unsplash:',
+          err.message
+        );
+      }
+    } else if (source === 'gemini') {
+      throw {
+        statusCode: 422,
+        message:
+          'Gemini API key not set. Configure it at /admin/settings → AI / Anthropic → Google Gemini API key.',
+      };
+    }
+  }
+
+  if (wantUnsplash) {
+    const accessKey = await adminSettings.getString('unsplash_access_key');
+    if (!accessKey) {
+      throw {
+        statusCode: 422,
+        message:
+          'No image source configured. Add Gemini or Unsplash key at /admin/settings → AI / Anthropic.',
+      };
+    }
+    // Reuse the existing attachFeaturedImage flow by passing a draft-
+    // shaped object so the Unsplash branch fires.
+    const result = await attachFeaturedImage({
+      title: post.title,
+      excerpt: post.excerpt,
+    });
+    if (!result.url) {
+      throw {
+        statusCode: 502,
+        message: 'Unsplash did not return a usable image. Try again.',
+      };
+    }
+    await post.update({ featuredImage: result.url, ogImage: result.url });
+    // Append attribution if it isn't already on the body.
+    if (
+      result.attribution &&
+      !String(post.content || '').includes(result.attribution)
+    ) {
+      await post.update({
+        content: appendAttribution(post.content, result.attribution),
+      });
+    }
+    return { url: result.url, source: 'unsplash' };
+  }
+
+  throw {
+    statusCode: 500,
+    message: 'No image source ran. Check admin settings.',
+  };
 }
 
 function unsplashTrack(url, accessKey) {
@@ -642,6 +746,7 @@ module.exports = {
   draftPost,
   attachFeaturedImage,
   publishAsDraft,
+  regenerateImageForPost,
   // helpers
   normaliseSlug,
   extractJson,

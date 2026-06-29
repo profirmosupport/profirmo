@@ -230,6 +230,9 @@ router.post('/blog/posts', blog.adminCreatePost);
 // AI-generate a fresh draft post (4-step flow: research → pick → draft
 // → image → save as draft). Synchronous — request can take 30–90s.
 router.post('/blog/posts/ai-generate', blog.adminAiGeneratePost);
+// Per-post featured-image (re)generation. Body: { source?:
+// 'gemini' | 'unsplash' }.
+router.post('/blog/posts/:id/generate-image', blog.adminRegenerateImage);
 router.get('/blog/posts/:id', blog.adminGetPost);
 router.patch('/blog/posts/:id', blog.adminUpdatePost);
 router.delete('/blog/posts/:id', blog.adminDeletePost);

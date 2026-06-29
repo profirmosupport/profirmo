@@ -465,6 +465,35 @@ const SETTINGS = {
     coerce: stringCoerce,
     format: stringCoerce,
   },
+  // --- Google Gemini (image generation for blog posts) --------------
+  // "Nano Banana" / gemini-2.5-flash-image is the primary featured-
+  // image generator for the AI blog flow. When set, aiBlogService
+  // generates a one-of-a-kind image per post; Unsplash is used as a
+  // fallback only when this key is missing or the API call fails.
+  gemini_api_key: {
+    label: 'Google Gemini API key',
+    description:
+      'Generative Language API key (starts with AIzaSy… on Google AI Studio, AQ.Ab… on some Cloud-managed flows). Used by the AI blog flow to generate a unique featured image for each post via gemini-2.5-flash-image. Free tier covers a daily cron easily.',
+    defaultGetter: () =>
+      process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || '',
+    type: 'string',
+    group: 'AI / Anthropic',
+    secret: true,
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  gemini_image_model: {
+    label: 'Gemini image model',
+    description:
+      'Generative Language API model name. Default is gemini-2.5-flash-image (a.k.a. Nano Banana). Swap if Google publishes a newer image-output model.',
+    defaultGetter: () =>
+      process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image',
+    type: 'string',
+    group: 'AI / Anthropic',
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+
   // --- Unsplash (free image search for AI-generated blog posts) -----
   // Used by aiBlogService to find a relevant photo for each
   // auto-drafted post. 50 req/hr on the free demo tier — plenty for a

@@ -113,6 +113,16 @@ export async function adminAiGeneratePost() {
   return unwrap(res);
 }
 
+// Regenerate the featured image for one existing post. Optional
+// `source` arg forces a specific engine ('gemini' | 'unsplash'); omit
+// to use the default chain (Gemini → Unsplash). Returns
+// { url, source, prompt? }.
+export async function adminRegenerateBlogImage(id, source) {
+  const body = source ? { source } : {};
+  const res = await post(`/api/admin/blog/posts/${id}/generate-image`, body);
+  return unwrap(res);
+}
+
 export async function adminUpdatePost(id, body) {
   const res = await patch(`/api/admin/blog/posts/${id}`, body);
   return unwrap(res);
