@@ -10,6 +10,7 @@
 //   → 200 OK, content-type: image/jpeg, body = raw JPEG bytes
 
 const https = require('https');
+const sharp = require('sharp');
 const storageService = require('./storageService');
 
 const POLLINATIONS_BASE = 'https://image.pollinations.ai/prompt';
@@ -84,32 +85,23 @@ function truncateAtWord(s, maxLen) {
   return lastSpace > maxLen * 0.6 ? cut.slice(0, lastSpace) : cut;
 }
 
-// Tag-style prompt: scene first (front-loaded = highest weight on SD/
-// flux/sana), then a magazine-cover-style title overlay reading
-// "Profirmo: <Title>", then style + composition tags. The title text
-// drives the rendered headline; the scene anchor + excerpt drive the
-// background imagery so the picture actually matches the post.
+// Tag-style prompt: scene first (front-loaded = highest weight on
+// SD/flux/sana), then a clean style block. We DO NOT ask the model
+// to render any text — sana/flux on the free tier render garbled
+// gibberish for arbitrary headlines. Instead the picture is
+// scene-only and we composite the "Profirmo: <title>" overlay
+// server-side via sharp + SVG (see addHeadlineOverlay below) so the
+// rendered text is pixel-perfect.
 function buildPromptFromPost({ title, excerpt }) {
-  const subject = String(title || '').trim();
-  const hint = String(excerpt || '').trim().slice(0, 140);
+  const subject = String(title || '').trim().slice(0, 140);
+  const hint = String(excerpt || '').trim().slice(0, 160);
   const scene = pickSceneAnchor(subject);
-  // Keep the rendered headline short — diffusion models render the
-  // first few words legibly and start to hallucinate after that.
-  // Truncate the *title* to ~50 chars at a word boundary so
-  // "Profirmo: <…>" stays under ~62 chars total.
-  const shortTitle = truncateAtWord(subject, 50);
-  const headline = `Profirmo: ${shortTitle}`;
   const tags = [
     // SCENE (highest weight — drives the actual picture)
     scene,
-    // HEADLINE OVERLAY (explicit text-rendering instructions; the
-    // quoted-exact-text trick works on flux/sana for short strings)
-    `large bold sans-serif white text overlay across the lower third reading exactly: "${headline}"`,
-    'clean modern magazine-cover typography',
-    'dark gradient band behind the text for legibility',
-    'text is sharp, perfectly spelled, professionally kerned',
     // PHOTOGRAPHIC STYLE
     'editorial photography',
+    'documentary style',
     'cinematic composition',
     '16:9 wide framing',
     'shallow depth of field',
@@ -120,28 +112,30 @@ function buildPromptFromPost({ title, excerpt }) {
     'realistic photograph',
     'sharp focus',
     '4k',
-    // contextual anchor for the background imagery
+    'no text in image',
+    'no watermarks',
+    // contextual anchor — keeps imagery on-topic across posts that
+    // share the same scene anchor
+    `topic: ${subject}`,
     hint ? `context: ${hint}` : '',
   ].filter(Boolean);
   return tags.join(', ');
 }
 
-// Negative prompt — what we DON'T want. We now WANT readable text on
-// the image (the "Profirmo: <title>" headline), so the negatives
-// instead target the failure modes diffusion text-rendering produces:
-// garbled, misspelled, illegible glyphs. Other negatives (watermarks,
-// cartoon styling, impersonations) stay.
+// Negative prompt — Pollinations passes this as a separate URL
+// param. Suppress text rendering hard (we add our own afterwards),
+// plus the usual diffusion failure modes.
 const NEGATIVE_PROMPT = [
-  'misspelled text',
-  'garbled letters',
-  'gibberish text',
-  'illegible',
-  'random characters',
-  'duplicate text',
-  'overlapping letters',
+  'text',
+  'words',
+  'letters',
+  'captions',
+  'subtitles',
   'watermark',
-  'website url',
-  'extra logo',
+  'logo',
+  'signature',
+  'typography',
+  'lettering',
   'low quality',
   'blurry',
   'distorted',
@@ -160,6 +154,104 @@ const NEGATIVE_PROMPT = [
   'celebrities',
   'nsfw',
 ].join(', ');
+
+// --- Title overlay via sharp + SVG ---------------------------------
+//
+// Renders "Profirmo: <Title>" on the bottom of the generated image
+// as a magazine-cover headline. The text is drawn from an SVG layer
+// (pixel-perfect, kerned by the SVG renderer) over a dark gradient
+// band that fades up from the bottom. Wraps up to 2 lines; falls
+// back to a single ellipsised line if the title is unusually long.
+
+function escapeXml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+// Word-wrap into at most `maxLines` lines, each up to ~`maxChars`
+// chars. If the text overflows, the last line is ellipsised.
+function wrapHeadline(text, maxChars, maxLines = 2) {
+  const words = String(text || '').split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = '';
+  for (const w of words) {
+    const next = line ? `${line} ${w}` : w;
+    if (next.length > maxChars && line) {
+      lines.push(line);
+      if (lines.length >= maxLines) {
+        // truncate remaining words into ellipsis
+        lines[maxLines - 1] = lines[maxLines - 1].replace(/[.,;:!?\s]*$/, '') + '…';
+        return lines;
+      }
+      line = w;
+    } else {
+      line = next;
+    }
+  }
+  if (line) lines.push(line);
+  // If the final line itself is still over the cap, hard-truncate.
+  if (lines.length && lines[lines.length - 1].length > maxChars + 4) {
+    lines[lines.length - 1] = lines[lines.length - 1].slice(0, maxChars) + '…';
+  }
+  return lines.slice(0, maxLines);
+}
+
+function buildHeadlineSvg({ title, width, height }) {
+  const headline = `Profirmo: ${String(title || '').trim()}`;
+  // Picked by squinting at sample renders — these ratios keep the
+  // text readable on 1024-2048 px wide cards without runtime
+  // measurement (sharp can't measure SVG text without rendering).
+  const fontSize = Math.round(width / 26); // ~39px at 1024 wide
+  const padX = Math.round(width * 0.05);
+  const maxChars = Math.floor((width - padX * 2) / (fontSize * 0.52));
+  const lines = wrapHeadline(headline, maxChars, 2);
+  const finalFontSize = lines.length > 1 ? Math.round(fontSize * 0.92) : fontSize;
+  const lineHeight = Math.round(finalFontSize * 1.18);
+  const totalTextH = lines.length * lineHeight;
+  const bandH = Math.round(height * 0.36);
+  const bandY = height - bandH;
+  // Vertically centre the text within the band.
+  const firstBaseline = bandY + Math.round((bandH - totalTextH) / 2) + finalFontSize;
+  const textNodes = lines
+    .map(
+      (line, i) =>
+        `<text x="${padX}" y="${firstBaseline + i * lineHeight}" ` +
+        `font-family="'Helvetica Neue','Inter',Arial,sans-serif" ` +
+        `font-size="${finalFontSize}" font-weight="800" fill="white" ` +
+        `style="paint-order:stroke;stroke:rgba(0,0,0,0.65);stroke-width:2.5px;letter-spacing:0.2px">` +
+        `${escapeXml(line)}</text>`
+    )
+    .join('');
+  return Buffer.from(
+    `<?xml version="1.0" encoding="UTF-8"?>` +
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
+      `<defs>` +
+      `<linearGradient id="g" x1="0" y1="0" x2="0" y2="1">` +
+      `<stop offset="0" stop-color="rgba(0,0,0,0)"/>` +
+      `<stop offset="0.45" stop-color="rgba(0,0,0,0.45)"/>` +
+      `<stop offset="1" stop-color="rgba(0,0,0,0.88)"/>` +
+      `</linearGradient>` +
+      `</defs>` +
+      `<rect x="0" y="${bandY}" width="${width}" height="${bandH}" fill="url(#g)"/>` +
+      textNodes +
+      `</svg>`
+  );
+}
+
+async function addHeadlineOverlay(buffer, title) {
+  const meta = await sharp(buffer).metadata();
+  const width = meta.width || 1280;
+  const height = meta.height || 720;
+  const svg = buildHeadlineSvg({ title, width, height });
+  return sharp(buffer)
+    .composite([{ input: svg, top: 0, left: 0 }])
+    .jpeg({ quality: 88, progressive: true })
+    .toBuffer();
+}
 
 function downloadImage(url) {
   return new Promise((resolve, reject) => {
@@ -283,12 +375,26 @@ async function generateAndStoreBlogImage({ title, excerpt, width, height } = {})
   });
   const url = `${POLLINATIONS_BASE}/${path}?${params.toString()}`;
 
-  const { buffer, mimeType } = await downloadImage(url);
-  if (!buffer || buffer.length === 0) {
+  const { buffer: rawBuffer, mimeType: rawMime } = await downloadImage(url);
+  if (!rawBuffer || rawBuffer.length === 0) {
     throw {
       statusCode: 502,
       message: 'Pollinations returned an empty body.',
     };
+  }
+  // Composite the "Profirmo: <title>" headline via sharp + SVG so
+  // the rendered text is pixel-perfect. Falls back to the raw
+  // Pollinations bytes if sharp choked on the input (rare).
+  let buffer = rawBuffer;
+  let mimeType = rawMime;
+  try {
+    buffer = await addHeadlineOverlay(rawBuffer, title);
+    mimeType = 'image/jpeg';
+  } catch (err) {
+    console.warn(
+      '[pollinations] sharp overlay failed; using raw image:',
+      err.message
+    );
   }
   const stored = await storageService.uploadFile({
     buffer,
