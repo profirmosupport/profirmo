@@ -152,6 +152,16 @@ export default function FeaturedFirms() {
     };
   }, []);
 
+  // Hide the entire section once the fetch completes and we either
+  // have no featured firms or the request errored. Marketing surface
+  // — silently omitting beats showing a "check back soon" placeholder
+  // or an "unable to load" warning to a first-time visitor. While
+  // still loading we keep the heading + skeletons so the layout
+  // doesn't jump when results land.
+  if (!loading && (error || items.length === 0)) {
+    return null;
+  }
+
   // Repeat the fetched firms enough times to fill a seamless marquee row,
   // then render it twice so the -50% loop is seamless.
   const row = items.length > 0 ? [...items, ...items, ...items] : [];
@@ -179,14 +189,6 @@ export default function FeaturedFirms() {
           {[0, 1, 2, 3].map((i) => (
             <FirmCardSkeleton key={i} />
           ))}
-        </div>
-      ) : error || items.length === 0 ? (
-        <div className="mx-auto mt-14 max-w-2xl rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-12 text-center">
-          <p className="text-sm text-slate-500">
-            {error
-              ? 'Unable to load firms right now. Please try again later.'
-              : 'No firms are listed yet. Check back soon.'}
-          </p>
         </div>
       ) : (
         /* Auto-scrolling marquee */

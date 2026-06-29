@@ -257,10 +257,12 @@ export default function DashboardPreviewSection() {
             </div>
           </div>
 
-          {/* Sidebar + main grid */}
-          <div className="grid grid-cols-[64px,1fr] gap-0 lg:grid-cols-[200px,1fr]">
-            {/* Sidebar */}
-            <aside className="border-r border-slate-200 bg-slate-50/60 px-2 py-4 lg:px-3">
+          {/* Sidebar + main grid. Mobile drops the sidebar entirely
+              (it just consumed real estate without adding signal at
+              that width); lg+ renders the full 200px nav column. */}
+          <div className="grid grid-cols-1 gap-0 lg:grid-cols-[200px,1fr]">
+            {/* Sidebar — desktop only */}
+            <aside className="hidden border-r border-slate-200 bg-slate-50/60 px-2 py-4 lg:block lg:px-3">
               <p className="hidden px-2 text-[10px] font-semibold uppercase tracking-widest text-slate-400 lg:block">
                 Practice
               </p>

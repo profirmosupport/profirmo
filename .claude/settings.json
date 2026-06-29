@@ -337,11 +337,35 @@
       "Bash(ssh -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no ubuntu@13.235.85.94 \"cd /var/www/profirmo && git log --oneline -3 && echo --- && git rev-parse origin/main 2>/dev/null\")",
       "Bash(git format-patch *)",
       "Bash(scp -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no /tmp/profirmo-mobile-version.patch ubuntu@13.235.85.94:/tmp/)",
-      "Bash(ssh -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no ubuntu@13.235.85.94 \"ls -la /tmp/profirmo-mobile-version.patch && cd /var/www/profirmo && git status && echo --- && git log --oneline -3\")"
+      "Bash(ssh -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no ubuntu@13.235.85.94 \"ls -la /tmp/profirmo-mobile-version.patch && cd /var/www/profirmo && git status && echo --- && git log --oneline -3\")",
+      "Bash(ssh -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no ubuntu@13.235.85.94 ' *)",
+      "Bash(curl -s https://proapi.profirmo.com/api/app-settings/mobile-version)",
+      "Bash(curl -sI https://proapi.profirmo.com/api/app-settings/mobile-version)",
+      "Bash(curl -s https://proapi.profirmo.com/api/app-settings/mobile-version -w \"\\\\n→ %{http_code} in %{time_total}s\\\\n\")",
+      "Bash(curl -s -o /dev/null -w \"/api/health: %{http_code}\\\\n\" https://proapi.profirmo.com/api/health)",
+      "Bash(curl -s -o /dev/null -w \"/api/cases/stages \\(auth-gated\\): %{http_code}\\\\n\" https://proapi.profirmo.com/api/cases/stages)",
+      "Bash(curl -s \"https://proapi.profirmo.com/api/professionals?featured=true&limit=50\")",
+      "Bash(curl -s \"https://proapi.profirmo.com/api/professionals/pdetail-1782714813681-9400\")",
+      "Bash(cp /Users/vishalchauhan/code/profirmo/frontend/public/Screenshot*.png /private/tmp/claude-502/-Users-vishalchauhan-code-profirmo/e708f28e-38cb-4e74-9215-a6d4b9a8dfe2/scratchpad/taneja.png *)",
+      "Bash(curl -sI \"https://profirmomain.s3.ap-south-1.amazonaws.com/profile-images/5f3fdd89-40f4-4678-b8ca-21de7d039d3b.png\")",
+      "Bash(pm2 list *)",
+      "Bash(curl -s -o /dev/null -w \"local backend health: %{http_code}\\\\n\" http://localhost:5001/api/health)",
+      "Bash(scp -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no /tmp/profirmo-sort-pros.patch ubuntu@13.235.85.94:/tmp/)",
+      "Bash(ssh -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no ubuntu@13.235.85.94 \"cd /var/www/profirmo && git am --abort 2>&1 | tail -2 && git status --short && echo --- && git log --oneline -2\")",
+      "Bash(curl -s \"https://proapi.profirmo.com/api/professionals?limit=50\")",
+      "Bash(grep -nE \"^[[:space:]]{2,4}[a-zA-Z][a-zA-Z]+[[:space:]]*:\" /Users/vishalchauhan/code/profirmo/backend/src/emails/templates.js)",
+      "Bash(node)",
+      "Bash(scp -i /Users/vishalchauhan/code/profirmo/Profirmo-KP.pem -o StrictHostKeyChecking=no /tmp/profirmo-smtp.patch ubuntu@13.235.85.94:/tmp/)",
+      "Bash(curl -s -o /dev/null -w \"POST /forgot-password: %{http_code}\\\\n\" -X POST https://proapi.profirmo.com/api/auth/forgot-password -H \"Content-Type: application/json\" -d '{}')",
+      "Bash(curl -s -o /dev/null -w \"POST /verify-password-otp: %{http_code}\\\\n\" -X POST https://proapi.profirmo.com/api/auth/verify-password-otp -H \"Content-Type: application/json\" -d '{}')",
+      "Bash(curl -s -o /dev/null -w \"POST /reset-password: %{http_code}\\\\n\" -X POST https://proapi.profirmo.com/api/auth/reset-password -H \"Content-Type: application/json\" -d '{}')",
+      "Bash(curl -s -o /dev/null -w \"POST /resend-otp: %{http_code}\\\\n\" -X POST https://proapi.profirmo.com/api/auth/resend-otp -H \"Content-Type: application/json\" -d '{}')",
+      "Bash(curl -s -o /dev/null -w \"metro bundle: %{http_code} %{size_download}B in %{time_total}s\\\\n\" \"http://localhost:8081/index.bundle?platform=ios&dev=true&hot=false&lazy=true&transform.engine=hermes&transform.bytecode=1&transform.routerRoot=app&unstable_transformProfile=hermes-stable\")"
     ],
     "additionalDirectories": [
       "/Users/vishalchauhan/code/profirmo/frontend/app/services",
-      "/Users/vishalchauhan/code/profirmo/frontend/app/professionals/city/[slug]"
+      "/Users/vishalchauhan/code/profirmo/frontend/app/professionals/city/[slug]",
+      "/Users/vishalchauhan/code/profirmo/frontend/public"
     ]
   }
 }

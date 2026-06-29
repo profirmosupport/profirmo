@@ -29,3 +29,12 @@ export async function testStorageConnection() {
   const res = await post('/api/admin/settings/storage/test');
   return unwrap(res);
 }
+
+// POST /api/admin/settings/email/test — sends a one-off "Profirmo SMTP
+// test" message via the live admin SMTP transport. Recipient defaults
+// to the authenticated admin's email server-side; pass `{ to }` to
+// override.
+export async function testEmailConnection(to) {
+  const res = await post('/api/admin/settings/email/test', to ? { to } : {});
+  return unwrap(res);
+}

@@ -41,8 +41,45 @@ export async function logout() {
   }
 }
 
-export async function forgotPassword(email) {
-  const res = await apiPost('/api/auth/forgot-password', { email });
+export async function forgotPassword(identifier) {
+  // Backend accepts both `identifier` (modern) and `email` (legacy
+  // alias) — send both so older builds talking to a newer backend
+  // continue to work.
+  const res = await apiPost('/api/auth/forgot-password', {
+    identifier,
+    email: identifier,
+  });
+  return unwrap(res);
+}
+
+// Verify the 6-digit OTP the backend emailed / SMS'd after
+// forgotPassword. Returns { resetToken } that resetPassword consumes.
+// Throws on invalid / expired / over-attempts.
+export async function verifyPasswordOtp(identifier, otp) {
+  const res = await apiPost('/api/auth/verify-password-otp', {
+    identifier,
+    otp,
+  });
+  return unwrap(res);
+}
+
+// Re-send the OTP. Optional `channel` ('phone' | 'email') forces a
+// specific transport; omit to honour whatever the original request
+// used.
+export async function resendPasswordOtp(identifier, channel) {
+  const body = { identifier };
+  if (channel === 'phone' || channel === 'email') body.channel = channel;
+  const res = await apiPost('/api/auth/resend-otp', body);
+  return unwrap(res);
+}
+
+// Complete the reset with a verified resetToken + the new password.
+export async function resetPassword({ resetToken, newPassword, confirmPassword }) {
+  const res = await apiPost('/api/auth/reset-password', {
+    resetToken,
+    newPassword,
+    confirmPassword,
+  });
   return unwrap(res);
 }
 
