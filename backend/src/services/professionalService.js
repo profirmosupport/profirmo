@@ -382,6 +382,11 @@ const normalizeProfileProfessional = ({ user, address, detail }) => {
 const loadProfileProfessionals = async () => {
   const approvals = await ProfessionalApproval.findAll({
     where: { status: 'APPROVED' },
+    // Registration order (oldest approval first) is the canonical
+    // baseline order for the public listing. The default sort then
+    // pushes bookable pros to the top while preserving this within
+    // each group (stable sort).
+    order: [['createdAt', 'ASC']],
     raw: true,
   });
   if (approvals.length === 0) return [];
@@ -649,7 +654,16 @@ const sortProfessionals = (rows, sort) => {
     case 'price':
       return rows.sort((a, b) => a.consultationFee - b.consultationFee);
     default:
-      return rows;
+      // Default ordering for /professionals: bookable pros (those who
+      // accept online booking) on top, everyone else underneath in
+      // registration order. V8's Array.sort is stable, so equal-key
+      // entries keep the order they were loaded in (oldest approval
+      // first — see loadProfileProfessionals).
+      return rows.sort((a, b) => {
+        const ab = a.acceptsOnlineBooking ? 1 : 0;
+        const bb = b.acceptsOnlineBooking ? 1 : 0;
+        return bb - ab;
+      });
   }
 };
 
