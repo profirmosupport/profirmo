@@ -25,6 +25,7 @@ const https = require('https');
 const adminSettings = require('./adminSettingsService');
 const pollinationsImageService = require('./pollinationsImageService');
 const BlogPost = require('../models/BlogPost');
+const BlogCategory = require('../models/BlogCategory');
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
@@ -244,6 +245,21 @@ async function pickBestTopic(topics) {
         'No trending topics fetched from legal RSS feeds. The feeds may be down — retry later.',
     };
   }
+  // Load existing blog categories so Claude can match the topic to
+  // one that already exists. If none fit, Claude proposes a new one
+  // and we create it in step 3.5 (resolveCategoryId).
+  const existing = await BlogCategory.findAll({
+    order: [['sortOrder', 'ASC'], ['name', 'ASC']],
+    attributes: ['id', 'name', 'slug', 'description'],
+  });
+  const categoryBlock = existing.length
+    ? existing
+        .map(
+          (c) =>
+            `- id: ${c.id} | name: ${c.name} | slug: ${c.slug}${c.description ? ` — ${c.description}` : ''}`
+        )
+        .join('\n')
+    : '(none yet — every topic will require a new category)';
   const numbered = topics
     .map(
       (t, i) =>
@@ -255,6 +271,8 @@ async function pickBestTopic(topics) {
   const userMessage =
     'Candidate stories (today\'s legal headlines from Indian sources):\n\n' +
     numbered +
+    '\n\nEXISTING BLOG CATEGORIES (use one of these if a good fit exists; otherwise propose a new one):\n' +
+    categoryBlock +
     '\n\nPick ONE topic that:\n' +
     '- is timely and substantive (not a fluff piece)\n' +
     '- helps an Indian legal/tax professional explain a development to their client OR helps a client understand a legal/tax change\n' +
@@ -266,13 +284,22 @@ async function pickBestTopic(topics) {
     '  "topic": "<short topic line, 8-12 words>",\n' +
     '  "angle": "<single sentence describing the angle the post should take>",\n' +
     '  "primaryAudience": "professional" | "client" | "both",\n' +
-    '  "category": "<one of: Litigation, Tax, GST, Corporate, Family, Property, IP, Compliance, Practice management>",\n' +
+    '  "category": "<short category label — Litigation, Tax, GST, Corporate, Family, Property, IP, Compliance, Practice Management, etc.>",\n' +
+    '  "categoryAssignment": {\n' +
+    '    "matchedExistingId": "<id of an existing category from the list above if it cleanly fits, otherwise null>",\n' +
+    '    "newCategory": {\n' +
+    '      "name": "<title-case category name, 2-3 words>",\n' +
+    '      "slug": "<kebab-case slug, ASCII, max 40 chars>",\n' +
+    '      "description": "<one-sentence description shown on /blog category pages>"\n' +
+    '    }\n' +
+    '  },\n' +
     '  "reasoning": "<1-2 sentences on why this beats the others>"\n' +
-    '}';
+    '}\n\n' +
+    'For categoryAssignment: ALWAYS fill in either matchedExistingId (when an existing category genuinely fits) OR newCategory (when none fit). If you set matchedExistingId you can still fill newCategory with the same values for safety — but matchedExistingId wins.';
   const { text } = await callClaude({
     system,
     userMessage,
-    maxTokens: 1024,
+    maxTokens: 1500,
   });
   const pick = extractJson(text);
   // Stamp the original feed item so the drafter has the source URL.
@@ -282,6 +309,59 @@ async function pickBestTopic(topics) {
       : 0;
   pick.source = topics[idx];
   return pick;
+}
+
+// Resolve the category for this pick to a concrete BlogCategory row
+// id. Three branches:
+//   1. Claude said matchedExistingId AND that id still exists → use it.
+//   2. Claude proposed a newCategory → create it (or reuse on slug
+//      collision) and use its id.
+//   3. Fallback → use the post's `category` label as a name and
+//      create-or-reuse by slug. Returns null only if nothing works.
+async function resolveCategoryId(pick, { logger = console } = {}) {
+  // Branch 1: existing id.
+  const matchedId =
+    pick &&
+    pick.categoryAssignment &&
+    pick.categoryAssignment.matchedExistingId;
+  if (matchedId) {
+    const row = await BlogCategory.findByPk(matchedId);
+    if (row) return row.id;
+    logger.warn(
+      `[aiBlog] Claude picked existing categoryId=${matchedId} but it no longer exists — falling through to create.`
+    );
+  }
+
+  // Branch 2: proposed new category from Claude.
+  const proposed =
+    pick && pick.categoryAssignment && pick.categoryAssignment.newCategory;
+  if (proposed && (proposed.name || proposed.slug)) {
+    const name = String(proposed.name || pick.category || 'General').trim();
+    const slug = normaliseSlug(proposed.slug || name);
+    const description = String(proposed.description || '').trim().slice(0, 500) || null;
+    return upsertCategoryBySlug({ name, slug, description, logger });
+  }
+
+  // Branch 3: bare-label fallback.
+  const label = String((pick && pick.category) || 'General').trim();
+  const slug = normaliseSlug(label);
+  return upsertCategoryBySlug({ name: label, slug, description: null, logger });
+}
+
+async function upsertCategoryBySlug({ name, slug, description, logger }) {
+  const cleanSlug = (slug || normaliseSlug(name) || 'general').slice(0, 140);
+  const existing = await BlogCategory.findOne({ where: { slug: cleanSlug } });
+  if (existing) return existing.id;
+  const row = await BlogCategory.create({
+    name: name.slice(0, 120),
+    slug: cleanSlug,
+    description: description || null,
+    sortOrder: 999, // sit at the bottom of the admin list until curated
+  });
+  logger.log(
+    `[aiBlog] created new blog category — id=${row.id} name="${row.name}" slug=${row.slug}`
+  );
+  return row.id;
 }
 
 // --- 3. Draft full post --------------------------------------------------
@@ -420,7 +500,7 @@ async function ensureUniqueSlug(baseSlug) {
   return `${baseSlug}-${Date.now()}`;
 }
 
-async function publishAsDraft(draft, image, authorUserId = null) {
+async function publishAsDraft(draft, image, authorUserId = null, categoryId = null) {
   const slug = await ensureUniqueSlug(draft.slug);
   const row = await BlogPost.create({
     id: `blog-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
@@ -429,7 +509,7 @@ async function publishAsDraft(draft, image, authorUserId = null) {
     excerpt: draft.excerpt,
     content: appendAttribution(draft.contentHtml, image && image.attribution),
     featuredImage: (image && image.url) || null,
-    categoryId: null,
+    categoryId: categoryId || null,
     tagIds: null,
     authorUserId,
     authorName: 'Profirmo AI Desk',
@@ -483,6 +563,18 @@ async function generateBlogPostDraft({ authorUserId = null, logger = console } =
     `[aiBlog] step 3 done — title="${draft.title}", slug=${draft.slug}, ~${draft.readingMinutes}min read`
   );
 
+  logger.log('[aiBlog] step 3.5: resolving category…');
+  let categoryId = null;
+  try {
+    categoryId = await resolveCategoryId(pick, { logger });
+    logger.log(`[aiBlog] step 3.5 done — categoryId=${categoryId}`);
+  } catch (err) {
+    logger.warn(
+      '[aiBlog] category resolution failed (continuing without one):',
+      err.message
+    );
+  }
+
   logger.log('[aiBlog] step 4: attaching featured image (Pollinations)…');
   let image = { url: null, attribution: null };
   try {
@@ -497,7 +589,7 @@ async function generateBlogPostDraft({ authorUserId = null, logger = console } =
   );
 
   logger.log('[aiBlog] step 5: saving as draft…');
-  const row = await publishAsDraft(draft, image, authorUserId);
+  const row = await publishAsDraft(draft, image, authorUserId, categoryId);
   const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
   logger.log(
     `[aiBlog] DONE in ${elapsed}s — id=${row.id} status=draft slug=${row.slug}`
@@ -515,6 +607,7 @@ module.exports = {
   generateBlogPostDraft,
   fetchTrendingTopics,
   pickBestTopic,
+  resolveCategoryId,
   draftPost,
   attachFeaturedImage,
   publishAsDraft,
