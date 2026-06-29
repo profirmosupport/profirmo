@@ -16,6 +16,8 @@ import {
   X,
   Loader2,
   Sparkles,
+  Search,
+  Plus,
 } from 'lucide-react';
 import Card from '@/components/common/Card';
 import Input from '@/components/common/Input';
@@ -28,6 +30,7 @@ import {
   adminCreatePost,
   adminUpdatePost,
   adminRegenerateBlogImage,
+  adminCreateTag,
 } from '@/services/blogService';
 
 const STATUS_OPTIONS = [
@@ -63,7 +66,10 @@ export default function BlogPostForm({ post, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  // Gemini "Generate image" — only available on edit (need a post id).
+  // Tag-picker search query + inline-create busy state.
+  const [tagQuery, setTagQuery] = useState('');
+  const [tagCreating, setTagCreating] = useState(false);
+  // Pollinations "Generate with AI" — only available on edit (need a post id).
   const [aiImageBusy, setAiImageBusy] = useState(false);
   async function runAiImage() {
     if (!isEdit || !post || !post.id || aiImageBusy) return;
@@ -123,6 +129,47 @@ export default function BlogPostForm({ post, onSaved }) {
         ? f.tagIds.filter((t) => t !== id)
         : [...f.tagIds, id],
     }));
+  }
+
+  function removeTag(id) {
+    setForm((f) => ({ ...f, tagIds: f.tagIds.filter((t) => t !== id) }));
+  }
+
+  // Create a new tag inline. Used by the "+ Create '<query>'" button
+  // in the tag-picker. Adds the new row to local state and auto-selects
+  // it on the current post.
+  async function createInlineTag(rawName) {
+    const name = String(rawName || '').trim();
+    if (!name || tagCreating) return;
+    setError('');
+    setTagCreating(true);
+    try {
+      // Generate a slug client-side; backend will dedupe by slug if a
+      // race-condition collision happens.
+      const slug = name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 100);
+      const created = await adminCreateTag({ name, slug });
+      if (created && created.id) {
+        setTags((prev) =>
+          prev.some((t) => t.id === created.id) ? prev : [...prev, created]
+        );
+        setForm((f) => ({
+          ...f,
+          tagIds: f.tagIds.includes(created.id)
+            ? f.tagIds
+            : [...f.tagIds, created.id],
+        }));
+        setTagQuery('');
+        setNotice(`Tag "${created.name}" created.`);
+      }
+    } catch (err) {
+      setError(err?.message || 'Failed to create tag.');
+    } finally {
+      setTagCreating(false);
+    }
   }
 
   async function handleImage(e) {
@@ -457,32 +504,135 @@ export default function BlogPostForm({ post, onSaved }) {
           <Card>
             <h3 className="text-sm font-semibold text-slate-900">Tags</h3>
             <p className="mt-1 text-xs text-slate-500">
-              Click to toggle.
+              Search and select. Type a new name and press Enter to create.
             </p>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {tags.length === 0 ? (
-                <p className="text-xs text-slate-400">
-                  No tags yet — create them under Blog → Tags.
-                </p>
-              ) : (
-                tags.map((t) => {
-                  const on = form.tagIds.includes(t.id);
+            {/* Selected — removable chips */}
+            {form.tagIds.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {form.tagIds.map((id) => {
+                  const t = tags.find((x) => x.id === id);
+                  if (!t) return null;
                   return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => toggleTag(t.id)}
-                      className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
-                        on
-                          ? 'bg-amber-600 text-white shadow'
-                          : 'bg-slate-100 text-slate-700 hover:bg-amber-50 hover:text-amber-800'
-                      }`}
+                    <span
+                      key={id}
+                      className="inline-flex items-center gap-1 rounded-full bg-amber-600 px-2.5 py-1 text-xs font-medium text-white shadow"
                     >
                       #{t.name}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => removeTag(id)}
+                        className="-mr-0.5 rounded-full p-0.5 hover:bg-white/20"
+                        aria-label={`Remove ${t.name}`}
+                      >
+                        <X size={11} />
+                      </button>
+                    </span>
                   );
-                })
-              )}
+                })}
+              </div>
+            ) : null}
+            {/* Search box */}
+            <div className="relative mt-3">
+              <Search
+                size={14}
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+              <input
+                type="text"
+                value={tagQuery}
+                onChange={(e) => setTagQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const q = tagQuery.trim();
+                    if (!q) return;
+                    // Exact match (case-insensitive) → select it
+                    const exact = tags.find(
+                      (t) =>
+                        t.name.toLowerCase() === q.toLowerCase() ||
+                        (t.slug || '').toLowerCase() === q.toLowerCase()
+                    );
+                    if (exact) {
+                      if (!form.tagIds.includes(exact.id))
+                        toggleTag(exact.id);
+                      setTagQuery('');
+                    } else {
+                      createInlineTag(q);
+                    }
+                  }
+                }}
+                placeholder="Search tags…"
+                className="w-full rounded-lg border border-slate-300 bg-white py-1.5 pl-7 pr-2 text-sm placeholder:text-slate-400 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+              />
+            </div>
+            {/* Filtered list */}
+            <div className="mt-3 max-h-56 overflow-y-auto">
+              {(() => {
+                const q = tagQuery.trim().toLowerCase();
+                const available = tags.filter(
+                  (t) => !form.tagIds.includes(t.id)
+                );
+                const matches = q
+                  ? available.filter(
+                      (t) =>
+                        t.name.toLowerCase().includes(q) ||
+                        (t.slug || '').toLowerCase().includes(q)
+                    )
+                  : available;
+                const exactExists =
+                  q &&
+                  tags.some(
+                    (t) =>
+                      t.name.toLowerCase() === q ||
+                      (t.slug || '').toLowerCase() === q
+                  );
+                return (
+                  <>
+                    {matches.length === 0 && !q ? (
+                      <p className="text-xs text-slate-400">
+                        {available.length === 0
+                          ? 'All existing tags selected. Type a new name + Enter to create one.'
+                          : 'No tags yet — create them under Blog → Tags.'}
+                      </p>
+                    ) : null}
+                    {matches.length === 0 && q && exactExists ? (
+                      <p className="text-xs text-slate-400">
+                        Already selected.
+                      </p>
+                    ) : null}
+                    <div className="flex flex-wrap gap-1.5">
+                      {matches.slice(0, 50).map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => {
+                            toggleTag(t.id);
+                            setTagQuery('');
+                          }}
+                          className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:bg-amber-50 hover:text-amber-800"
+                        >
+                          #{t.name}
+                        </button>
+                      ))}
+                    </div>
+                    {q && !exactExists ? (
+                      <button
+                        type="button"
+                        onClick={() => createInlineTag(q)}
+                        disabled={tagCreating}
+                        className="mt-3 inline-flex items-center gap-1 rounded-full border border-dashed border-amber-400 bg-white px-2.5 py-1 text-xs font-medium text-amber-700 transition hover:bg-amber-50 disabled:opacity-50"
+                      >
+                        {tagCreating ? (
+                          <Loader2 size={11} className="animate-spin" />
+                        ) : (
+                          <Plus size={11} />
+                        )}
+                        Create &ldquo;{tagQuery.trim()}&rdquo;
+                      </button>
+                    ) : null}
+                  </>
+                );
+              })()}
             </div>
           </Card>
         </div>

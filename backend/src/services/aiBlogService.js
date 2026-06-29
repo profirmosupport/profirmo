@@ -26,6 +26,7 @@ const adminSettings = require('./adminSettingsService');
 const pollinationsImageService = require('./pollinationsImageService');
 const BlogPost = require('../models/BlogPost');
 const BlogCategory = require('../models/BlogCategory');
+const BlogTag = require('../models/BlogTag');
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
@@ -364,6 +365,50 @@ async function upsertCategoryBySlug({ name, slug, description, logger }) {
   return row.id;
 }
 
+// Resolve the draft.tags array (Claude returns these as
+// lower-case kebab-case strings, see draftPost JSON schema) into
+// concrete BlogTag row ids. Find-or-create by slug — never throws on
+// individual failures; logs and continues so a single broken slug
+// doesn't lose all the tags.
+async function resolveTagIds(tagInputs, { logger = console } = {}) {
+  if (!Array.isArray(tagInputs) || tagInputs.length === 0) return [];
+  const ids = [];
+  const seenSlugs = new Set();
+  for (const raw of tagInputs) {
+    const original = String(raw || '').trim();
+    if (!original) continue;
+    // Claude sometimes emits "kebab-case" tags and sometimes "Title Case";
+    // normalise to a slug, derive a display name by replacing dashes
+    // with spaces and title-casing.
+    const slug = normaliseSlug(original).slice(0, 100);
+    if (!slug || seenSlugs.has(slug)) continue;
+    seenSlugs.add(slug);
+    const name = original
+      .replace(/-+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+      .slice(0, 80);
+    try {
+      const existing = await BlogTag.findOne({ where: { slug } });
+      if (existing) {
+        ids.push(existing.id);
+        continue;
+      }
+      const created = await BlogTag.create({ name, slug });
+      logger.log(
+        `[aiBlog] created new blog tag — id=${created.id} name="${created.name}" slug=${created.slug}`
+      );
+      ids.push(created.id);
+    } catch (err) {
+      logger.warn(
+        `[aiBlog] tag upsert failed for slug="${slug}" (continuing): ${err.message}`
+      );
+    }
+  }
+  return ids;
+}
+
 // --- 3. Draft full post --------------------------------------------------
 
 async function draftPost(pick) {
@@ -500,7 +545,13 @@ async function ensureUniqueSlug(baseSlug) {
   return `${baseSlug}-${Date.now()}`;
 }
 
-async function publishAsDraft(draft, image, authorUserId = null, categoryId = null) {
+async function publishAsDraft(
+  draft,
+  image,
+  authorUserId = null,
+  categoryId = null,
+  tagIds = null
+) {
   const slug = await ensureUniqueSlug(draft.slug);
   const row = await BlogPost.create({
     id: `blog-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
@@ -510,7 +561,7 @@ async function publishAsDraft(draft, image, authorUserId = null, categoryId = nu
     content: appendAttribution(draft.contentHtml, image && image.attribution),
     featuredImage: (image && image.url) || null,
     categoryId: categoryId || null,
-    tagIds: null,
+    tagIds: Array.isArray(tagIds) && tagIds.length ? tagIds : null,
     authorUserId,
     authorName: 'Profirmo AI Desk',
     status: 'draft',
@@ -575,6 +626,20 @@ async function generateBlogPostDraft({ authorUserId = null, logger = console } =
     );
   }
 
+  logger.log('[aiBlog] step 3.6: resolving tags…');
+  let tagIds = [];
+  try {
+    tagIds = await resolveTagIds(draft.tags, { logger });
+    logger.log(
+      `[aiBlog] step 3.6 done — ${tagIds.length} tag(s): ${tagIds.join(', ') || '(none)'}`
+    );
+  } catch (err) {
+    logger.warn(
+      '[aiBlog] tag resolution failed (continuing without tags):',
+      err.message
+    );
+  }
+
   logger.log('[aiBlog] step 4: attaching featured image (Pollinations)…');
   let image = { url: null, attribution: null };
   try {
@@ -589,7 +654,7 @@ async function generateBlogPostDraft({ authorUserId = null, logger = console } =
   );
 
   logger.log('[aiBlog] step 5: saving as draft…');
-  const row = await publishAsDraft(draft, image, authorUserId, categoryId);
+  const row = await publishAsDraft(draft, image, authorUserId, categoryId, tagIds);
   const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
   logger.log(
     `[aiBlog] DONE in ${elapsed}s — id=${row.id} status=draft slug=${row.slug}`
@@ -608,6 +673,7 @@ module.exports = {
   fetchTrendingTopics,
   pickBestTopic,
   resolveCategoryId,
+  resolveTagIds,
   draftPost,
   attachFeaturedImage,
   publishAsDraft,
