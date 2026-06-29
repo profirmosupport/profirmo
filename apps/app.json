@@ -3,7 +3,7 @@
     "name": "Profirmo",
     "slug": "profirmo",
     "scheme": "profirmo",
-    "version": "0.1.4",
+    "version": "0.1.6",
     "orientation": "portrait",
     "icon": "./src/assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -17,13 +17,13 @@
     },
     "android": {
       "package": "com.profirmo.app",
-      "versionCode": 5,
+      "versionCode": 7,
       "permissions": [
         "android.permission.CAMERA"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./src/assets/adaptive-icon.png",
-        "backgroundColor": "#0f172a"
+        "backgroundColor": "#f97316"
       },
       "icon": "./src/assets/icon.png"
     },
@@ -39,11 +39,14 @@
           "resizeMode": "contain",
           "imageWidth": 200
         }
-      ],
-      "@react-native-community/datetimepicker"
+      ]
     ],
     "extra": {
-      "apiBaseUrl": "https://proapi.profirmo.com"
-    }
+      "apiBaseUrl": "https://proapi.profirmo.com",
+      "eas": {
+        "projectId": "35655f73-2172-4c19-b061-c94899ca263d"
+      }
+    },
+    "owner": "dcexpo"
   }
 }
