@@ -2,38 +2,55 @@
 // app is available in the App Store / Play Store and gates the user
 // into updating before they can continue.
 //
-// Source of truth: the backend's GET /api/app-settings/mobile-version
-// endpoint, which returns per-platform { latest, minimum, storeUrl }.
-// Configured server-side via env vars so a new release can be cut
-// without shipping new mobile code.
+// Source of truth: the live stores themselves, queried directly from
+// the device:
+//
+//   iOS  → https://itunes.apple.com/lookup?bundleId=<bundleId>
+//          Apple's public iTunes Lookup API. Returns the latest
+//          published version in `results[0].version`. CORS-permitted,
+//          no auth required, well-documented.
+//
+//   Android → https://play.google.com/store/apps/details?id=<package>
+//             Google has no official version API. We fetch the public
+//             listing HTML and extract the version from the embedded
+//             AF_initDataCallback blob (look for the [[["X.Y.Z"]]]
+//             pattern). The pattern survives most Play Store
+//             redesigns but isn't bulletproof — if Google changes the
+//             layout, the regex falls through to null and the gate
+//             silently skips rather than crashing.
 //
 // Decision matrix (per platform) — ALL updates are mandatory:
-//   installed >= latest  → no gate
-//   installed <  latest  → mandatory "Update required" gate
-//                          (no dismiss, no snooze; the only action is
-//                          the store button)
+//   installed >= storeLatest   → no gate
+//   installed <  storeLatest   → mandatory "Update required" gate
+//                                (no dismiss, no snooze; the only
+//                                action is the store button)
 //
-// We deliberately treat `latest` as the effective minimum so the
-// operator only has to set one env var per platform to force every
-// device onto the newest build. The legacy `minimum` field is still
-// honoured for backward compat when `latest` is unset.
-//
-// The store URL is opened via Linking.openURL — the actual install
-// happens in the device's native store, the only place an iOS / Android
-// app can actually self-update.
+// The check is best-effort: any failure (network, store unreachable,
+// version parse miss, no listing in App Store yet) returns null so
+// the user is never blocked from opening the app on a network blip.
 
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
-import { apiGet, unwrap } from './api';
-import { STORAGE_KEYS } from '../utils/storage';
 
-// Pulled from app.json's `expo.version` at build time; survives even
-// when running detached (Constants.expoConfig collapses to
-// Constants.manifest on bare workflow). Falls back to '0.0.0' if
-// neither is available so the comparator stays defensive.
+const ITUNES_LOOKUP_BASE = 'https://itunes.apple.com/lookup';
+const PLAY_STORE_BASE = 'https://play.google.com/store/apps/details';
+
+// Pulled from app.json's `expo.version` at build time. Survives the
+// expo-config → manifest fallback on bare workflow.
 export function getInstalledVersion() {
   const cfg = Constants.expoConfig || Constants.manifest || {};
   return cfg.version || '0.0.0';
+}
+
+// Read the platform-specific app id (bundle on iOS, package on
+// Android) from the same source. Hard-coded fallback matches
+// app.json so a stripped-down Constants object still works.
+function getAppId() {
+  const cfg = Constants.expoConfig || Constants.manifest || {};
+  if (Platform.OS === 'ios') {
+    return (cfg.ios && cfg.ios.bundleIdentifier) || 'com.profirmo.app';
+  }
+  return (cfg.android && cfg.android.package) || 'com.profirmo.app';
 }
 
 // Strict semver compare — splits on '.' and compares numeric parts.
@@ -53,57 +70,102 @@ export function compareVersion(a, b) {
   return 0;
 }
 
+// Hit iTunes Lookup with a hard 6s timeout. Returns { version, storeUrl }
+// or null when the app isn't published / the request fails.
+async function fetchIosLatest(bundleId) {
+  const url = `${ITUNES_LOOKUP_BASE}?bundleId=${encodeURIComponent(bundleId)}`;
+  const json = await fetchJsonWithTimeout(url, 6000);
+  const first = json && Array.isArray(json.results) && json.results[0];
+  if (!first || !first.version) return null;
+  return {
+    version: String(first.version),
+    storeUrl:
+      first.trackViewUrl ||
+      `https://apps.apple.com/app/id${first.trackId || ''}`,
+  };
+}
+
+// Scrape the Play Store listing HTML. Google embeds the published
+// version in an AF_initDataCallback blob; the version is the first
+// match for the pattern `[[["X.Y.Z"]]` (sometimes `[[["X.Y.Z.W"]]`).
+// If Google rewrites the page, the regex falls through to null and
+// we silently skip — better than a crash on every cold start.
+async function fetchAndroidLatest(packageName) {
+  const url = `${PLAY_STORE_BASE}?id=${encodeURIComponent(packageName)}&hl=en&gl=US`;
+  const html = await fetchTextWithTimeout(url, 6000, {
+    headers: {
+      // A plain UA prevents Google from serving the lite/no-JS
+      // variant which doesn't include the version blob.
+      'User-Agent':
+        'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Mobile Safari/537.36',
+      'Accept-Language': 'en-US,en;q=0.9',
+    },
+  });
+  if (!html) return null;
+  const match = html.match(/\[\[\["(\d+(?:\.\d+){1,3})"\]\]/);
+  if (!match) return null;
+  return {
+    version: match[1],
+    storeUrl: `${PLAY_STORE_BASE}?id=${encodeURIComponent(packageName)}`,
+  };
+}
+
+function fetchWithTimeout(url, timeoutMs, opts = {}) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(t));
+}
+
+async function fetchJsonWithTimeout(url, timeoutMs, opts) {
+  try {
+    const res = await fetchWithTimeout(url, timeoutMs, opts);
+    if (!res || !res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+async function fetchTextWithTimeout(url, timeoutMs, opts) {
+  try {
+    const res = await fetchWithTimeout(url, timeoutMs, opts);
+    if (!res || !res.ok) return null;
+    return await res.text();
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Runs at app start. Pulls the version config from the backend and
+ * Runs at app start. Asks the live store for the latest version and
  * decides whether the device needs to be force-updated. Returns null
- * on any error (network, missing config, etc.) so a flaky network
- * never blocks the app from opening — the gate only triggers when
- * we have a definitive answer that the user is behind.
+ * on any error (network, store unreachable, app not published yet)
+ * so a flaky network never blocks the app from opening — the gate
+ * only triggers when we have a definitive newer version.
  *
  * Shape on a required update:
  *   {
  *     kind: 'force',
  *     installed: '0.1.0',
- *     latest:    '0.2.0',
- *     minimum:   '0.1.0',  // may equal latest when only latest is set
- *     storeUrl:  'https://...',
+ *     latest:    '0.1.7',
+ *     storeUrl:  'https://play.google.com/store/apps/details?id=com.profirmo.app',
  *   }
- *
- * Returns null when installed >= the effective minimum (no update
- * needed), when the platform has no config, or when the network
- * lookup fails.
  */
 export async function evaluateUpdate() {
   const installed = getInstalledVersion();
-  let cfg;
-  try {
-    const res = await apiGet('/api/app-settings/mobile-version');
-    cfg = unwrap(res) || null;
-  } catch {
-    return null;
+  const appId = getAppId();
+  let info = null;
+  if (Platform.OS === 'ios') {
+    info = await fetchIosLatest(appId);
+  } else if (Platform.OS === 'android') {
+    info = await fetchAndroidLatest(appId);
   }
-  if (!cfg) return null;
-  const platformCfg = Platform.OS === 'ios' ? cfg.ios : cfg.android;
-  if (!platformCfg) return null;
-  const { latest, minimum, storeUrl } = platformCfg;
-  if (!storeUrl) return null;
-
-  // `latest` is the effective minimum — every published release is
-  // treated as mandatory. The legacy `minimum` field is honoured as
-  // a fallback when an operator deploys with only `minimum` set.
-  const effectiveMinimum = latest || minimum;
-  if (!effectiveMinimum) return null;
-  if (compareVersion(installed, effectiveMinimum) >= 0) return null;
-
+  if (!info || !info.version || !info.storeUrl) return null;
+  if (compareVersion(installed, info.version) >= 0) return null;
   return {
     kind: 'force',
     installed,
-    latest: latest || minimum,
-    minimum: effectiveMinimum,
-    storeUrl,
+    latest: info.version,
+    storeUrl: info.storeUrl,
   };
 }
-
-// Re-exported so consumers don't need to import STORAGE_KEYS just to
-// reach into storage for the snooze flag.
-export { STORAGE_KEYS };

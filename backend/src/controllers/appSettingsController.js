@@ -3,7 +3,6 @@ const { successResponse } = require('../utils/responseHandler');
 const { logAudit } = require('../utils/auditLogger');
 const svc = require('../services/appSettingsService');
 const storageService = require('../services/storageService');
-const adminSettings = require('../services/adminSettingsService');
 
 // --- Public read endpoints ------------------------------------------------
 
@@ -28,45 +27,15 @@ const publicGetStorage = asyncHandler(async (req, res) => {
 });
 
 // GET /api/app-settings/mobile-version
-// Latest + minimum supported app versions per platform, plus the
-// store URL. The mobile app fetches this on its splash screen — if
-// the installed version is below `latest`, a non-dismissible
-// "Update required" gate fires. Configured live via /admin/settings
-// (Mobile updates group); env vars are honoured as the
-// defaultGetter for each setting so a brand-new install without
-// any admin rows in the DB still works.
+// Legacy endpoint — preserved for older app builds that still poll
+// it. The current mobile app (≥ commit bc2d6f4a) talks to iTunes
+// Lookup + Play Store HTML directly via appUpdateService.js and
+// ignores this response. Returns all-null so the legacy clients
+// short-circuit to their "no config — skip gate" branch.
 const publicGetMobileVersion = asyncHandler(async (req, res) => {
-  // Read all six values in parallel — getString returns the saved
-  // admin row when present, or the spec's defaultGetter (the env
-  // fallback) when missing. Empty strings collapse to null so the
-  // mobile client's "no config" branch still triggers cleanly.
-  const [
-    iosLatest,
-    iosMin,
-    iosStore,
-    androidLatest,
-    androidMin,
-    androidStore,
-  ] = await Promise.all([
-    adminSettings.getString('mobile_ios_latest_version'),
-    adminSettings.getString('mobile_ios_min_version'),
-    adminSettings.getString('mobile_ios_store_url'),
-    adminSettings.getString('mobile_android_latest_version'),
-    adminSettings.getString('mobile_android_min_version'),
-    adminSettings.getString('mobile_android_store_url'),
-  ]);
-  const blank = (v) => (v && String(v).trim()) || null;
   return successResponse(res, 200, 'Mobile version config', {
-    ios: {
-      latest: blank(iosLatest),
-      minimum: blank(iosMin),
-      storeUrl: blank(iosStore),
-    },
-    android: {
-      latest: blank(androidLatest),
-      minimum: blank(androidMin),
-      storeUrl: blank(androidStore),
-    },
+    ios: { latest: null, minimum: null, storeUrl: null },
+    android: { latest: null, minimum: null, storeUrl: null },
   });
 });
 
