@@ -515,6 +515,24 @@ const SETTINGS = {
     },
     format: stringCoerce,
   },
+
+  // --- Buffer.com (social sharing for AI blog posts) ---------------
+  // When set, the AI blog flow (cron + admin button) calls Buffer's
+  // /1/updates/create.json with `now: true` after publishing a post,
+  // sharing it across every social profile linked in the admin's
+  // Buffer dashboard. Empty value disables the share step silently
+  // (post still publishes; just nothing goes to Buffer).
+  buffer_access_token: {
+    label: 'Buffer access token',
+    description:
+      'Personal access token from buffer.com → Settings → Apps & Extras → Access Tokens (or any custom OAuth app). When set, freshly published AI blog posts are auto-shared to every linked Buffer profile via /1/updates/create.json. Leave empty to skip the share step.',
+    defaultGetter: () => process.env.BUFFER_ACCESS_TOKEN || '',
+    type: 'string',
+    group: 'AI / Anthropic',
+    secret: true,
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
 };
 
 const KNOWN_KEYS = Object.keys(SETTINGS);

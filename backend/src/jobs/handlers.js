@@ -70,17 +70,18 @@ async function aiBlogGenerateHandler(payload = {}) {
   if (!payload.force) {
     const BlogPost = require('../models/BlogPost');
     const { Op } = require('sequelize');
+    const { AI_AUTHOR_NAME } = aiBlogService;
     const cutoff = new Date(Date.now() - 18 * 60 * 60 * 1000); // 18h ago
     const recent = await BlogPost.findOne({
       where: {
-        authorName: 'Profirmo AI Desk',
+        authorName: AI_AUTHOR_NAME,
         createdAt: { [Op.gte]: cutoff },
       },
       order: [['createdAt', 'DESC']],
     });
     if (recent) {
       console.log(
-        `[Worker] ai-blog-generate: a draft from the last 18h already exists (${recent.id}) — skipping this run.`
+        `[Worker] ai-blog-generate: a post from the last 18h already exists (${recent.id}) — skipping this run.`
       );
       return;
     }

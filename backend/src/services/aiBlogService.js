@@ -10,7 +10,8 @@
 //   4. attachFeaturedImage(p)   Pollinations.ai (free, no key) renders
 //                               a featured image from the post title +
 //                               excerpt; uploaded to S3.
-//   5. publishAsDraft(p, url)   INSERT into blog_posts, status=draft.
+//   5. publishAsDraft(p, url)   INSERT into blog_posts, status=published,
+//                               authorName="Advocate Rajiv Shukla".
 //
 // Orchestrator: generateBlogPostDraft() runs all five and returns the
 // inserted row. Used by the admin "AI Generate" button (sync) and by
@@ -27,9 +28,27 @@ const pollinationsImageService = require('./pollinationsImageService');
 const BlogPost = require('../models/BlogPost');
 const BlogCategory = require('../models/BlogCategory');
 const BlogTag = require('../models/BlogTag');
+const bufferService = require('./bufferService');
+
+// Public URL pattern for a blog post. Used to build the "Read more"
+// link Buffer shares on every connected social profile. Override via
+// PUBLIC_BLOG_URL_PREFIX if you ever move the marketing site.
+const PUBLIC_BLOG_URL_PREFIX =
+  process.env.PUBLIC_BLOG_URL_PREFIX || 'https://profirmo.com/blog/';
+
+function blogPostPublicUrl(slug) {
+  return `${PUBLIC_BLOG_URL_PREFIX.replace(/\/$/, '/')}${encodeURIComponent(
+    slug
+  )}`;
+}
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
+
+// Byline used for every AI-generated blog post. Also serves as the
+// "skip if recent post exists" marker in the daily job handler, so a
+// human writing a post under the same name is intentionally fine.
+const AI_AUTHOR_NAME = 'Advocate Rajiv Shukla';
 
 // Vetted legal-news RSS feeds. Limited to Indian sources matching the
 // platform's audience. Add more here as the editorial team validates
@@ -563,9 +582,9 @@ async function publishAsDraft(
     categoryId: categoryId || null,
     tagIds: Array.isArray(tagIds) && tagIds.length ? tagIds : null,
     authorUserId,
-    authorName: 'Profirmo AI Desk',
-    status: 'draft',
-    publishedAt: null,
+    authorName: AI_AUTHOR_NAME,
+    status: 'published',
+    publishedAt: new Date(),
     seoTitle: draft.seoTitle,
     seoDescription: draft.seoDescription,
     ogTitle: draft.ogTitle,
@@ -653,16 +672,45 @@ async function generateBlogPostDraft({ authorUserId = null, logger = console } =
       : '[aiBlog] step 4 done — no image (continuing)'
   );
 
-  logger.log('[aiBlog] step 5: saving as draft…');
+  logger.log('[aiBlog] step 5: publishing post…');
   const row = await publishAsDraft(draft, image, authorUserId, categoryId, tagIds);
+
+  // Step 6: share to Buffer. Best-effort — failures (network error,
+  // Buffer down, token revoked, no linked profiles) are logged and
+  // we still return a successful post creation.
+  let bufferResult = null;
+  try {
+    logger.log('[aiBlog] step 6: sharing to Buffer…');
+    bufferResult = await bufferService.shareBlogPost({
+      title: row.title,
+      excerpt: row.excerpt,
+      url: blogPostPublicUrl(row.slug),
+      imageUrl: row.featuredImage,
+      tags: draft.tags,
+    });
+    if (bufferResult && bufferResult.skipped) {
+      logger.log(`[aiBlog] step 6 skipped — ${bufferResult.reason}`);
+    } else {
+      logger.log(
+        `[aiBlog] step 6 done — shared to ${bufferResult.posted}/${bufferResult.profileIds.length} Buffer profile(s)`
+      );
+    }
+  } catch (err) {
+    logger.warn(
+      '[aiBlog] Buffer share failed (post still published):',
+      err.message
+    );
+  }
+
   const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
   logger.log(
-    `[aiBlog] DONE in ${elapsed}s — id=${row.id} status=draft slug=${row.slug}`
+    `[aiBlog] DONE in ${elapsed}s — id=${row.id} status=${row.status} slug=${row.slug}`
   );
   return {
     post: row,
     pick,
     image,
+    buffer: bufferResult,
     elapsedSeconds: Number(elapsed),
   };
 }
@@ -681,4 +729,6 @@ module.exports = {
   // helpers
   normaliseSlug,
   extractJson,
+  // constants
+  AI_AUTHOR_NAME,
 };
