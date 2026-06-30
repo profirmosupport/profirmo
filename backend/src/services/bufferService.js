@@ -20,6 +20,9 @@ const https = require('https');
 const adminSettings = require('./adminSettingsService');
 
 const BUFFER_HOST = 'api.bufferapp.com';
+const BUFFER_AUTHORIZE_HOST = 'bufferapp.com';
+const BUFFER_AUTHORIZE_PATH = '/oauth2/authorize';
+const BUFFER_TOKEN_PATH = '/1/oauth2/token.json';
 const REQUEST_TIMEOUT_MS = 15 * 1000;
 
 async function getAccessToken() {
@@ -29,6 +32,87 @@ async function getAccessToken() {
 async function isConfigured() {
   const token = await getAccessToken();
   return Boolean(token && token.trim());
+}
+
+// --- OAuth setup --------------------------------------------------
+//
+// Buffer requires the authorization-code grant: redirect the admin
+// to bufferapp.com/oauth2/authorize, they approve, Buffer redirects
+// back to our callback with ?code=…, we POST that code to
+// /1/oauth2/token.json with the client_secret to exchange it for an
+// access_token. Client-credentials grant is NOT supported by Buffer.
+
+function buildAuthorizeUrl({ clientId, redirectUri, state }) {
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+  });
+  if (state) params.set('state', state);
+  return `https://${BUFFER_AUTHORIZE_HOST}${BUFFER_AUTHORIZE_PATH}?${params.toString()}`;
+}
+
+// Exchange a Buffer authorization code for an access_token. The
+// token doesn't expire — Buffer issues long-lived tokens — but it
+// can be revoked from the user's apps page, in which case the next
+// share call returns 401 and we surface a clear "reconnect" message.
+async function exchangeCodeForToken({ code, clientId, clientSecret, redirectUri }) {
+  if (!code) throw new Error('exchangeCodeForToken: code required');
+  if (!clientId || !clientSecret) {
+    throw new Error('exchangeCodeForToken: client credentials required');
+  }
+  const params = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    redirect_uri: redirectUri,
+    code,
+    grant_type: 'authorization_code',
+  });
+  const body = params.toString();
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        host: BUFFER_HOST,
+        path: BUFFER_TOKEN_PATH,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(body),
+          Accept: 'application/json',
+          'User-Agent': 'Profirmo-AI-Blog/1.0 (+https://profirmo.com)',
+        },
+        timeout: REQUEST_TIMEOUT_MS,
+      },
+      (resp) => {
+        const chunks = [];
+        resp.on('data', (c) => chunks.push(c));
+        resp.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8');
+          let json = null;
+          try {
+            json = JSON.parse(text);
+          } catch {}
+          if (!resp.statusCode || resp.statusCode >= 400 || !json || !json.access_token) {
+            const detail =
+              (json && (json.error_description || json.error || json.message)) ||
+              text.slice(0, 200);
+            return reject(
+              new Error(`Buffer token exchange failed (HTTP ${resp.statusCode}): ${detail}`)
+            );
+          }
+          resolve({
+            accessToken: json.access_token,
+            tokenType: json.token_type || 'bearer',
+            raw: json,
+          });
+        });
+      }
+    );
+    req.on('timeout', () => req.destroy(new Error('Buffer token exchange timed out.')));
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
 }
 
 // Minimal HTTPS helper for Buffer responses. Non-2xx bodies include a
@@ -210,4 +294,6 @@ module.exports = {
   listProfiles,
   shareBlogPost,
   buildShareText,
+  buildAuthorizeUrl,
+  exchangeCodeForToken,
 };

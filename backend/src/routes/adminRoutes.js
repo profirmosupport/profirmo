@@ -6,6 +6,7 @@ const adminPayments = require('../controllers/adminPaymentsController');
 const payoutController = require('../controllers/payoutController');
 const adminSettings = require('../controllers/adminSettingsController');
 const blog = require('../controllers/blogController');
+const buffer = require('../controllers/bufferController');
 const subscription = require('../controllers/subscriptionController');
 const adminEmployee = require('../controllers/adminEmployeeController');
 const { uploadSingle, handleUploadErrors } = require('../middleware/uploadMiddleware');
@@ -233,6 +234,13 @@ router.post('/blog/posts/ai-generate', blog.adminAiGeneratePost);
 // Per-post featured-image (re)generation. Body: { source?:
 // 'gemini' | 'unsplash' }.
 router.post('/blog/posts/:id/generate-image', blog.adminRegenerateImage);
+
+// Buffer.com OAuth + share testing. The callback itself is public
+// (mounted at /api/buffer/oauth-callback in bufferRoutes.js) because
+// the browser-side redirect from Buffer can't carry our auth header.
+router.get('/buffer/oauth-start', buffer.oauthStart);
+router.get('/buffer/profiles', buffer.listProfiles);
+router.post('/buffer/share-test/:postId', buffer.shareTest);
 router.get('/blog/posts/:id', blog.adminGetPost);
 router.patch('/blog/posts/:id', blog.adminUpdatePost);
 router.delete('/blog/posts/:id', blog.adminDeletePost);

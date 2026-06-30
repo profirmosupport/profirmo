@@ -517,15 +517,40 @@ const SETTINGS = {
   },
 
   // --- Buffer.com (social sharing for AI blog posts) ---------------
-  // When set, the AI blog flow (cron + admin button) calls Buffer's
-  // /1/updates/create.json with `now: true` after publishing a post,
-  // sharing it across every social profile linked in the admin's
-  // Buffer dashboard. Empty value disables the share step silently
-  // (post still publishes; just nothing goes to Buffer).
+  // OAuth flow: admin saves buffer_client_id + buffer_client_secret
+  // from their app at publish.buffer.com/developers/apps, then visits
+  // /api/admin/buffer/oauth-start which redirects to Buffer's
+  // authorize page. Buffer redirects back to the callback route,
+  // which exchanges the code for an access token and stores it in
+  // buffer_access_token below. When the access token is set, the AI
+  // blog flow (cron + admin button) calls Buffer's
+  // /1/updates/create.json with `now: true` and shares to every
+  // linked profile.
+  buffer_client_id: {
+    label: 'Buffer OAuth Client ID',
+    description:
+      'Client ID from your Buffer developer app at publish.buffer.com/developers/apps. Used by the OAuth flow that exchanges an authorization code for the access token.',
+    defaultGetter: () => process.env.BUFFER_CLIENT_ID || '',
+    type: 'string',
+    group: 'AI / Anthropic',
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  buffer_client_secret: {
+    label: 'Buffer OAuth Client Secret',
+    description:
+      'Client Secret from your Buffer developer app. Used by the backend to exchange the OAuth code for an access token at /1/oauth2/token.json. Never leaves the server.',
+    defaultGetter: () => process.env.BUFFER_CLIENT_SECRET || '',
+    type: 'string',
+    group: 'AI / Anthropic',
+    secret: true,
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
   buffer_access_token: {
     label: 'Buffer access token',
     description:
-      'Personal access token from buffer.com → Settings → Apps & Extras → Access Tokens (or any custom OAuth app). When set, freshly published AI blog posts are auto-shared to every linked Buffer profile via /1/updates/create.json. Leave empty to skip the share step.',
+      'Populated automatically by the OAuth callback after you click "Connect Buffer" on /admin/settings. Can also be pasted manually if you already have a personal token. When set, freshly published AI blog posts are auto-shared to every linked Buffer profile.',
     defaultGetter: () => process.env.BUFFER_ACCESS_TOKEN || '',
     type: 'string',
     group: 'AI / Anthropic',
