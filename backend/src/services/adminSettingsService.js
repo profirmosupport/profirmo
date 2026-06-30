@@ -516,6 +516,77 @@ const SETTINGS = {
     format: stringCoerce,
   },
 
+  // --- Mobile force-update gate ------------------------------------
+  // Drives /api/app-settings/mobile-version, which the mobile apps
+  // poll on launch. When installed version < `latest` (or
+  // `minimum` if latest is empty), the apps show a non-dismissible
+  // "Update required" modal pointing at the store URL. Leaving the
+  // version blank disables the gate for that platform (no prompt
+  // ever fires). Update versions per release WITHOUT redeploying
+  // the backend.
+  mobile_android_latest_version: {
+    label: 'Android — latest version (Play Store)',
+    description:
+      'Semver string of the latest Android build live in Play Store, e.g. "0.2.0". Devices on older versions are forced to update on app launch. Leave empty to disable the gate for Android.',
+    defaultGetter: () => process.env.MOBILE_ANDROID_LATEST_VERSION || '',
+    type: 'string',
+    group: 'Mobile updates',
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  mobile_android_min_version: {
+    label: 'Android — minimum supported version',
+    description:
+      'Optional fallback when the latest field is empty. The gate uses latest first, falling back to this for backwards-compat with older deploys.',
+    defaultGetter: () => process.env.MOBILE_ANDROID_MIN_VERSION || '',
+    type: 'string',
+    group: 'Mobile updates',
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  mobile_android_store_url: {
+    label: 'Android — Play Store URL',
+    description:
+      'Full Play Store listing URL the "Update now" button opens. Defaults to the com.profirmo.app package URL when empty.',
+    defaultGetter: () =>
+      process.env.MOBILE_ANDROID_STORE_URL ||
+      'https://play.google.com/store/apps/details?id=com.profirmo.app',
+    type: 'string',
+    group: 'Mobile updates',
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  mobile_ios_latest_version: {
+    label: 'iOS — latest version (App Store)',
+    description:
+      'Semver string of the latest iOS build live in App Store, e.g. "0.2.0". Devices on older versions are forced to update. Leave empty to disable the gate for iOS (useful while the app is still in TestFlight).',
+    defaultGetter: () => process.env.MOBILE_IOS_LATEST_VERSION || '',
+    type: 'string',
+    group: 'Mobile updates',
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  mobile_ios_min_version: {
+    label: 'iOS — minimum supported version',
+    description:
+      'Optional fallback when the latest field is empty.',
+    defaultGetter: () => process.env.MOBILE_IOS_MIN_VERSION || '',
+    type: 'string',
+    group: 'Mobile updates',
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  mobile_ios_store_url: {
+    label: 'iOS — App Store URL',
+    description:
+      'Full App Store URL the "Update now" button opens, e.g. https://apps.apple.com/in/app/profirmo/id1234567890. Leave empty to suppress the iOS prompt until the listing is live.',
+    defaultGetter: () => process.env.MOBILE_IOS_STORE_URL || '',
+    type: 'string',
+    group: 'Mobile updates',
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+
   // --- Buffer.com (social sharing for AI blog posts) ---------------
   // OAuth flow: admin saves buffer_client_id + buffer_client_secret
   // from their app at publish.buffer.com/developers/apps, then visits

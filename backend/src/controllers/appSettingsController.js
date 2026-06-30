@@ -3,6 +3,7 @@ const { successResponse } = require('../utils/responseHandler');
 const { logAudit } = require('../utils/auditLogger');
 const svc = require('../services/appSettingsService');
 const storageService = require('../services/storageService');
+const adminSettings = require('../services/adminSettingsService');
 
 // --- Public read endpoints ------------------------------------------------
 
@@ -28,32 +29,43 @@ const publicGetStorage = asyncHandler(async (req, res) => {
 
 // GET /api/app-settings/mobile-version
 // Latest + minimum supported app versions per platform, plus the
-// store URL. The mobile app fetches this on launch — if the
-// installed version is below `minimum`, an update is forced; below
-// `latest`, an optional update prompt is shown. Configured via env
-// vars so a new release can be cut without a DB migration:
-//
-//   MOBILE_IOS_LATEST_VERSION=0.2.0
-//   MOBILE_IOS_MIN_VERSION=0.1.0
-//   MOBILE_IOS_STORE_URL=https://apps.apple.com/app/id…
-//   MOBILE_ANDROID_LATEST_VERSION=0.2.0
-//   MOBILE_ANDROID_MIN_VERSION=0.1.0
-//   MOBILE_ANDROID_STORE_URL=https://play.google.com/store/apps/details?id=com.profirmo.app
+// store URL. The mobile app fetches this on its splash screen — if
+// the installed version is below `latest`, a non-dismissible
+// "Update required" gate fires. Configured live via /admin/settings
+// (Mobile updates group); env vars are honoured as the
+// defaultGetter for each setting so a brand-new install without
+// any admin rows in the DB still works.
 const publicGetMobileVersion = asyncHandler(async (req, res) => {
-  const FALLBACK_IOS_STORE =
-    'https://apps.apple.com/app/profirmo/id0000000000';
-  const FALLBACK_ANDROID_STORE =
-    'https://play.google.com/store/apps/details?id=com.profirmo.app';
+  // Read all six values in parallel — getString returns the saved
+  // admin row when present, or the spec's defaultGetter (the env
+  // fallback) when missing. Empty strings collapse to null so the
+  // mobile client's "no config" branch still triggers cleanly.
+  const [
+    iosLatest,
+    iosMin,
+    iosStore,
+    androidLatest,
+    androidMin,
+    androidStore,
+  ] = await Promise.all([
+    adminSettings.getString('mobile_ios_latest_version'),
+    adminSettings.getString('mobile_ios_min_version'),
+    adminSettings.getString('mobile_ios_store_url'),
+    adminSettings.getString('mobile_android_latest_version'),
+    adminSettings.getString('mobile_android_min_version'),
+    adminSettings.getString('mobile_android_store_url'),
+  ]);
+  const blank = (v) => (v && String(v).trim()) || null;
   return successResponse(res, 200, 'Mobile version config', {
     ios: {
-      latest: process.env.MOBILE_IOS_LATEST_VERSION || null,
-      minimum: process.env.MOBILE_IOS_MIN_VERSION || null,
-      storeUrl: process.env.MOBILE_IOS_STORE_URL || FALLBACK_IOS_STORE,
+      latest: blank(iosLatest),
+      minimum: blank(iosMin),
+      storeUrl: blank(iosStore),
     },
     android: {
-      latest: process.env.MOBILE_ANDROID_LATEST_VERSION || null,
-      minimum: process.env.MOBILE_ANDROID_MIN_VERSION || null,
-      storeUrl: process.env.MOBILE_ANDROID_STORE_URL || FALLBACK_ANDROID_STORE,
+      latest: blank(androidLatest),
+      minimum: blank(androidMin),
+      storeUrl: blank(androidStore),
     },
   });
 });

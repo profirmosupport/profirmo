@@ -56,8 +56,21 @@ export default function RootNavigator() {
 
   const showSplash = loading || !minSplashElapsed || !assetsLoaded;
 
+  // AppUpdateGate is now mounted UNCONDITIONALLY so its
+  // /api/app-settings/mobile-version check starts as soon as React
+  // mounts — during the splash, in parallel with auth-hydrate and
+  // asset-preload. When the gate decides an update is required it
+  // renders a full-screen non-dismissible Modal that overlays both
+  // the splash and the post-splash navigator, so the user sees the
+  // prompt while the brand is still on screen rather than after a
+  // brief flash of the welcome page.
   if (showSplash) {
-    return <SplashView />;
+    return (
+      <View style={{ flex: 1 }}>
+        <SplashView />
+        <AppUpdateGate />
+      </View>
+    );
   }
 
   // Single tab navigator now serves every state — guest, client and
@@ -77,10 +90,7 @@ export default function RootNavigator() {
           <AuthStack />
         )}
       </NavigationContainer>
-      {/* AppUpdateGate fetches the backend's version config on cold
-          start and overlays a force / optional update prompt on top
-          of the entire navigation stack when a newer build is in the
-          store. Mounted outside NavigationContainer so it can't be
+      {/* Mounted outside NavigationContainer so it can't be
           dismissed by a stray router action. */}
       <AppUpdateGate />
     </View>
