@@ -119,27 +119,141 @@ async function callClaude({ system, userMessage, maxTokens = 4096 }) {
   return { text, model, usage: json.usage || null };
 }
 
-// Pull the first ```json …``` block out of a Claude response and parse
-// it. Claude is told to wrap structured output in a fenced block so it
-// survives any chatty preamble.
+// Pull a JSON object out of a Claude response.
+// Claude is told to wrap structured output in a ```json …``` block, but
+// when the output approaches the max_tokens budget the model can be cut
+// off mid-string — leaving us with an *opening* fence and an incomplete
+// body but no closing fence and no closing braces. We try, in order:
+//   1. Closed fenced block (the happy path).
+//   2. Opening fence with no close — parse everything after it.
+//   3. Bare body (no fence) — parse as-is.
+//   4. First balanced { … } object in the text.
+//   5. As a last resort, attempt to close any unclosed strings + braces
+//      and parse the salvaged JSON. Better to recover a partial draft
+//      than to fail the whole AI-Generate flow on a truncated tail.
 function extractJson(text) {
   if (!text) throw new Error('Claude returned empty response.');
+
+  // 1. Fully-fenced block.
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const raw = fenced ? fenced[1] : text;
-  try {
-    return JSON.parse(raw.trim());
-  } catch (err) {
-    // Defensive: try to find the first { … } in the body.
-    const m = raw.match(/\{[\s\S]*\}/);
-    if (m) {
-      try {
-        return JSON.parse(m[0]);
-      } catch {}
-    }
-    throw new Error(
-      `Claude returned non-JSON output. First 300 chars: ${String(text).slice(0, 300)}`
-    );
+  if (fenced) {
+    try {
+      return JSON.parse(fenced[1].trim());
+    } catch {}
   }
+
+  // 2. Opening fence, no closer — parse everything after the fence.
+  const open = text.match(/```(?:json)?\s*([\s\S]*)$/i);
+  const candidate = open ? open[1] : text;
+
+  // 3. Try the candidate body directly.
+  try {
+    return JSON.parse(candidate.trim());
+  } catch {}
+
+  // 4. First balanced object in the candidate.
+  const balanced = matchBalancedObject(candidate);
+  if (balanced) {
+    try {
+      return JSON.parse(balanced);
+    } catch {}
+  }
+
+  // 5. Last-ditch repair: try to close any unterminated string + braces.
+  const repaired = repairTruncatedJson(candidate);
+  if (repaired) {
+    try {
+      return JSON.parse(repaired);
+    } catch {}
+  }
+
+  throw new Error(
+    `Claude returned non-JSON output. First 300 chars: ${String(text).slice(0, 300)}`
+  );
+}
+
+// Walks the string and returns the first { … } object whose braces
+// balance (ignoring braces inside strings). Returns null if no
+// balanced object is found.
+function matchBalancedObject(s) {
+  const start = s.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i];
+    if (inStr) {
+      if (esc) {
+        esc = false;
+      } else if (ch === '\\') {
+        esc = true;
+      } else if (ch === '"') {
+        inStr = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inStr = true;
+    } else if (ch === '{') {
+      depth += 1;
+    } else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return s.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+// Salvage a truncated JSON object by truncating at the last comma we
+// saw at top-level (where the prior field is complete and we're
+// guaranteed not inside a string), then closing the open brace(s).
+// The recovered value will be missing whatever fields came after the
+// truncation point — the AI Blog flow tolerates that (sanitises
+// every field on read).
+function repairTruncatedJson(s) {
+  const start = s.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  let lastSafeEnd = -1; // index of the last `,` seen at depth 1, not inside a string
+  let depthAtSafe = 0;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i];
+    if (inStr) {
+      if (esc) {
+        esc = false;
+      } else if (ch === '\\') {
+        esc = true;
+      } else if (ch === '"') {
+        inStr = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inStr = true;
+    } else if (ch === '{') {
+      depth += 1;
+    } else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return null;
+      } // already balanced — matchBalancedObject would have caught it
+    } else if (ch === ',' && depth === 1) {
+      // A comma at the top object level — a safe place to truncate
+      // because every field-pair before it is complete and we're
+      // guaranteed not inside a string.
+      lastSafeEnd = i;
+      depthAtSafe = depth;
+    }
+  }
+  if (lastSafeEnd < 0) return null;
+  // Truncate strictly BEFORE the comma so the result is a valid
+  // object body. Close enough `}` to balance the depth that was
+  // open at the safe point.
+  const core = s.slice(start, lastSafeEnd);
+  return core + '}'.repeat(depthAtSafe);
 }
 
 // --- 1. Research --------------------------------------------------------
@@ -460,10 +574,15 @@ async function draftPost(pick) {
     '  "readingMinutes": <integer estimate based on ~220 wpm>\n' +
     '}';
 
+  // 16K output budget: a 1400-word body in <p>/<h2>/<li> markup is
+  // ~5K tokens; SEO + OG + tags + JSON wrapper adds another ~1K.
+  // Earlier 8K cap was being hit when Claude wrote on the long end
+  // of the band, producing a truncated tail with no closing fence
+  // and triggering extractJson's "non-JSON output" error.
   const { text } = await callClaude({
     system,
     userMessage,
-    maxTokens: 8000,
+    maxTokens: 16000,
   });
   const draft = extractJson(text);
   // Server-side hardening: sanity-check the fields, fix obvious slugs.

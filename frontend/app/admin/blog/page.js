@@ -73,17 +73,22 @@ export default function AdminBlogPage() {
     setAiResult({
       ok: null,
       message:
-        'Researching trending legal topics, drafting the post, fetching a featured image, saving as draft… this usually takes 30-90 seconds.',
+        'Researching trending legal topics → drafting the post → generating a featured image → assigning category & tags → publishing → sharing to Buffer… usually 45-90 seconds.',
     });
     try {
       const res = await adminAiGeneratePost();
       const post = res && res.post;
+      const parts = [`Published "${(post && post.title) || 'untitled'}".`];
+      if (res.image && res.image.url) parts.push('Featured image attached.');
+      if (res.buffer && Array.isArray(res.buffer.services) && res.buffer.services.length) {
+        parts.push(`Shared to ${res.buffer.services.join(', ')} via Buffer.`);
+      } else if (res.buffer && res.buffer.skipped) {
+        parts.push(`Buffer share skipped (${res.buffer.reason}).`);
+      }
+      parts.push(`Took ${Number(res.elapsedSeconds || 0).toFixed(1)}s.`);
       setAiResult({
         ok: true,
-        message:
-          `Draft created: "${(post && post.title) || 'untitled'}". ` +
-          (res.image && res.image.url ? 'Featured image attached.' : 'No image attached.') +
-          ` Took ${Number(res.elapsedSeconds || 0).toFixed(1)}s.`,
+        message: parts.join(' '),
         postId: post && post.id,
         slug: post && post.slug,
         topic: res.pick && res.pick.topic,
@@ -194,21 +199,22 @@ export default function AdminBlogPage() {
               Refresh
             </Button>
             <Button
-              variant="outline"
+              variant="primary"
               size="sm"
               onClick={runAiGenerate}
               disabled={aiGenerating}
-              title="Research → draft → image → save as draft. Uses Claude + Unsplash."
+              title="Research trending Indian legal news → draft → generate featured image → assign category & tags → publish → share to Buffer (Twitter / Facebook / LinkedIn). End to end in ~60s."
+              className="!bg-orange-500 hover:!bg-orange-600"
             >
               {aiGenerating ? (
                 <>
                   <Loader2 size={15} className="animate-spin" />
-                  AI is writing…
+                  Generating &amp; sharing…
                 </>
               ) : (
                 <>
                   <Sparkles size={15} />
-                  Create with AI
+                  Generate, publish &amp; share
                 </>
               )}
             </Button>
