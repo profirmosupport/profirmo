@@ -128,9 +128,40 @@ async function listChannels() {
   return ((data && data.channels) || []).filter((c) => !c.isDisconnected);
 }
 
-// Build the share text. Different networks have different sweet
-// spots; we keep one body that reads well on LinkedIn/Facebook and
-// trust Buffer to truncate appropriately on Twitter.
+// Twitter hard-caps a post at 280 chars and counts a t.co-shortened
+// URL as 23 chars no matter how long the original is. So our budget
+// for the title + hashtags + spaces is 280 - 23 - 1 (space before
+// URL) = ~256 chars. We keep it well below that to leave room for
+// rich-link previews and accidental UTF-8 quirks.
+const TWITTER_HARD_LIMIT = 280;
+const TWITTER_URL_RESERVED = 24; // 23 for t.co + 1 separator
+const TWITTER_HASHTAG_RESERVED = 24; // ~2 short hashtags
+const TWITTER_TEXT_BUDGET =
+  TWITTER_HARD_LIMIT - TWITTER_URL_RESERVED - TWITTER_HASHTAG_RESERVED;
+
+function buildHashtags(tags, max = 4) {
+  if (!Array.isArray(tags)) return '';
+  return tags
+    .slice(0, max)
+    .map((t) => '#' + String(t).replace(/[^A-Za-z0-9]/g, ''))
+    .filter((t) => t.length > 1)
+    .join(' ');
+}
+
+function truncateAtWord(s, max) {
+  const str = String(s || '');
+  if (str.length <= max) return str;
+  const cut = str.slice(0, max);
+  const lastSpace = cut.lastIndexOf(' ');
+  return (lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).replace(
+    /[.,;:!?\s]+$/,
+    ''
+  ) + '…';
+}
+
+// Build the share text. The shape is identical across LinkedIn,
+// Facebook, and other long-form services (title + excerpt + Read
+// more link + hashtags). Twitter gets a hard-trimmed version below.
 function buildShareText({ title, excerpt, url, tags }) {
   const lines = [String(title || '').trim()];
   const ex = String(excerpt || '').trim();
@@ -142,25 +173,58 @@ function buildShareText({ title, excerpt, url, tags }) {
     lines.push('');
     lines.push(`Read more: ${url}`);
   }
-  if (Array.isArray(tags) && tags.length) {
-    const hashtags = tags
-      .slice(0, 4)
-      .map((t) => '#' + String(t).replace(/[^A-Za-z0-9]/g, ''))
-      .filter((t) => t.length > 1)
-      .join(' ');
-    if (hashtags) {
-      lines.push('');
-      lines.push(hashtags);
-    }
+  const hashtags = buildHashtags(tags);
+  if (hashtags) {
+    lines.push('');
+    lines.push(hashtags);
   }
   return lines.join('\n');
+}
+
+// Twitter / X: 280-char cap. Build a tight headline + URL + 1-2
+// short hashtags. We never include the long excerpt here — it would
+// always overflow.
+function buildTwitterText({ title, url, tags }) {
+  const headline = truncateAtWord(title, TWITTER_TEXT_BUDGET);
+  const hashtags = buildHashtags(tags, 2);
+  // Order matters: Buffer counts the t.co shortener length, not the
+  // raw URL, so we just put the URL inline. Hashtags go last so a
+  // mis-count doesn't bump them off-screen ahead of the link.
+  const parts = [headline, url];
+  if (hashtags) parts.push(hashtags);
+  return parts.join(' ');
+}
+
+// Per-channel text. Each service that has a hard limit or unusual
+// shape gets its own builder; everything else falls through to the
+// "long form" buildShareText.
+function buildTextForService(service, opts) {
+  switch (String(service || '').toLowerCase()) {
+    case 'twitter':
+      return buildTwitterText(opts);
+    default:
+      return buildShareText(opts);
+  }
+}
+
+// Per-channel metadata. Some services require an explicit `type` in
+// PostInputMetaData (Facebook is one — without { type: 'post' } the
+// API rejects with "Facebook posts require a type"). Add more per-
+// service blocks here as new linked channels surface their quirks.
+function buildMetadataForService(service) {
+  switch (String(service || '').toLowerCase()) {
+    case 'facebook':
+      return { facebook: { type: 'post' } };
+    default:
+      return null;
+  }
 }
 
 // Create a single post on one channel via the createPost mutation.
 // Returns the post id on success. Errors out cleanly so the
 // shareBlogPost wrapper can collect partial-success results.
 async function createPostOnChannel(
-  { channelId, text, link, imageUrl },
+  { channelId, service, text, link, imageUrl, metadata },
   { now = true, token }
 ) {
   // Build the asset list. Buffer's CreatePostInput requires an
@@ -175,22 +239,32 @@ async function createPostOnChannel(
       thumbnailUrl: imageUrl || null,
     },
   };
-  const variables = {
-    input: {
-      channelId,
-      schedulingType: 'automatic',
-      mode: now ? 'shareNow' : 'addToQueue',
-      text,
-      assets: [linkAsset],
-      source: 'profirmo-ai-blog',
-      aiAssisted: true,
-    },
+  const input = {
+    channelId,
+    schedulingType: 'automatic',
+    mode: now ? 'shareNow' : 'addToQueue',
+    text,
+    assets: [linkAsset],
+    source: 'profirmo-ai-blog',
+    aiAssisted: true,
   };
+  if (metadata) input.metadata = metadata;
+  const variables = { input };
+  // PostActionPayload is a union — success carries `post { id }`,
+  // every other variant carries a `message` (and some carry a
+  // `code` + `link`). We pull `message` off all of them via a
+  // catch-all interface fragment so we can surface the actual
+  // reason (e.g. "Image must be at least 200x200 for LinkedIn").
   const data = await gqlRequest(
     `mutation ($input: CreatePostInput!) {
        createPost(input: $input) {
          __typename
          ... on PostActionSuccess { post { id } }
+         ... on NotFoundError      { message }
+         ... on UnauthorizedError  { message }
+         ... on UnexpectedError    { message }
+         ... on RestProxyError     { message code link }
+         ... on LimitReachedError  { message }
        }
      }`,
     variables,
@@ -199,9 +273,10 @@ async function createPostOnChannel(
   const res = data && data.createPost;
   if (!res) throw new Error('createPost returned no payload.');
   if (res.__typename !== 'PostActionSuccess' || !res.post) {
-    throw new Error(
-      `createPost rejected (${res.__typename || 'unknown'}).`
-    );
+    const msg =
+      res.message ||
+      `createPost rejected (${res.__typename || 'unknown'}).`;
+    throw new Error(msg);
   }
   return res.post.id;
 }
@@ -230,7 +305,6 @@ async function shareBlogPost(
     return { skipped: true, reason: 'No connected Buffer channels.' };
   }
 
-  const text = buildShareText({ title, excerpt, url, tags });
   const link = {
     url,
     title,
@@ -240,8 +314,22 @@ async function shareBlogPost(
   const results = await Promise.all(
     channels.map(async (ch) => {
       try {
+        const text = buildTextForService(ch.service, {
+          title,
+          excerpt,
+          url,
+          tags,
+        });
+        const metadata = buildMetadataForService(ch.service);
         const postId = await createPostOnChannel(
-          { channelId: ch.id, text, link, imageUrl },
+          {
+            channelId: ch.id,
+            service: ch.service,
+            text,
+            link,
+            imageUrl,
+            metadata,
+          },
           { now, token }
         );
         return { ok: true, channelId: ch.id, service: ch.service, postId };
