@@ -18,6 +18,7 @@ import {
   Cloud,
   Mail,
   Loader2,
+  Share2,
 } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import Card from '@/components/common/Card';
@@ -30,6 +31,10 @@ import {
   testStorageConnection,
   testEmailConnection,
 } from '@/services/adminSettingsService';
+import {
+  startBufferOAuth,
+  listBufferProfiles,
+} from '@/services/bufferAdminService';
 import { invalidateStorageConfig } from '@/services/fileService';
 import { ROLES } from '@/utils/constants';
 
@@ -127,6 +132,97 @@ export default function AdminSettingsPage() {
     }
   }
 
+  // Buffer.com OAuth + profile listing. Connect kicks off the
+  // authorization-code flow: fetches the authorize URL via XHR (so the
+  // bearer token rides along) then redirects the same tab to Buffer.
+  // After Buffer redirects back to /api/buffer/oauth-callback, the
+  // backend stores the access_token and 302s here with
+  // ?buffer=connected or ?buffer=error&detail=…
+  const [bufferStatusMsg, setBufferStatusMsg] = useState(null); // { ok, message }
+  const [bufferConnecting, setBufferConnecting] = useState(false);
+  const [bufferListing, setBufferListing] = useState(false);
+  const [bufferProfiles, setBufferProfiles] = useState(null);
+  // Parse the callback's status flag from the URL on mount.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const flag = params.get('buffer');
+    if (!flag) return;
+    if (flag === 'connected') {
+      setBufferStatusMsg({
+        ok: true,
+        message:
+          'Buffer connected. Access token saved — every new AI blog post will be auto-shared to your linked profiles.',
+      });
+    } else if (flag === 'error') {
+      setBufferStatusMsg({
+        ok: false,
+        message:
+          'Buffer connect failed: ' +
+          (params.get('detail') || 'unknown error'),
+      });
+    }
+    // Strip the params so a reload doesn't re-show the banner.
+    const url = new URL(window.location.href);
+    url.searchParams.delete('buffer');
+    url.searchParams.delete('detail');
+    window.history.replaceState({}, '', url.toString());
+  }, []);
+
+  async function runBufferConnect() {
+    if (bufferConnecting) return;
+    setBufferConnecting(true);
+    setBufferStatusMsg(null);
+    try {
+      const url = await startBufferOAuth();
+      if (!url) {
+        setBufferStatusMsg({
+          ok: false,
+          message: 'Backend did not return an authorize URL.',
+        });
+        return;
+      }
+      // Same-tab navigation. The browser cookies + session carry
+      // through to Buffer's authorize page, and the callback lands
+      // back on this same page.
+      window.location.href = url;
+    } catch (err) {
+      setBufferStatusMsg({
+        ok: false,
+        message: err?.message || 'Failed to start Buffer OAuth.',
+      });
+      setBufferConnecting(false);
+    }
+  }
+
+  async function runBufferListProfiles() {
+    if (bufferListing) return;
+    setBufferListing(true);
+    setBufferProfiles(null);
+    setBufferStatusMsg(null);
+    try {
+      const res = await listBufferProfiles();
+      const list = (res && res.profiles) || [];
+      setBufferProfiles(list);
+      setBufferStatusMsg({
+        ok: true,
+        message:
+          list.length === 0
+            ? 'Connected, but no profiles are linked in your Buffer dashboard yet.'
+            : `Connected. ${list.length} profile(s) will receive the share.`,
+      });
+    } catch (err) {
+      setBufferStatusMsg({
+        ok: false,
+        message:
+          err?.message ||
+          'Failed to list Buffer profiles. Click "Connect Buffer" to refresh the token.',
+      });
+    } finally {
+      setBufferListing(false);
+    }
+  }
+
   // SMTP connection test — sends a one-off "Profirmo SMTP test" through
   // the live admin-configured transport. Recipient defaults to the
   // admin's own email (resolved server-side); admin can override via
@@ -211,6 +307,7 @@ export default function AdminSettingsPage() {
             const collapsed = groupCollapsed(groupName);
             const isStorageGroup = groupName === 'Storage / AWS S3';
             const isSmtpGroup = groupName === 'SMTP (outgoing mail)';
+            const isAiGroup = groupName === 'AI / Anthropic';
             return (
               <section key={groupName} className="space-y-3">
                 <button
@@ -227,6 +324,7 @@ export default function AdminSettingsPage() {
                   <span className="flex items-center gap-2">
                     {isStorageGroup && <Cloud size={14} className="text-amber-600" />}
                     {isSmtpGroup && <Mail size={14} className="text-amber-600" />}
+                    {isAiGroup && <Share2 size={14} className="text-amber-600" />}
                     <span className="text-xs font-bold uppercase tracking-widest text-slate-700">
                       {groupName}
                     </span>
@@ -351,6 +449,101 @@ export default function AdminSettingsPage() {
                         )}
                         <span>{emailTestMsg.message}</span>
                       </div>
+                    )}
+                  </Card>
+                )}
+                {!collapsed && isAiGroup && (
+                  <Card>
+                    <div className="flex flex-col gap-3">
+                      <div className="text-xs text-slate-600">
+                        <p className="font-semibold text-slate-800">
+                          Connect to Buffer
+                        </p>
+                        <p>
+                          Save your Buffer OAuth Client ID + Client Secret
+                          below, then click <strong>Connect Buffer</strong>.
+                          You&apos;ll be sent to Buffer to approve access, then
+                          redirected back here with the access token saved
+                          automatically. After that, every AI-generated post
+                          (cron + the &ldquo;Generate with AI&rdquo; button)
+                          auto-shares to every social profile linked in your
+                          Buffer dashboard.
+                        </p>
+                        <p className="mt-2">
+                          The redirect URI to register in your Buffer app is:
+                          <code className="ml-1 rounded bg-slate-100 px-1">
+                            https://proapi.profirmo.com/api/buffer/oauth-callback
+                          </code>
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          onClick={runBufferConnect}
+                          disabled={bufferConnecting}
+                        >
+                          {bufferConnecting ? (
+                            <>
+                              <Loader2 size={14} className="animate-spin" />
+                              Redirecting…
+                            </>
+                          ) : (
+                            <>
+                              <Share2 size={14} />
+                              Connect Buffer
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={runBufferListProfiles}
+                          disabled={bufferListing}
+                        >
+                          {bufferListing ? (
+                            <>
+                              <Loader2 size={14} className="animate-spin" />
+                              Loading…
+                            </>
+                          ) : (
+                            <>List linked profiles</>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                    {bufferStatusMsg && (
+                      <div
+                        className={`mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs ${
+                          bufferStatusMsg.ok
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                            : 'border-red-200 bg-red-50 text-red-700'
+                        }`}
+                      >
+                        {bufferStatusMsg.ok ? (
+                          <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+                        ) : (
+                          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                        )}
+                        <span>{bufferStatusMsg.message}</span>
+                      </div>
+                    )}
+                    {bufferProfiles && bufferProfiles.length > 0 && (
+                      <ul className="mt-3 space-y-1 text-xs">
+                        {bufferProfiles.map((p) => (
+                          <li
+                            key={p.id}
+                            className="flex items-center gap-2 rounded bg-slate-50 px-2 py-1"
+                          >
+                            <span className="font-mono text-[10px] text-slate-500">
+                              {p.service}
+                            </span>
+                            <span className="font-medium text-slate-700">
+                              {p.formattedUsername || p.serviceUsername || p.id}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
                     )}
                   </Card>
                 )}
