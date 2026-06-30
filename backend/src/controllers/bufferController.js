@@ -89,27 +89,48 @@ function getRedirectUri(req) {
   return `${proto}://${host}/api/buffer/oauth-callback`;
 }
 
-// GET /api/admin/buffer/oauth-start
-// Builds the Buffer authorize URL and 302s the admin to it.
+// GET /api/buffer/connect — PUBLIC entry point.
+//
+// We deliberately keep this unauthenticated so the admin can hit it
+// as a plain top-level browser navigation (e.g. clicking a link on
+// /admin/settings or pasting the URL into a new tab) — browsers do
+// not attach our `Authorization` header on top-level GETs, so an
+// auth-gated start endpoint is unusable from the address bar.
+//
+// Security model:
+//   - The endpoint only redirects to Buffer's authorize page using
+//     the SAVED client_id (no user-controlled inputs).
+//   - The callback verifies the HMAC state token before saving any
+//     access_token.
+//   - The Buffer redirect_uri is registered server-side in the
+//     Buffer app, so an attacker can't redirect the code anywhere
+//     but back to us.
+//   - The platform_admin role gate kicks back in for the *use* of
+//     the saved token (sharing posts), so a malicious connect would
+//     at worst replace the saved token — easily detected via the
+//     "List linked profiles" panel and recoverable by reconnecting.
 const oauthStart = asyncHandler(async (req, res) => {
   const clientId = await adminSettings.getString('buffer_client_id');
   if (!clientId) {
-    throw {
-      statusCode: 422,
-      message:
-        'Buffer Client ID not configured. Set it at /admin/settings → AI / Anthropic → Buffer OAuth Client ID first.',
-    };
+    return res.redirect(
+      302,
+      `${frontendSettingsUrl()}?buffer=error&detail=${encodeURIComponent(
+        'Buffer Client ID not configured. Set it at /admin/settings → AI / Anthropic.'
+      )}`
+    );
   }
   const redirectUri = getRedirectUri(req);
+  // State is anonymous-but-signed: ties the eventual callback to a
+  // recent /connect hit on this server so a stale OAuth flow can't
+  // complete weeks later.
   const state = signState(req.user && req.user.id);
   const url = bufferService.buildAuthorizeUrl({
     clientId,
     redirectUri,
     state,
   });
-  // Some clients call this as a fetch() and expect JSON. Sniff the
-  // Accept header: if the caller wants JSON, return the URL; else
-  // do a normal 302 so a plain link works too.
+  // Honour Accept: application/json for callers who want the URL
+  // (kept for backwards compat with the XHR-based admin button).
   if ((req.get('accept') || '').includes('application/json')) {
     return successResponse(res, 200, 'Buffer authorize URL', {
       authorizeUrl: url,
@@ -118,6 +139,11 @@ const oauthStart = asyncHandler(async (req, res) => {
   }
   return res.redirect(302, url);
 });
+
+function frontendSettingsUrl() {
+  const base = (env && env.frontendUrl) || 'https://profirmo.com';
+  return `${base.replace(/\/$/, '')}/admin/settings`;
+}
 
 // GET /api/admin/buffer/oauth-callback?code=…&state=…
 // Exchanges the code for an access token and saves it. Mounted on

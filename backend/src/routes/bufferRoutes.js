@@ -13,6 +13,10 @@ const buffer = require('../controllers/bufferController');
 
 const router = express.Router();
 
+// PUBLIC: connect entry point. Top-level browser navigation works
+// here because no auth header is required. See bufferController.js
+// for the security model (signed state on the callback).
+router.get('/connect', buffer.oauthStart);
 router.get('/oauth-callback', buffer.oauthCallback);
 
 module.exports = router;

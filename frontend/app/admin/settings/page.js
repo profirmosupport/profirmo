@@ -31,10 +31,7 @@ import {
   testStorageConnection,
   testEmailConnection,
 } from '@/services/adminSettingsService';
-import {
-  startBufferOAuth,
-  listBufferProfiles,
-} from '@/services/bufferAdminService';
+import { listBufferProfiles } from '@/services/bufferAdminService';
 import { invalidateStorageConfig } from '@/services/fileService';
 import { ROLES } from '@/utils/constants';
 
@@ -169,30 +166,22 @@ export default function AdminSettingsPage() {
     window.history.replaceState({}, '', url.toString());
   }, []);
 
-  async function runBufferConnect() {
-    if (bufferConnecting) return;
+  function runBufferConnect() {
+    // Send the browser straight at the PUBLIC connect endpoint —
+    // that path does the redirect to Buffer's authorize page on the
+    // server side. We deliberately avoid an XHR here so the browser's
+    // address bar carries through every redirect and the eventual
+    // callback lands on us with cookies intact (no auth-header
+    // gymnastics with cross-site 302s).
+    if (typeof window === 'undefined') return;
     setBufferConnecting(true);
     setBufferStatusMsg(null);
-    try {
-      const url = await startBufferOAuth();
-      if (!url) {
-        setBufferStatusMsg({
-          ok: false,
-          message: 'Backend did not return an authorize URL.',
-        });
-        return;
-      }
-      // Same-tab navigation. The browser cookies + session carry
-      // through to Buffer's authorize page, and the callback lands
-      // back on this same page.
-      window.location.href = url;
-    } catch (err) {
-      setBufferStatusMsg({
-        ok: false,
-        message: err?.message || 'Failed to start Buffer OAuth.',
-      });
-      setBufferConnecting(false);
-    }
+    const apiBase =
+      window.location.hostname === 'profirmo.com' ||
+      window.location.hostname === 'www.profirmo.com'
+        ? 'https://proapi.profirmo.com'
+        : process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+    window.location.href = `${apiBase}/api/buffer/connect`;
   }
 
   async function runBufferListProfiles() {
