@@ -122,6 +122,33 @@ function buildPromptFromPost({ title, excerpt }) {
   return tags.join(', ');
 }
 
+// Same photographic-style tail as buildPromptFromPost, but with the
+// SCENE line replaced by whatever Claude wrote for this specific
+// article. Keeps the visual identity consistent (editorial photo,
+// 16:9, warm light, no text) while letting the SUBJECT change per
+// post — the diffusion model reads the front-loaded scene line and
+// renders THAT, not a generic law-book fallback.
+function buildPromptWithCustomScene(scene) {
+  const tags = [
+    scene,
+    'editorial photography',
+    'documentary style',
+    'cinematic composition',
+    '16:9 wide framing',
+    'shallow depth of field',
+    'soft natural lighting',
+    'warm color grading',
+    'professional newsroom aesthetic',
+    'high detail',
+    'realistic photograph',
+    'sharp focus',
+    '4k',
+    'no text in image',
+    'no watermarks',
+  ];
+  return tags.join(', ');
+}
+
 // Negative prompt — Pollinations passes this as a separate URL
 // param. Suppress text rendering hard (we add our own afterwards),
 // plus the usual diffusion failure modes.
@@ -341,11 +368,18 @@ function extForMime(mime) {
  * @param {object} args
  * @param {string} args.title    — blog post title (required)
  * @param {string} [args.excerpt] — short summary for richer prompts
+ * @param {string} [args.customPrompt] — bespoke scene description written
+ *                                       by Claude for THIS post. When
+ *                                       provided it wins over the
+ *                                       deterministic scene-anchor
+ *                                       builder; we still append the
+ *                                       editorial-style tags so the
+ *                                       aesthetic stays consistent.
  * @param {number} [args.width]   — defaults to 1280
  * @param {number} [args.height]  — defaults to 720
  * @returns {Promise<{url, prompt, mimeType, sizeBytes}>}
  */
-async function generateAndStoreBlogImage({ title, excerpt, width, height } = {}) {
+async function generateAndStoreBlogImage({ title, excerpt, customPrompt, width, height } = {}) {
   if (!title) {
     throw {
       statusCode: 422,
@@ -354,7 +388,10 @@ async function generateAndStoreBlogImage({ title, excerpt, width, height } = {})
   }
   const w = Number(width) || DEFAULT_WIDTH;
   const h = Number(height) || DEFAULT_HEIGHT;
-  const prompt = buildPromptFromPost({ title, excerpt });
+  const prompt =
+    customPrompt && String(customPrompt).trim()
+      ? buildPromptWithCustomScene(String(customPrompt).trim())
+      : buildPromptFromPost({ title, excerpt });
   // Encode the prompt as a URL path segment. encodeURIComponent
   // handles slashes, newlines, quotes and so on; we also strip any
   // leading slash so the path doesn't accidentally double-segment.

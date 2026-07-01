@@ -50,17 +50,13 @@ const ANTHROPIC_VERSION = '2023-06-01';
 // human writing a post under the same name is intentionally fine.
 const AI_AUTHOR_NAME = 'Advocate Rajiv Shukla';
 
-// Vetted legal-news RSS feeds. Limited to Indian sources matching the
-// platform's audience. Add more here as the editorial team validates
-// them — every URL is fetched on every run so keep the list lean.
+// Source: LiveLaw only. The editor asked us to focus on livelaw.in for
+// the daily topic — every candidate for the daily post comes from
+// this single Indian legal-news feed. Bar and Bench + The Hindu
+// National were dropped so a single site's editorial voice sets the
+// beat.
 const FEEDS = [
-  // Live legal news (Supreme Court, High Courts, statutory updates)
   { name: 'LiveLaw', url: 'https://www.livelaw.in/google_feeds.xml' },
-  { name: 'Bar and Bench', url: 'https://www.barandbench.com/stories.rss' },
-  // The Hindu's "National" feed is broader than legal but consistently
-  // surfaces major statute / Supreme Court stories, so we keep it as
-  // the third source — Claude scores topics for legal/tax relevance.
-  { name: 'The Hindu Legal', url: 'https://www.thehindu.com/news/national/feeder/default.rss' },
 ];
 
 // Soft cap on how many trending items we feed to Claude for scoring.
@@ -371,6 +367,48 @@ async function fetchTrendingTopics() {
 
 // --- 2. Pick best topic -------------------------------------------------
 
+// Pull the last N blog titles + slugs off the platform so the AI
+// pipeline can avoid picking a topic (or writing under a title) that
+// duplicates something we've already covered. Newest first.
+async function loadRecentTitles(limit = 40) {
+  const rows = await BlogPost.findAll({
+    order: [['createdAt', 'DESC']],
+    limit,
+    attributes: ['title', 'slug'],
+  });
+  return rows.map((r) => ({ title: r.title, slug: r.slug }));
+}
+
+// Does this draft duplicate an existing post? Match on slug exact
+// (the platform enforces slug uniqueness anyway) OR title compared
+// case-insensitively after punctuation strip. Returns the colliding
+// row's { title, slug } on hit, null otherwise.
+async function findTitleCollision(draft) {
+  const draftSlug = normaliseSlug(draft.slug || draft.title);
+  const draftTitleKey = titleMatchKey(draft.title);
+  const rows = await BlogPost.findAll({
+    attributes: ['title', 'slug'],
+  });
+  for (const r of rows) {
+    if (r.slug === draftSlug) return { title: r.title, slug: r.slug };
+    if (titleMatchKey(r.title) === draftTitleKey) {
+      return { title: r.title, slug: r.slug };
+    }
+  }
+  return null;
+}
+
+// Normalise a title for fuzzy compare: lowercase, strip punctuation,
+// collapse whitespace. Not a full similarity metric — just enough to
+// catch "The X judgment" vs "the-x judgment!" kind of collisions.
+function titleMatchKey(t) {
+  return String(t || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 async function pickBestTopic(topics) {
   if (!Array.isArray(topics) || topics.length === 0) {
     throw {
@@ -386,6 +424,7 @@ async function pickBestTopic(topics) {
     order: [['sortOrder', 'ASC'], ['name', 'ASC']],
     attributes: ['id', 'name', 'slug', 'description'],
   });
+  const recentTitles = await loadRecentTitles(40);
   const categoryBlock = existing.length
     ? existing
         .map(
@@ -402,16 +441,23 @@ async function pickBestTopic(topics) {
     .join('\n\n');
   const system =
     'You are the editor-in-chief of Profirmo, a marketplace + practice-management platform for Indian legal and tax professionals (advocates, chartered accountants, company secretaries, tax consultants) and their clients. Your job is to pick the single best topic for tomorrow\'s blog post from the candidate list below.';
+  const alreadyPostedBlock = recentTitles.length
+    ? recentTitles.map((t, i) => `${i + 1}. ${t.title}`).join('\n')
+    : '(none)';
   const userMessage =
-    'Candidate stories (today\'s legal headlines from Indian sources):\n\n' +
+    'Candidate stories from LiveLaw:\n\n' +
     numbered +
     '\n\nEXISTING BLOG CATEGORIES (use one of these if a good fit exists; otherwise propose a new one):\n' +
     categoryBlock +
+    '\n\nPOSTS WE ALREADY PUBLISHED (do NOT pick a candidate that overlaps with any of these — same case, same statute, same angle):\n' +
+    alreadyPostedBlock +
     '\n\nPick ONE topic that:\n' +
     '- is timely and substantive (not a fluff piece)\n' +
     '- helps an Indian legal/tax professional explain a development to their client OR helps a client understand a legal/tax change\n' +
     '- is broad enough to write a 1000-1400-word piece on\n' +
     '- avoids overtly partisan / political angles\n' +
+    '- does NOT duplicate any of the published posts above (skip candidates that would\n' +
+    '  produce a near-identical title or cover the same case/statute we already covered)\n' +
     '\nReturn STRICT JSON (wrapped in ```json fences) with this exact shape:\n' +
     '{\n' +
     '  "index": <1-based index of the pick from the list above>,\n' +
@@ -544,13 +590,32 @@ async function resolveTagIds(tagInputs, { logger = console } = {}) {
 
 // --- 3. Draft full post --------------------------------------------------
 
-async function draftPost(pick) {
+async function draftPost(pick, { avoidTitles = [] } = {}) {
+  // Voice guide: warm, plain-English, first-person-plural, not a
+  // dry law-firm bulletin. Claude tends to slip into stiff Legal
+  // Prose by default — the guide explicitly discourages that.
   const system =
-    'You are a senior legal writer for Profirmo. Voice: clear, practical, non-sensational. ' +
-    'Audience: Indian legal & tax professionals + their clients. ' +
-    'Always: cite the specific Act / section / case number when relevant; never invent facts. ' +
-    'House style: short paragraphs (3-4 sentences), descriptive H2s, no clickbait. ' +
-    'Length: 1000-1400 words.';
+    'You are a legal writer for Profirmo — an Indian legal/tax marketplace. ' +
+    'Voice: warm, plain-English, conversational — like a friendly senior colleague ' +
+    'explaining a judgment over coffee. Not a law-firm bulletin. Not a press release.\n\n' +
+    'RULES:\n' +
+    '- Address the reader as "you" throughout. Use "we" for the profession/platform.\n' +
+    '- Open with a real-world hook (a 2-3 sentence scenario or a striking sentence). ' +
+    'Never open with "In a recent judgment…" or "The Court held…".\n' +
+    '- Short sentences. Everyday words. When a legal term is unavoidable, define it ' +
+    'in the same paragraph in plain English.\n' +
+    '- Cite the specific Act / section / case name inline where relevant — but never ' +
+    'invent facts. If the source is thin, keep the article tighter.\n' +
+    '- Use concrete Indian examples ("₹15,000 rent", "a Bengaluru startup", "a Class II ' +
+    'employee") rather than abstract legal hypotheticals.\n' +
+    '- 3-5 H2 sections. Descriptive H2s (not "Introduction", "Conclusion"). Bullet lists ' +
+    'where they help; not everywhere.\n' +
+    '- End with a short, human takeaway paragraph — what should the reader actually DO.\n' +
+    '- Length: 1000-1400 words. Never pad.';
+
+  const avoidBlock = Array.isArray(avoidTitles) && avoidTitles.length
+    ? avoidTitles.map((t, i) => `${i + 1}. ${t}`).join('\n')
+    : '(none)';
 
   const userMessage =
     'Write a blog post on this topic.\n\n' +
@@ -560,12 +625,16 @@ async function draftPost(pick) {
     `PRIMARY AUDIENCE: ${pick.primaryAudience || 'both'}\n` +
     `SOURCE STORY (for context, do NOT just rehash): ${pick.source && pick.source.title}\n` +
     `SOURCE URL: ${pick.source && pick.source.link}\n\n` +
-    'Return STRICT JSON (wrapped in ```json fences) with this exact shape:\n' +
+    'TITLES WE HAVE ALREADY PUBLISHED — your title MUST NOT match or read as a ' +
+    'near-paraphrase of any of these. Pick a genuinely fresh phrasing/angle:\n' +
+    avoidBlock +
+    '\n\nReturn STRICT JSON (wrapped in ```json fences) with this exact shape:\n' +
     '{\n' +
-    '  "title": "<55-70 chars, no clickbait, no all-caps>",\n' +
+    '  "title": "<55-70 chars. Human, hook-y, not clickbait. NEVER duplicates any of the already-published titles above. Prefer a specific noun or scenario over a generic label.>",\n' +
     '  "slug": "<kebab-case, ASCII, max 90 chars, no trailing dash>",\n' +
-    '  "excerpt": "<140-220 char summary for listing cards + meta-description fallback>",\n' +
-    '  "contentHtml": "<full body. Plain semantic HTML only: <p>, <h2>, <h3>, <ul><li>, <ol><li>, <blockquote>, <strong>, <em>, <a href=\\\"...\\\">. No <script>, <style>, no inline event handlers. Open with a 1-2 paragraph hook, then 3-5 H2 sections, end with a short takeaway. Cite Acts/sections inline.>",\n' +
+    '  "excerpt": "<140-220 char summary. Sounds like a person, not a law journal. First-person-plural where natural (\'here\'s what changes for you\').>",\n' +
+    '  "contentHtml": "<full body in plain semantic HTML: <p>, <h2>, <h3>, <ul><li>, <ol><li>, <blockquote>, <strong>, <em>, <a href=\\\"...\\\">. No <script>, <style>, no inline event handlers. Follow the voice rules in the system prompt.>",\n' +
+    '  "imagePrompt": "<A 1-2 sentence VISUAL scene description for the featured photo. Concrete Indian imagery relevant to THIS post specifically (not generic law-book stock). Format as a photo-style prompt: subject, setting, lighting, mood. Example: \'A young woman consulting an advocate at a wooden desk in a Kolkata chambers, papers spread out, warm afternoon window light, quiet mood.\'>",\n' +
     '  "seoTitle": "<<= 65 chars, includes the primary keyword naturally>",\n' +
     '  "seoDescription": "<<= 160 chars, distinct from excerpt, action-oriented>",\n' +
     '  "ogTitle": "<<= 70 chars, can mirror seoTitle>",\n' +
@@ -600,6 +669,11 @@ async function draftPost(pick) {
         .filter(Boolean)
         .slice(0, 6)
     : [];
+  // Cap the image prompt at a length Pollinations can encode into a
+  // URL path comfortably (their server truncates around 2000 chars
+  // anyway). Empty is fine — attachFeaturedImage falls back to the
+  // deterministic scene anchor when imagePrompt is missing.
+  draft.imagePrompt = String(draft.imagePrompt || '').trim().slice(0, 500);
   draft.readingMinutes = Math.max(
     1,
     Math.min(30, Number(draft.readingMinutes) || estimateReadingMinutes(draft.contentHtml))
@@ -638,6 +712,11 @@ async function attachFeaturedImage(draft) {
     const gen = await pollinationsImageService.generateAndStoreBlogImage({
       title: draft.title,
       excerpt: draft.excerpt,
+      // Claude writes a bespoke visual-scene description per article
+      // in the draftPost JSON. When present it wins over the
+      // deterministic scene-anchor keyword map; when absent the
+      // service falls back to its default builder.
+      customPrompt: draft.imagePrompt || null,
     });
     return { url: gen.url, attribution: null, source: 'pollinations' };
   } catch (err) {
@@ -747,7 +826,30 @@ async function generateBlogPostDraft({ authorUserId = null, logger = console } =
   );
 
   logger.log('[aiBlog] step 3: drafting post via Claude…');
-  const draft = await draftPost(pick);
+  const avoidTitles = (await loadRecentTitles(40)).map((r) => r.title);
+  // First draft. If Claude accidentally hands back a title or slug
+  // that collides with a live post, we re-prompt once with a
+  // stronger "avoid these" list. Rare but happens when the news
+  // cycle repeats a similar Supreme Court angle two days running.
+  let draft = await draftPost(pick, { avoidTitles });
+  const collision = await findTitleCollision(draft);
+  if (collision) {
+    logger.warn(
+      `[aiBlog] step 3 collision — title/slug matches "${collision.title}" (${collision.slug}); retrying draft with stronger avoid list.`
+    );
+    draft = await draftPost(pick, {
+      avoidTitles: [collision.title, ...avoidTitles],
+    });
+    const stillColliding = await findTitleCollision(draft);
+    if (stillColliding) {
+      // Give up on retry — mutate the title with a differentiator so
+      // the post still ships. ensureUniqueSlug will handle the slug.
+      draft.title = `${draft.title} (fresh take)`.slice(0, 250);
+      logger.warn(
+        `[aiBlog] step 3 double-collision — appending " (fresh take)" to title to force uniqueness.`
+      );
+    }
+  }
   logger.log(
     `[aiBlog] step 3 done — title="${draft.title}", slug=${draft.slug}, ~${draft.readingMinutes}min read`
   );
