@@ -14,6 +14,8 @@ import {
   RefreshCw,
   ChevronLeft,
   ChevronRight,
+  X,
+  Filter,
 } from 'lucide-react';
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
@@ -23,6 +25,7 @@ import EmptyState from '@/components/common/EmptyState';
 import {
   listPosts,
   listCategories,
+  listTags,
 } from '@/services/blogService';
 
 function BlogPageInner() {
@@ -36,6 +39,7 @@ function BlogPageInner() {
   const [posts, setPosts] = useState([]);
   const [meta, setMeta] = useState(null);
   const [categories, setCategories] = useState([]);
+  const [tags, setTags] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchInput, setSearchInput] = useState(search);
@@ -44,7 +48,7 @@ function BlogPageInner() {
     setLoading(true);
     setError('');
     try {
-      const [{ items, meta: m }, cats] = await Promise.all([
+      const [{ items, meta: m }, cats, tgs] = await Promise.all([
         listPosts({
           page,
           limit: 12,
@@ -53,10 +57,15 @@ function BlogPageInner() {
           search: search || undefined,
         }),
         listCategories(),
+        // Tags let us surface the tag NAME in the active-filter chip
+        // when the URL only carries the slug (e.g. from a per-post
+        // "#tagname" link). Cheap request, cached by the browser.
+        listTags(),
       ]);
       setPosts(items);
       setMeta(m);
       setCategories(cats);
+      setTags(tgs);
     } catch (err) {
       setError(err.message || 'Failed to load blog.');
     } finally {
@@ -87,6 +96,20 @@ function BlogPageInner() {
   const totalPages = (meta && meta.totalPages) || 1;
   const featured = posts[0];
   const rest = posts.slice(1);
+
+  // Resolve the readable label for each active filter so the chip
+  // reads "Family and Matrimonial Law" instead of the raw slug.
+  const activeCategory = categorySlug
+    ? categories.find((c) => c.slug === categorySlug)
+    : null;
+  const activeTag = tagSlug ? tags.find((t) => t.slug === tagSlug) : null;
+  // Prettify a slug when we can't resolve it via the lookup list
+  // (e.g. deleted tag, first paint before the tags list loads).
+  const prettifySlug = (s) =>
+    String(s || '')
+      .replace(/-+/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  const hasActiveFilter = Boolean(search || categorySlug || tagSlug);
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
@@ -170,6 +193,66 @@ function BlogPageInner() {
         </section>
 
         <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-12 lg:px-8">
+          {hasActiveFilter && (
+            <div className="mb-6 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2.5">
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-800">
+                <Filter size={13} />
+                Filtered by
+              </span>
+              {search && (
+                <Link
+                  href={buildHref({ search: undefined, page: 1 })}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50"
+                  aria-label={`Remove search filter: ${search}`}
+                >
+                  <span className="text-slate-400">Search:</span>
+                  <span className="font-semibold">&ldquo;{search}&rdquo;</span>
+                  <X size={12} className="text-slate-500" />
+                </Link>
+              )}
+              {categorySlug && (
+                <Link
+                  href={buildHref({ categorySlug: undefined, page: 1 })}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50"
+                  aria-label={`Remove category filter: ${activeCategory ? activeCategory.name : categorySlug}`}
+                >
+                  <span className="text-slate-400">Category:</span>
+                  <span className="font-semibold">
+                    {activeCategory ? activeCategory.name : prettifySlug(categorySlug)}
+                  </span>
+                  <X size={12} className="text-slate-500" />
+                </Link>
+              )}
+              {tagSlug && (
+                <Link
+                  href={buildHref({ tagSlug: undefined, page: 1 })}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50"
+                  aria-label={`Remove tag filter: ${activeTag ? activeTag.name : tagSlug}`}
+                >
+                  <span className="text-slate-400">Tag:</span>
+                  <span className="font-semibold">
+                    #{activeTag ? activeTag.name : prettifySlug(tagSlug)}
+                  </span>
+                  <X size={12} className="text-slate-500" />
+                </Link>
+              )}
+              <div className="ms-auto flex items-center gap-2">
+                {meta && typeof meta.total === 'number' && (
+                  <span className="text-xs text-slate-600">
+                    {meta.total} {meta.total === 1 ? 'post' : 'posts'}
+                  </span>
+                )}
+                <Link
+                  href="/blog"
+                  className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white transition hover:bg-slate-800"
+                  onClick={() => setSearchInput('')}
+                >
+                  <X size={12} />
+                  Clear all filters
+                </Link>
+              </div>
+            </div>
+          )}
           {error && (
             <div className="mb-6 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
               <AlertTriangle size={16} className="mt-0.5 shrink-0" />
