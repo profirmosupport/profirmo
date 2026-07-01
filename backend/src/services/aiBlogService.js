@@ -912,8 +912,12 @@ async function generateBlogPostDraft({ authorUserId = null, logger = console } =
     if (bufferResult && bufferResult.skipped) {
       logger.log(`[aiBlog] step 6 skipped — ${bufferResult.reason}`);
     } else {
+      const totalTargeted =
+        (bufferResult.channelIds || []).length +
+        (bufferResult.failures || []).length;
+      const services = (bufferResult.services || []).join(', ') || '—';
       logger.log(
-        `[aiBlog] step 6 done — shared to ${bufferResult.posted}/${bufferResult.profileIds.length} Buffer profile(s)`
+        `[aiBlog] step 6 done — shared ${bufferResult.posted}/${totalTargeted} channel(s): ${services}`
       );
     }
   } catch (err) {
