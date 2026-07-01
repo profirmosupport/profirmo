@@ -64,24 +64,30 @@ async function aiBlogGenerateHandler(payload = {}) {
     );
   }
 
-  // If a previous run already produced a draft today, skip — we don't
-  // want the cron to spam the admin queue when the worker is laggy and
-  // catches up on a backlog of overdue runs.
+  // Skip guard: only suppress a run when THIS cron ran recently —
+  // NOT when a human clicked "Generate with AI" during the day.
+  // We look at the jobs table for another completed
+  // ai-blog-generate job in the last 22h (a bit under 24h so a
+  // clock-skewed run doesn't push tomorrow off-schedule). Manual
+  // /admin/blog runs never touch the jobs table, so they no longer
+  // gate the cron.
   if (!payload.force) {
-    const BlogPost = require('../models/BlogPost');
-    const { Op } = require('sequelize');
-    const { AI_AUTHOR_NAME } = aiBlogService;
-    const cutoff = new Date(Date.now() - 18 * 60 * 60 * 1000); // 18h ago
-    const recent = await BlogPost.findOne({
-      where: {
-        authorName: AI_AUTHOR_NAME,
-        createdAt: { [Op.gte]: cutoff },
-      },
-      order: [['createdAt', 'DESC']],
-    });
+    const sequelize = require('../config/database');
+    const [[recent]] = await sequelize.query(
+      `SELECT id, runAt FROM jobs
+       WHERE type = 'ai-blog-generate'
+         AND status = 'completed'
+         AND runAt >= DATE_SUB(NOW(), INTERVAL 22 HOUR)
+         AND id <> :selfId
+       ORDER BY runAt DESC LIMIT 1`,
+      {
+        replacements: { selfId: payload.__jobId || '' },
+        raw: true,
+      }
+    );
     if (recent) {
       console.log(
-        `[Worker] ai-blog-generate: a post from the last 18h already exists (${recent.id}) — skipping this run.`
+        `[Worker] ai-blog-generate: previous run at ${recent.runAt} already completed within 22h — skipping to avoid a double-post from a backlog catch-up.`
       );
       return;
     }
