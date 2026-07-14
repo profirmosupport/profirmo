@@ -8,7 +8,7 @@
 
 import { useState } from 'react';
 import { X, Send, Loader2 } from 'lucide-react';
-import { API_BASE_URL } from '@/utils/constants';
+import { getApiBaseUrl } from '@/services/api';
 
 export default function LeadGenFloaterForm({ source, onClose, onSubmitted }) {
   const [busy, setBusy] = useState(false);
@@ -49,7 +49,7 @@ export default function LeadGenFloaterForm({ source, onClose, onSubmitted }) {
     setError('');
     setBusy(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/leads`, {
+      const res = await fetch(`${getApiBaseUrl()}/api/leads`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

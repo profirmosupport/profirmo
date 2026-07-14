@@ -10,6 +10,7 @@ import Button from '@/components/common/Button';
 import EmptyState from '@/components/common/EmptyState';
 import ProfessionalProfileHeader from '@/components/professionals/ProfessionalProfileHeader';
 import ProfessionalServices from '@/components/professionals/ProfessionalServices';
+import ProfessionalAvailability from '@/components/professionals/ProfessionalAvailability';
 import ProfessionalReviews from '@/components/professionals/ProfessionalReviews';
 import ProfessionalCard from '@/components/professionals/ProfessionalCard';
 import { useLanguage } from '@/components/LanguageProvider';
@@ -29,7 +30,9 @@ const LAWYER_FIELD_LABELS = {
   jurisdiction: 'Jurisdiction',
   lawDegree: 'Degrees',
   chamberAddress: 'Chamber address',
-  availability: 'Availability',
+  // NOTE: no `availability` key. The weekly schedule is an array of
+  // { day, enabled, slots } objects — it renders as its own <ProfessionalAvailability>
+  // card below, not as a one-line row in this table.
   consultationType: 'Consultation type',
   yearsOfPractice: 'Years of practice',
   createdAt: 'Member since',
@@ -43,6 +46,17 @@ const LAWYER_DATE_KEYS = new Set(['createdAt', 'updatedAt']);
 // arrays get comma-joined; empty or object-shaped values render as
 // "Information not provided" — without this, `availability: {}` (and similar)
 // would stringify to `[object Object]`.
+// Flatten a single object into "k: v, k: v". Returns null when it carries
+// nothing worth showing, so callers can fall back to the not-provided copy.
+function formatObjectValue(value) {
+  const entries = Object.entries(value).filter(
+    ([, v]) =>
+      v !== null && v !== undefined && v !== '' && typeof v !== 'object'
+  );
+  if (entries.length === 0) return null;
+  return entries.map(([k, v]) => `${k}: ${v}`).join(', ');
+}
+
 function formatLawyerValue(key, value) {
   if (value === null || value === undefined || value === '') {
     return 'Information not provided';
@@ -51,14 +65,21 @@ function formatLawyerValue(key, value) {
     return formatDate(value);
   }
   if (Array.isArray(value)) {
-    return value.length ? value.join(', ') : 'Information not provided';
+    // Elements may be objects (a plain `.join()` here is what used to emit
+    // "[object Object], [object Object], ..."), so format each one.
+    const parts = value
+      .map((item) =>
+        item && typeof item === 'object'
+          ? formatObjectValue(item)
+          : item === null || item === undefined || item === ''
+            ? null
+            : String(item)
+      )
+      .filter(Boolean);
+    return parts.length ? parts.join(', ') : 'Information not provided';
   }
   if (typeof value === 'object') {
-    const entries = Object.entries(value).filter(
-      ([, v]) => v !== null && v !== undefined && v !== ''
-    );
-    if (entries.length === 0) return 'Information not provided';
-    return entries.map(([k, v]) => `${k}: ${v}`).join(', ');
+    return formatObjectValue(value) || 'Information not provided';
   }
   return String(value);
 }
@@ -260,11 +281,6 @@ export default function ProfessionalProfilePage() {
         jurisdiction: lawyer.jurisdiction,
         lawDegree: lawyer.lawDegree,
         chamberAddress: professional.chamberAddress || lawyer.chamberAddress,
-        availability:
-          (Array.isArray(professional.availability) &&
-          professional.availability.length
-            ? professional.availability
-            : null) || lawyer.availability,
         consultationType:
           professional.consultancyType || lawyer.consultationType,
         yearsOfPractice:
@@ -387,6 +403,8 @@ export default function ProfessionalProfilePage() {
           )}
 
           <ProfessionalServices professional={professional} />
+
+          <ProfessionalAvailability professional={professional} />
 
           <ChipSection
             icon={<FileText size={18} className="text-blue-600" />}
