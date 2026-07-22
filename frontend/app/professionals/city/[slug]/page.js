@@ -45,6 +45,38 @@ function resolveApiBaseUrl() {
   return API_BASE_URL;
 }
 
+// City pages with no real listings are near-duplicate doorway pages —
+// keep them out of the index (they're also excluded from the sitemap;
+// see app/sitemap.js MIN_PROS_PER_CITY). Kept in sync with that value.
+const MIN_PROS_TO_INDEX = 1;
+
+// How many professionals the listing would show for this city. Mirrors
+// the client fetch in CityProfessionalsList (`?city=<id>`), reading the
+// server's `meta.total` so metadata reflects the real count. Returns 0
+// on any failure so we fail closed to `noindex` rather than advertising
+// an empty page.
+async function countCityProfessionals(cityId) {
+  if (!cityId) return 0;
+  const base = resolveApiBaseUrl();
+  try {
+    const res = await fetch(
+      `${base}/api/professionals?city=${encodeURIComponent(cityId)}&limit=1`,
+      { next: { revalidate: 3600 } }
+    );
+    if (!res.ok) return 0;
+    const body = await res.json();
+    const total = body && body.meta && body.meta.total;
+    return Number.isFinite(total) ? total : 0;
+  } catch (err) {
+    console.warn(
+      `[city-page] countCityProfessionals(${cityId}) failed via ${base}: ${
+        err && err.message
+      }`
+    );
+    return 0;
+  }
+}
+
 async function fetchCityBySlug(slug) {
   if (!slug) return null;
   const base = resolveApiBaseUrl();
@@ -72,7 +104,7 @@ async function fetchCityBySlug(slug) {
 
 // Build SEO-friendly title / description / keywords from the city row.
 // Keep keyword count under 12 — long lists hurt rather than help.
-function buildMetadata(city, slug) {
+function buildMetadata(city, slug, proCount = 0) {
   const name = (city && city.name) || prettyFromSlug(slug);
   const stateLabel = city && city.state ? `, ${city.state.name}` : '';
   const title = `Legal & Tax Experts in ${name} | ${BRAND}`;
@@ -108,7 +140,13 @@ function buildMetadata(city, slug) {
       title,
       description,
     },
-    robots: { index: true, follow: true },
+    // Only advertise for indexing once the page has real listings.
+    // Empty city pages stay `noindex, follow` — crawlers can still
+    // traverse links out, but the thin page never enters the index.
+    robots:
+      proCount >= MIN_PROS_TO_INDEX
+        ? { index: true, follow: true }
+        : { index: false, follow: true },
   };
 }
 
@@ -123,7 +161,8 @@ function prettyFromSlug(slug) {
 export async function generateMetadata({ params }) {
   const { slug } = await params;
   const city = await fetchCityBySlug(slug);
-  return buildMetadata(city, slug);
+  const proCount = city ? await countCityProfessionals(city.id) : 0;
+  return buildMetadata(city, slug, proCount);
 }
 
 export default async function CityLandingPage({ params }) {
