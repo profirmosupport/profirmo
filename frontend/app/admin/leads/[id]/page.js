@@ -23,6 +23,7 @@ import {
   MessageSquare,
   Pencil,
   TrendingUp,
+  Briefcase,
 } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import Card from '@/components/common/Card';
@@ -342,6 +343,17 @@ export default function AdminLeadDetailPage() {
                   <dd className="font-medium text-slate-800">{lead.source}</dd>
                 </div>
               </div>
+              {lead.professionalName && (
+                <div className="flex items-start gap-2">
+                  <Briefcase size={14} className="mt-0.5 text-slate-400" />
+                  <div>
+                    <dt className="text-xs text-slate-500">Professional</dt>
+                    <dd className="font-medium text-slate-800">
+                      {lead.professionalName}
+                    </dd>
+                  </div>
+                </div>
+              )}
               <div className="flex items-start gap-2">
                 <CalendarDays size={14} className="mt-0.5 text-slate-400" />
                 <div>

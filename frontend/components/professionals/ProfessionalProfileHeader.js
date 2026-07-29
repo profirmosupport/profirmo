@@ -15,6 +15,7 @@ import Badge from '@/components/common/Badge';
 import Button from '@/components/common/Button';
 import Avatar from '@/components/common/Avatar';
 import RatingStars from '@/components/common/RatingStars';
+import ContactProfessionalButton from '@/components/professionals/ContactProfessionalButton';
 import { useLanguage } from '@/components/LanguageProvider';
 import { useLocations } from '@/hooks/useLocations';
 import { formatCurrency } from '@/utils/formatters';
@@ -292,9 +293,19 @@ export default function ProfessionalProfileHeader({ professional }) {
               </p>
             </>
           ) : (
-            <p className="mt-4 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
-              {t('profCmp.bookingsClosed')}
-            </p>
+            // Not available for instant online booking — offer a lead-
+            // capture CTA so visitors can still reach this professional.
+            <>
+              <ContactProfessionalButton
+                professional={professional}
+                variant="primary"
+                size="md"
+                className="mt-4 w-full"
+              />
+              <p className="mt-2 text-xs text-slate-400">
+                {t('profCmp.bookingsClosed')}
+              </p>
+            </>
           )}
         </div>
       </div>

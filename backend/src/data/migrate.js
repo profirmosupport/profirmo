@@ -1071,6 +1071,22 @@ async function runMigrations() {
     }
   }
 
+  // Add `professionalId` to the existing `leads` table so leads captured
+  // from the "Contact Details" modal on a professional card / profile are
+  // tied to that professional (mirrors the existing `firmId` column).
+  // Nullable + additive — every other lead source leaves it NULL.
+  try {
+    await sequelize.query(
+      'ALTER TABLE `leads` ADD COLUMN IF NOT EXISTS `professionalId` VARCHAR(64) NULL'
+    );
+  } catch (err) {
+    if (!/doesn'?t exist|Unknown table/i.test(err.message)) {
+      console.warn(
+        `[Migrate] Could not add leads.professionalId: ${err.message}`
+      );
+    }
+  }
+
   console.log('[Migrate] Migrations finished successfully.');
 }
 

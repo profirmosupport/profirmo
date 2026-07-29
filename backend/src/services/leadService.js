@@ -109,12 +109,14 @@ async function capturePublic(payload) {
   const source = norm(payload.source) || 'Homepage AI CTA';
   const message = norm(payload.message) || null;
   const firmId = norm(payload.firmId) || null;
+  const professionalId = norm(payload.professionalId) || null;
 
-  // Firm-contact leads bypass dedup so every inquiry shows up on the firm's
-  // dashboard, even if the visitor has previously contacted somebody else.
-  // The legacy homepage / advanced-search lead capture still dedups so we
-  // don't pile up duplicate marketing rows for the same email.
-  if (!firmId) {
+  // Firm-contact and professional-contact leads bypass dedup so every
+  // inquiry shows up against that firm / professional, even if the visitor
+  // has previously contacted somebody else. The legacy homepage / advanced-
+  // search lead capture still dedups so we don't pile up duplicate
+  // marketing rows for the same email.
+  if (!firmId && !professionalId) {
     const existing = await Lead.findOne({
       where: {
         [Op.or]: [
@@ -149,6 +151,7 @@ async function capturePublic(payload) {
     phone: clean.phone,
     message,
     firmId,
+    professionalId,
     source,
     status: 'New',
   });
@@ -164,7 +167,12 @@ async function capturePublic(payload) {
 
 async function getLeadById(id) {
   const lead = await Lead.findByPk(id);
-  return lead ? lead.get({ plain: true }) : null;
+  if (!lead) return null;
+  const plain = lead.get({ plain: true });
+  // Decorate with the professional's display name (when this is a
+  // professional-contact lead) so the admin detail view can show it.
+  await decorateProfessionalNames([plain]);
+  return plain;
 }
 
 // --- Admin: leads ---------------------------------------------------------
@@ -231,12 +239,44 @@ async function listLeads({
       r.firmName = null;
     });
   }
+  // Same treatment for professional-contact leads: decorate with the
+  // professional's display name so the admin panel shows who the inquiry
+  // was addressed to instead of an opaque id. Batched by unique id.
+  await decorateProfessionalNames(rows);
   return {
     rows,
     page: safePage,
     limit: safeLimit,
     total: count,
   };
+}
+
+// Attach `professionalName` to each lead row that carries a professionalId,
+// resolving the id (User.linkedId or ProfessionalDetail.id) in one batched
+// lookup. Mutates rows in place; sets null when there's nothing to resolve.
+// Lazy-required to keep the service dependency graph acyclic.
+async function decorateProfessionalNames(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const proIds = [...new Set(list.map((r) => r.professionalId).filter(Boolean))];
+  if (proIds.length === 0) {
+    list.forEach((r) => {
+      r.professionalName = null;
+    });
+    return;
+  }
+  // eslint-disable-next-line global-require
+  const professionalService = require('./professionalService');
+  let nameById = new Map();
+  try {
+    nameById = await professionalService.getNamesByIds(proIds);
+  } catch {
+    nameById = new Map();
+  }
+  list.forEach((r) => {
+    r.professionalName = r.professionalId
+      ? nameById.get(String(r.professionalId)) || null
+      : null;
+  });
 }
 
 /**

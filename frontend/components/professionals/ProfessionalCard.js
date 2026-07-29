@@ -6,6 +6,7 @@ import Badge from '@/components/common/Badge';
 import Button from '@/components/common/Button';
 import Avatar from '@/components/common/Avatar';
 import RatingStars from '@/components/common/RatingStars';
+import ContactProfessionalButton from '@/components/professionals/ContactProfessionalButton';
 import { useLanguage } from '@/components/LanguageProvider';
 import { useLocations } from '@/hooks/useLocations';
 import { formatCurrency, slugify } from '@/utils/formatters';
@@ -215,11 +216,11 @@ export default function ProfessionalCard({ professional }) {
           }`}
           variant="outline"
           size="sm"
-          className={bookingAllowed ? 'flex-1' : 'w-full'}
+          className="flex-1"
         >
           {t('profCmp.viewProfile')}
         </Button>
-        {bookingAllowed && (
+        {bookingAllowed ? (
           <Button
             href={`/booking/${id}`}
             variant="primary"
@@ -228,6 +229,15 @@ export default function ProfessionalCard({ professional }) {
           >
             {t('profCmp.bookNow')}
           </Button>
+        ) : (
+          // Not available for instant online booking — let the visitor
+          // submit a lead instead of leaving with no CTA.
+          <ContactProfessionalButton
+            professional={professional}
+            variant="primary"
+            size="sm"
+            className="flex-1"
+          />
         )}
       </div>
     </Card>
