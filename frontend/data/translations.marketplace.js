@@ -104,7 +104,7 @@ export const translations = {
     'profCmp.payOnlyMinutes': 'Pay only for the minutes you use',
     // "Contact Details" lead-capture modal (shown for pros not available
     // for instant online booking).
-    'profCmp.contactDetails': 'Contact Details',
+    'profCmp.contactDetails': 'Contact',
     'profCmp.contactSent': 'Request sent',
     'profCmp.contactModalTitle': 'Request a callback',
     'profCmp.contactModalSubtitle':
@@ -300,7 +300,7 @@ export const translations = {
     'profCmp.payOnlyMinutes': 'केवल उपयोग किए गए मिनटों का भुगतान करें',
     // "संपर्क विवरण" लीड-कैप्चर मॉडल (उन प्रोफेशनल्स के लिए जो तुरंत
     // ऑनलाइन बुकिंग के लिए उपलब्ध नहीं हैं)।
-    'profCmp.contactDetails': 'संपर्क विवरण',
+    'profCmp.contactDetails': 'संपर्क',
     'profCmp.contactSent': 'अनुरोध भेजा गया',
     'profCmp.contactModalTitle': 'कॉलबैक का अनुरोध करें',
     'profCmp.contactModalSubtitle':

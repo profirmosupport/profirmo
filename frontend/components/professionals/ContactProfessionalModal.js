@@ -11,6 +11,7 @@
 // the visitor actually opens it — the closed state ships no form code.
 
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Send, Loader2, CheckCircle2 } from 'lucide-react';
 import { useLanguage } from '@/components/LanguageProvider';
 import { submitLead } from '@/services/leadService';
@@ -45,12 +46,17 @@ export default function ContactProfessionalModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
+  // Portal target only exists on the client. Gate the render on mount so
+  // createPortal never runs against an undefined document.
+  const [mounted, setMounted] = useState(false);
   const [form, setForm] = useState({
     fullName: '',
     phone: '',
     email: '',
     message: '',
   });
+
+  useEffect(() => setMounted(true), []);
 
   // Close on Escape + lock body scroll while the dialog is open.
   useEffect(() => {
@@ -101,9 +107,11 @@ export default function ContactProfessionalModal({
     }
   }
 
-  return (
+  if (!mounted) return null;
+
+  const overlay = (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-0 sm:items-center sm:p-4"
+      className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-900/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={onClose}
     >
       <div
@@ -112,7 +120,7 @@ export default function ContactProfessionalModal({
         aria-label={t('profCmp.contactDetails')}
         // Stop backdrop click-through so clicks inside the panel don't close.
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"
+        className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"
       >
         <div className="flex items-start justify-between gap-2 border-b border-slate-100 bg-gradient-to-br from-amber-50 to-white px-5 py-4">
           <div className="min-w-0">
@@ -218,4 +226,9 @@ export default function ContactProfessionalModal({
       </div>
     </div>
   );
+
+  // Render into <body> so the fixed overlay escapes the card's transformed
+  // stacking context (Card uses hover:-translate-y-1, which otherwise traps
+  // a position:fixed child inside the card and makes it flicker on hover).
+  return createPortal(overlay, document.body);
 }
