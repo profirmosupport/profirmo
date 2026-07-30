@@ -5,6 +5,10 @@ import { LanguageProvider } from '@/components/LanguageProvider';
 import { AuthProvider } from '@/components/AuthProvider';
 
 const GA_MEASUREMENT_ID = 'G-K1LJGC40Y6';
+// Google Ads (conversion tracking). Shares the single gtag.js load with
+// GA above — gtag() supports multiple config targets, so we just add a
+// second config line rather than loading the library twice.
+const GOOGLE_ADS_ID = 'AW-18292736304';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -204,7 +208,8 @@ export default function RootLayout({ children }) {
             function gtag(){dataLayer.push(arguments);}
             window.gtag = gtag;
             gtag('js', new Date());
-            gtag('config', '${GA_MEASUREMENT_ID}');`}
+            gtag('config', '${GA_MEASUREMENT_ID}');
+            gtag('config', '${GOOGLE_ADS_ID}');`}
         </Script>
         <Script
           src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}

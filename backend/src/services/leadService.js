@@ -26,6 +26,7 @@ const {
 } = require('../models');
 const { hashPassword } = require('../utils/password');
 const authService = require('./authService');
+const env = require('../config/env');
 
 const LEAD_STATUSES = [
   'New',
@@ -141,7 +142,9 @@ async function capturePublic(payload) {
         toValue: source,
         note: `Submission re-captured from ${source}.`,
       });
-      return { lead: existing.get({ plain: true }), deduped: true };
+      const resubmitted = existing.get({ plain: true });
+      await notifyAdminsOfLead(resubmitted);
+      return { lead: resubmitted, deduped: true };
     }
   }
 
@@ -162,7 +165,70 @@ async function capturePublic(payload) {
     toValue: source,
     note: `Lead captured from ${source}.`,
   });
-  return { lead: lead.get({ plain: true }), deduped: false };
+  const created = lead.get({ plain: true });
+  await notifyAdminsOfLead(created);
+  return { lead: created, deduped: false };
+}
+
+// Email the admin inbox whenever a lead form is submitted. Recipients:
+// the admin-configured `supportEmail` if set, otherwise every
+// platform_admin user's email so a lead is never silently dropped. Best
+// effort — any failure is logged and swallowed so it never breaks capture
+// (the lead row is already persisted by the time we get here).
+async function notifyAdminsOfLead(lead) {
+  try {
+    const recipients = new Set();
+    try {
+      // eslint-disable-next-line global-require
+      const adminSettings = require('./adminSettingsService');
+      const configured = await adminSettings.getString('supportEmail');
+      if (configured && configured.trim()) recipients.add(configured.trim());
+    } catch {
+      /* fall back to platform_admin users below */
+    }
+    if (recipients.size === 0) {
+      const admins = await User.findAll({
+        where: { role: 'platform_admin' },
+        attributes: ['email'],
+        raw: true,
+      });
+      admins.forEach((a) => a.email && recipients.add(a.email));
+    }
+    if (recipients.size === 0) {
+      console.warn('[Leads] No admin recipient for new-lead notification.');
+      return;
+    }
+
+    // Resolve the professional's display name for professional-contact leads.
+    await decorateProfessionalNames([lead]);
+
+    // eslint-disable-next-line global-require
+    const { enqueue } = require('./queueService');
+    // The admin panel lives on the FRONTEND host (profirmo.com/admin), not
+    // the API host (env.appUrl → proapi.profirmo.com), so link via frontendUrl.
+    const base = String(env.frontendUrl || env.appUrl || '').replace(/\/$/, '');
+    const leadUrl = `${base}/admin/leads/${lead.id}`;
+    for (const to of recipients) {
+      await enqueue('email', {
+        to,
+        template: 'newLead',
+        vars: {
+          fullName: lead.fullName || '',
+          email: lead.email || '',
+          phone: lead.phone || '',
+          message: lead.message || '',
+          source: lead.source || '',
+          professionalName: lead.professionalName || '',
+          leadUrl,
+        },
+      });
+    }
+  } catch (err) {
+    console.error(
+      '[Leads] Failed to notify admins of new lead:',
+      (err && err.message) || err
+    );
+  }
 }
 
 async function getLeadById(id) {

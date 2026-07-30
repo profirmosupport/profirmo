@@ -444,6 +444,71 @@ const TEMPLATES = {
     return { subject, html, text };
   },
 
+  /**
+   * Admin notification for a newly captured lead — fired for every lead
+   * form on the site (homepage "Discuss with AI", the callback floater,
+   * the professional "Contact" modal, firm-contact, advanced-search gate).
+   * vars: { fullName, email, phone, message, source, professionalName, leadUrl }
+   */
+  newLead(vars = {}) {
+    const fullName = vars.fullName || 'A visitor';
+    const email = vars.email || '';
+    const phone = vars.phone || '';
+    const message = vars.message || '';
+    const source = vars.source || 'Website';
+    const professionalName = vars.professionalName || '';
+    const leadUrl = vars.leadUrl || '#';
+
+    const subject = `New lead: ${fullName}`;
+
+    // One table row per non-empty field.
+    const row = (label, value) =>
+      value
+        ? `<tr>
+             <td style="padding:6px 0;font-size:14px;color:#6b7280;width:140px;vertical-align:top;">${esc(
+               label
+             )}</td>
+             <td style="padding:6px 0;font-size:14px;color:#111827;font-weight:600;">${esc(
+               value
+             )}</td>
+           </tr>`
+        : '';
+
+    const html = layout(
+      subject,
+      `
+      <h1 style="margin:0 0 16px;font-size:20px;color:#111827;">New lead captured</h1>
+      <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">
+        Someone just submitted their details on Profirmo. Please reach out to
+        them soon.
+      </p>
+      <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 8px;">
+        ${row('Name', fullName)}
+        ${row('Email', email)}
+        ${row('Phone', phone)}
+        ${row('Source', source)}
+        ${row('Professional', professionalName)}
+        ${row('Message', message)}
+      </table>
+      ${button('View lead', leadUrl)}
+      <p style="margin:0;font-size:14px;line-height:1.6;">The Profirmo Team</p>`
+    );
+
+    const textLines = [
+      'A new lead was captured on Profirmo:',
+      '',
+      `  Name:   ${fullName}`,
+      `  Email:  ${email}`,
+      `  Phone:  ${phone}`,
+      `  Source: ${source}`,
+    ];
+    if (professionalName) textLines.push(`  Professional: ${professionalName}`);
+    if (message) textLines.push(`  Message: ${message}`);
+    textLines.push('', 'View lead:', leadUrl, '', 'The Profirmo Team');
+
+    return { subject, html, text: textLines.join('\n') };
+  },
+
   // --- Phase 8: firm approval workflow + invitations -----------------------
 
   /**
