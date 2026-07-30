@@ -12,7 +12,8 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Send, Loader2, CheckCircle2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { X, Send, Loader2 } from 'lucide-react';
 import { useLanguage } from '@/components/LanguageProvider';
 import { submitLead } from '@/services/leadService';
 
@@ -40,12 +41,12 @@ export default function ContactProfessionalModal({
   onSubmitted,
 }) {
   const { t } = useLanguage();
+  const router = useRouter();
   const name = (professional && professional.name) || '';
   const professionalId = professional && professional.id;
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [done, setDone] = useState(false);
   // Portal target only exists on the client. Gate the render on mount so
   // createPortal never runs against an undefined document.
   const [mounted, setMounted] = useState(false);
@@ -96,13 +97,14 @@ export default function ContactProfessionalModal({
         source: 'Professional contact',
         professionalId,
       });
-      setDone(true);
       onSubmitted?.();
+      // Redirect to /search with the thank-you banner + AI assistant,
+      // matching the homepage "Discuss with AI" flow.
+      router.push('/search?submitted=1');
     } catch (err2) {
       setError(
         (err2 && err2.message) || 'Could not submit. Try again in a minute.'
       );
-    } finally {
       setBusy(false);
     }
   }
@@ -143,27 +145,7 @@ export default function ContactProfessionalModal({
           </button>
         </div>
 
-        {done ? (
-          <div className="flex flex-col items-center gap-3 px-5 py-8 text-center">
-            <CheckCircle2 size={40} className="text-emerald-500" />
-            <p className="text-sm font-semibold text-slate-900">
-              {t('profCmp.contactSuccessTitle')}
-            </p>
-            <p className="max-w-xs text-xs leading-relaxed text-slate-500">
-              {name
-                ? t('profCmp.contactSuccessBody', { name })
-                : t('profCmp.contactSuccessBodyGeneric')}
-            </p>
-            <button
-              type="button"
-              onClick={onClose}
-              className="mt-2 rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-200"
-            >
-              {t('profCmp.contactDone')}
-            </button>
-          </div>
-        ) : (
-          <form onSubmit={submit} className="space-y-2.5 px-5 py-4">
+        <form onSubmit={submit} className="space-y-2.5 px-5 py-4">
             <input
               name="fullName"
               value={form.fullName}
@@ -221,8 +203,7 @@ export default function ContactProfessionalModal({
                 ? t('profCmp.contactSending')
                 : t('profCmp.contactSubmit')}
             </button>
-          </form>
-        )}
+        </form>
       </div>
     </div>
   );

@@ -64,6 +64,10 @@ export const translations = {
     'searchPage.title': 'Advanced search',
     'searchPage.subtitle':
       'Search across individual professionals and firms. Combine filters to pinpoint exactly the expertise you need.',
+    'searchPage.leadThanksTitle': 'Thanks for sharing your details.',
+    'searchPage.leadThanksBody':
+      'Someone from our team will reach out to you soon. Meanwhile, you can discuss your matter with our AI assistant.',
+    'searchPage.leadThanksDismiss': 'Dismiss',
     'searchPage.individuals': 'Individuals',
     'searchPage.firms': 'Firms',
     'searchPage.keyword': 'Keyword',
@@ -260,6 +264,10 @@ export const translations = {
     'searchPage.title': 'उन्नत खोज',
     'searchPage.subtitle':
       'व्यक्तिगत प्रोफेशनल्स और फर्मों में खोजें। ठीक उसी विशेषज्ञता तक पहुँचने के लिए फ़िल्टर संयोजित करें जिसकी आपको आवश्यकता है।',
+    'searchPage.leadThanksTitle': 'आपका विवरण साझा करने के लिए धन्यवाद।',
+    'searchPage.leadThanksBody':
+      'हमारी टीम से कोई शीघ्र ही आपसे संपर्क करेगा। इस बीच, आप अपने मामले पर हमारे AI असिस्टेंट से चर्चा कर सकते हैं।',
+    'searchPage.leadThanksDismiss': 'बंद करें',
     'searchPage.individuals': 'व्यक्ति',
     'searchPage.firms': 'फर्में',
     'searchPage.keyword': 'कीवर्ड',
