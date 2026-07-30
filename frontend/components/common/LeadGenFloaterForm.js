@@ -7,10 +7,12 @@
 // blog and landing page.
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { X, Send, Loader2 } from 'lucide-react';
-import { API_BASE_URL } from '@/utils/constants';
+import { getApiBaseUrl } from '@/services/api';
 
 export default function LeadGenFloaterForm({ source, onClose, onSubmitted }) {
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState({
@@ -49,7 +51,7 @@ export default function LeadGenFloaterForm({ source, onClose, onSubmitted }) {
     setError('');
     setBusy(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/leads`, {
+      const res = await fetch(`${getApiBaseUrl()}/api/leads`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -65,7 +67,10 @@ export default function LeadGenFloaterForm({ source, onClose, onSubmitted }) {
       if (!res.ok) {
         throw new Error(data.message || 'Could not submit. Try again in a minute.');
       }
+      // Mark as submitted (stops the floater re-appearing) then send the
+      // visitor to /search with the thank-you banner + AI assistant.
       onSubmitted?.();
+      router.push('/search?submitted=1');
     } catch (err2) {
       setError(err2.message || 'Could not submit. Try again.');
     } finally {

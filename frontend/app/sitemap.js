@@ -48,6 +48,43 @@ const slugify = (s) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 
+// Minimum real listings a city page must have to earn a sitemap slot.
+// City pages with fewer than this are near-duplicate, listing-less
+// "doorway" pages — Google discovers them via the sitemap and then
+// declines to index them ("Discovered - currently not indexed"), which
+// also drags down crawl demand for the rest of the host. Keep them out
+// of the sitemap; the page itself emits `noindex` when empty (see
+// app/professionals/city/[slug]/page.js). Raise this if we later want
+// only well-populated cities to advertise for crawl.
+const MIN_PROS_PER_CITY = 1;
+
+// Count the professionals a city page would actually list, mirroring the
+// backend `?city=` filter (professionalService.js): a professional counts
+// when the city's NAME matches their address `city`, OR the city's id or
+// name appears in their `practiceCities` array. Each professional is
+// counted at most once per city (name- and id-matches don't double up).
+function countProsForCity(city, proListing) {
+  if (!Array.isArray(proListing)) return 0;
+  const name = String((city && city.name) || '').trim().toLowerCase();
+  const id = String((city && city.id) || '').trim().toLowerCase();
+  if (!name && !id) return 0;
+  let n = 0;
+  for (const p of proListing) {
+    const addr = String((p && p.city) || '').trim().toLowerCase();
+    if (name && addr === name) {
+      n += 1;
+      continue;
+    }
+    const practice = Array.isArray(p && p.practiceCities)
+      ? p.practiceCities.map((c) => String(c || '').trim().toLowerCase())
+      : [];
+    if ((id && practice.includes(id)) || (name && practice.includes(name))) {
+      n += 1;
+    }
+  }
+  return n;
+}
+
 // Static routes that always exist. Listed explicitly so we don't have
 // to crawl the app/ directory. Grouped by category (strategy §8 — split
 // the sitemap by page type so we can monitor index health per group).
@@ -190,13 +227,20 @@ export default async function sitemap() {
     }
   }
 
-  // City landing pages. We surface every city in the admin-managed
-  // list — each has a stable /professionals/city/<slug> page.
+  // City landing pages. We DON'T surface every city in the admin list:
+  // most have zero professionals, so their pages are near-duplicate,
+  // listing-less doorway pages that Google refuses to index and that
+  // sink crawl demand for the whole host. Only cities with at least
+  // MIN_PROS_PER_CITY real listings (same count the page renders) get a
+  // sitemap slot; the rest self-`noindex` on-page. Reuses the
+  // `proListing` already fetched above — no extra request.
   const cities = await fetchJson('/api/app-settings/cities');
   if (cities && Array.isArray(cities)) {
+    const pros = Array.isArray(proListing) ? proListing : [];
     for (const c of cities) {
       const citySlug = slugify(c.name || '');
       if (!citySlug) continue;
+      if (countProsForCity(c, pros) < MIN_PROS_PER_CITY) continue;
       entries.push({
         url: `${SITE}/professionals/city/${citySlug}`,
         lastModified: now,

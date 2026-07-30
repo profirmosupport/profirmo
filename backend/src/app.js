@@ -20,6 +20,7 @@ const bookingRoutes = require('./routes/bookingRoutes');
 const consultationRoutes = require('./routes/consultationRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const bufferRoutes = require('./routes/bufferRoutes');
 const profileRoutes = require('./routes/profileRoutes');
 const lawFirmRoutes = require('./routes/lawFirmRoutes');
 const fileRoutes = require('./routes/fileRoutes');
@@ -173,6 +174,9 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/consultations', consultationRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/admin', adminRoutes);
+// Public Buffer.com OAuth callback (no auth — browser redirect from
+// Buffer can't carry our Authorization header). Secured by HMAC state.
+app.use('/api/buffer', bufferRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/law-firm', lawFirmRoutes);
 app.use('/api/files', fileRoutes);

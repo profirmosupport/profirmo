@@ -27,34 +27,15 @@ const publicGetStorage = asyncHandler(async (req, res) => {
 });
 
 // GET /api/app-settings/mobile-version
-// Latest + minimum supported app versions per platform, plus the
-// store URL. The mobile app fetches this on launch — if the
-// installed version is below `minimum`, an update is forced; below
-// `latest`, an optional update prompt is shown. Configured via env
-// vars so a new release can be cut without a DB migration:
-//
-//   MOBILE_IOS_LATEST_VERSION=0.2.0
-//   MOBILE_IOS_MIN_VERSION=0.1.0
-//   MOBILE_IOS_STORE_URL=https://apps.apple.com/app/id…
-//   MOBILE_ANDROID_LATEST_VERSION=0.2.0
-//   MOBILE_ANDROID_MIN_VERSION=0.1.0
-//   MOBILE_ANDROID_STORE_URL=https://play.google.com/store/apps/details?id=com.profirmo.app
+// Legacy endpoint — preserved for older app builds that still poll
+// it. The current mobile app (≥ commit bc2d6f4a) talks to iTunes
+// Lookup + Play Store HTML directly via appUpdateService.js and
+// ignores this response. Returns all-null so the legacy clients
+// short-circuit to their "no config — skip gate" branch.
 const publicGetMobileVersion = asyncHandler(async (req, res) => {
-  const FALLBACK_IOS_STORE =
-    'https://apps.apple.com/app/profirmo/id0000000000';
-  const FALLBACK_ANDROID_STORE =
-    'https://play.google.com/store/apps/details?id=com.profirmo.app';
   return successResponse(res, 200, 'Mobile version config', {
-    ios: {
-      latest: process.env.MOBILE_IOS_LATEST_VERSION || null,
-      minimum: process.env.MOBILE_IOS_MIN_VERSION || null,
-      storeUrl: process.env.MOBILE_IOS_STORE_URL || FALLBACK_IOS_STORE,
-    },
-    android: {
-      latest: process.env.MOBILE_ANDROID_LATEST_VERSION || null,
-      minimum: process.env.MOBILE_ANDROID_MIN_VERSION || null,
-      storeUrl: process.env.MOBILE_ANDROID_STORE_URL || FALLBACK_ANDROID_STORE,
-    },
+    ios: { latest: null, minimum: null, storeUrl: null },
+    android: { latest: null, minimum: null, storeUrl: null },
   });
 });
 

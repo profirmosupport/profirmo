@@ -896,6 +896,51 @@ const getAvailability = async (id) => {
   };
 };
 
+/**
+ * Lightweight batch resolver: map professional ids (the ids used in listing
+ * / detail URLs — either a `User.linkedId` or a `ProfessionalDetail.id`,
+ * mirroring getById's dual lookup) to a display name. Used to decorate
+ * cross-references (e.g. leads) without paying for the full getById()
+ * payload. Returns a Map<idString, name>; ids that don't resolve are absent.
+ */
+const getNamesByIds = async (ids) => {
+  const unique = [...new Set((ids || []).filter(Boolean).map(String))];
+  const out = new Map();
+  if (unique.length === 0) return out;
+
+  // 1. Ids that are a live account's linkedId (the common case).
+  const usersByLinked = await User.findAll({
+    where: { linkedId: { [Op.in]: unique } },
+    raw: true,
+  });
+  const resolved = new Set();
+  for (const u of usersByLinked) {
+    out.set(String(u.linkedId), userDisplayName(u));
+    resolved.add(String(u.linkedId));
+  }
+
+  // 2. Remaining ids are ProfessionalDetail.id — take the linked user's
+  //    display name, falling back to the detail row's own `name`.
+  const remaining = unique.filter((id) => !resolved.has(id));
+  if (remaining.length > 0) {
+    const details = await ProfessionalDetail.findAll({
+      where: { id: { [Op.in]: remaining } },
+      raw: true,
+    });
+    const userIds = details.map((d) => d.userId).filter(Boolean);
+    const users = userIds.length
+      ? await User.findAll({ where: { id: { [Op.in]: userIds } }, raw: true })
+      : [];
+    const userById = new Map(users.map((u) => [String(u.id), u]));
+    for (const d of details) {
+      const u = userById.get(String(d.userId));
+      out.set(String(d.id), (u && userDisplayName(u)) || d.name || '');
+    }
+  }
+
+  return out;
+};
+
 module.exports = {
   paginate,
   list,
@@ -906,4 +951,5 @@ module.exports = {
   updateRate,
   getReviews,
   getAvailability,
+  getNamesByIds,
 };

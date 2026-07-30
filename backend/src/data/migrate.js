@@ -1071,6 +1071,41 @@ async function runMigrations() {
     }
   }
 
+  // Add `professionalId` to the existing `leads` table so leads captured
+  // from the "Contact Details" modal on a professional card / profile are
+  // tied to that professional (mirrors the existing `firmId` column).
+  // Nullable + additive — every other lead source leaves it NULL.
+  //
+  // IMPORTANT: the production RDS MySQL does NOT support `ADD COLUMN IF NOT
+  // EXISTS` (it throws a syntax error). We therefore probe information_schema
+  // and issue a plain `ADD COLUMN` only when the column is missing. This
+  // matters because the Lead model declares an INDEX on professionalId — if
+  // the column is absent, `Lead.sync()` fails fatally ("Key column
+  // 'professionalId' doesn't exist") and the process crash-loops on boot.
+  // (The older `ADD COLUMN IF NOT EXISTS` calls elsewhere in this file also
+  // fail on this MySQL version, but are harmless because their columns
+  // already exist and carry no dependent index — see the tech-debt note.)
+  try {
+    const [cols] = await sequelize.query(
+      "SELECT COUNT(*) AS n FROM information_schema.COLUMNS " +
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leads' " +
+        "AND COLUMN_NAME = 'professionalId'"
+    );
+    const present = cols && cols[0] && Number(cols[0].n) > 0;
+    if (!present) {
+      await sequelize.query(
+        'ALTER TABLE `leads` ADD COLUMN `professionalId` VARCHAR(64) NULL'
+      );
+      console.log('[Migrate] Added leads.professionalId column.');
+    }
+  } catch (err) {
+    if (!/doesn'?t exist|Unknown table/i.test(err.message)) {
+      console.warn(
+        `[Migrate] Could not ensure leads.professionalId: ${err.message}`
+      );
+    }
+  }
+
   console.log('[Migrate] Migrations finished successfully.');
 }
 

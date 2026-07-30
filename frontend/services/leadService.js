@@ -19,6 +19,7 @@ export async function submitLead({
   source,
   message,
   firmId,
+  professionalId,
 }) {
   const res = await post('/api/leads', {
     fullName,
@@ -27,6 +28,7 @@ export async function submitLead({
     source,
     message,
     firmId,
+    professionalId,
   });
   return unwrap(res);
 }

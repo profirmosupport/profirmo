@@ -16,6 +16,8 @@ const {
 } = require('../utils/responseHandler');
 const blogService = require('../services/blogService');
 const storageService = require('../services/storageService');
+const aiBlogService = require('../services/aiBlogService');
+const { logAudit } = require('../utils/auditLogger');
 const env = require('../config/env');
 
 // --- Public routes --------------------------------------------------------
@@ -83,6 +85,79 @@ const adminDeletePost = asyncHandler(async (req, res) => {
   const post = await blogService.adminDeletePost(req.params.id);
   if (!post) throw { statusCode: 404, message: 'Post not found.' };
   return successResponse(res, 200, 'Post deleted', post);
+});
+
+// POST /api/admin/blog/posts/:id/generate-image
+// Regenerates the featured image for ONE existing post via
+// Pollinations.ai (free, no API key). No body params.
+const adminRegenerateImage = asyncHandler(async (req, res) => {
+  const adminId = req.user && req.user.id;
+  try {
+    const result = await aiBlogService.regenerateImageForPost(req.params.id);
+    await logAudit({
+      req,
+      userId: adminId,
+      action: 'admin.blog_image_regenerated',
+      entity: 'blog_post',
+      entityId: req.params.id,
+      status: 'success',
+      metadata: { source: result.source, url: result.url },
+    });
+    return successResponse(res, 200, 'Featured image regenerated', result);
+  } catch (err) {
+    await logAudit({
+      req,
+      userId: adminId,
+      action: 'admin.blog_image_regenerate_failed',
+      entity: 'blog_post',
+      entityId: req.params.id,
+      status: 'failure',
+      metadata: { message: err && err.message, source },
+    });
+    throw err;
+  }
+});
+
+// POST /api/admin/blog/posts/ai-generate
+// Runs the 4-step AI generation flow synchronously (research → pick →
+// draft → image → persist as draft). Returns the created row so the
+// admin UI can route the user straight to the editor.
+const adminAiGeneratePost = asyncHandler(async (req, res) => {
+  const adminId = req.user && req.user.id;
+  try {
+    const result = await aiBlogService.generateBlogPostDraft({
+      authorUserId: adminId,
+    });
+    await logAudit({
+      req,
+      userId: adminId,
+      action: 'admin.blog_ai_generated',
+      entity: 'blog_post',
+      entityId: result.post.id,
+      status: 'success',
+      metadata: {
+        slug: result.post.slug,
+        topic: result.pick && result.pick.topic,
+        elapsedSeconds: result.elapsedSeconds,
+      },
+    });
+    return successResponse(res, 201, 'AI draft created', {
+      post: result.post,
+      pick: result.pick,
+      image: result.image,
+      elapsedSeconds: result.elapsedSeconds,
+    });
+  } catch (err) {
+    await logAudit({
+      req,
+      userId: adminId,
+      action: 'admin.blog_ai_failed',
+      entity: 'blog_post',
+      status: 'failure',
+      metadata: { message: err && err.message },
+    });
+    throw err;
+  }
 });
 
 const adminListCategories = asyncHandler(async (req, res) => {
@@ -208,6 +283,8 @@ module.exports = {
   adminCreatePost,
   adminUpdatePost,
   adminDeletePost,
+  adminAiGeneratePost,
+  adminRegenerateImage,
   adminListCategories,
   adminCreateCategory,
   adminUpdateCategory,

@@ -11,6 +11,8 @@ import {
   Scale,
   Calculator,
   Briefcase,
+  CheckCircle2,
+  X,
 } from 'lucide-react';
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
@@ -53,6 +55,22 @@ export default function SearchPage() {
   // the visitor has a valid lead cookie or they're authenticated; only then
   // is the filter panel + results allowed to interact.
   const [leadCheck, setLeadCheck] = useState('pending'); // pending|granted|blocked
+
+  // Thank-you banner shown after any lead form redirects here with
+  // ?submitted=1 (homepage "Discuss with AI", the callback floater, the
+  // professional "Contact" modal, and the advanced-search gate). Strip the
+  // flag from the URL so a refresh / back doesn't re-trigger it.
+  const [showThanks, setShowThanks] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('submitted') === '1') {
+      setShowThanks(true);
+      params.delete('submitted');
+      const qs = params.toString();
+      window.history.replaceState(null, '', `/search${qs ? `?${qs}` : ''}`);
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -236,7 +254,10 @@ export default function SearchPage() {
           source="Advanced Search"
           title="Tell us a little about yourself"
           subtitle="Share your details to unlock the full search — we'll keep them safe."
-          onSuccess={() => setLeadCheck('granted')}
+          onSuccess={() => {
+            setLeadCheck('granted');
+            setShowThanks(true);
+          }}
         />
       </div>
     );
@@ -246,6 +267,32 @@ export default function SearchPage() {
     <div className="flex min-h-screen flex-col">
       <Header />
       <main className="flex-1 bg-slate-50">
+        {showThanks && (
+          <div className="border-b border-emerald-200 bg-emerald-50">
+            <div className="mx-auto flex max-w-7xl items-start gap-3 px-4 py-4 sm:px-6 lg:px-8">
+              <CheckCircle2
+                size={20}
+                className="mt-0.5 shrink-0 text-emerald-600"
+              />
+              <div className="flex-1 text-sm">
+                <p className="font-semibold text-emerald-900">
+                  {t('searchPage.leadThanksTitle')}
+                </p>
+                <p className="mt-0.5 text-emerald-800">
+                  {t('searchPage.leadThanksBody')}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowThanks(false)}
+                aria-label={t('searchPage.leadThanksDismiss')}
+                className="rounded-lg p-1 text-emerald-600 transition hover:bg-emerald-100"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+        )}
         <div className="border-b border-slate-200 bg-white">
           <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
             <h1 className="text-3xl font-bold tracking-tight text-slate-900">

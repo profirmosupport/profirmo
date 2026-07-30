@@ -52,6 +52,8 @@ const SOURCE_OPTIONS = [
   { value: '', label: 'All sources' },
   { value: 'Homepage AI CTA', label: 'Homepage AI CTA' },
   { value: 'Advanced Search', label: 'Advanced Search' },
+  { value: 'Professional contact', label: 'Professional contact' },
+  { value: 'Firm contact', label: 'Firm contact' },
   { value: 'Manual', label: 'Manual' },
 ];
 
@@ -399,7 +401,7 @@ export default function AdminLeadsPage() {
                   <th className="px-4 py-3 font-semibold">Name</th>
                   <th className="px-4 py-3 font-semibold">Email</th>
                   <th className="px-4 py-3 font-semibold">Phone</th>
-                  <th className="px-4 py-3 font-semibold">Firm</th>
+                  <th className="px-4 py-3 font-semibold">Firm / Professional</th>
                   <th className="px-4 py-3 font-semibold">Source</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3 font-semibold">Created</th>
@@ -420,7 +422,7 @@ export default function AdminLeadsPage() {
                     <td className="px-4 py-3 text-slate-600">{row.email}</td>
                     <td className="px-4 py-3 text-slate-600">{row.phone}</td>
                     <td className="px-4 py-3 text-slate-600">
-                      {row.firmName || (
+                      {row.firmName || row.professionalName || (
                         <span className="text-slate-400">—</span>
                       )}
                     </td>

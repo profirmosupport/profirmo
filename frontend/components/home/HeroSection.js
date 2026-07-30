@@ -245,7 +245,7 @@ export default function HeroSection() {
         onClose={() => setLeadOpen(false)}
         onSuccess={() => {
           setLeadOpen(false);
-          router.push('/search');
+          router.push('/search?submitted=1');
         }}
         source="Homepage AI CTA"
         title="Discuss with AI"

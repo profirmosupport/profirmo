@@ -64,6 +64,10 @@ export const translations = {
     'searchPage.title': 'Advanced search',
     'searchPage.subtitle':
       'Search across individual professionals and firms. Combine filters to pinpoint exactly the expertise you need.',
+    'searchPage.leadThanksTitle': 'Thanks for sharing your details.',
+    'searchPage.leadThanksBody':
+      'Someone from our team will reach out to you soon. Meanwhile, you can discuss your matter with our AI assistant.',
+    'searchPage.leadThanksDismiss': 'Dismiss',
     'searchPage.individuals': 'Individuals',
     'searchPage.firms': 'Firms',
     'searchPage.keyword': 'Keyword',
@@ -102,6 +106,29 @@ export const translations = {
     'profCmp.bookNow': 'Book now',
     'profCmp.bookConsultation': 'Book consultation',
     'profCmp.payOnlyMinutes': 'Pay only for the minutes you use',
+    // "Contact Details" lead-capture modal (shown for pros not available
+    // for instant online booking).
+    'profCmp.contactDetails': 'Contact',
+    'profCmp.contactSent': 'Request sent',
+    'profCmp.contactModalTitle': 'Request a callback',
+    'profCmp.contactModalSubtitle':
+      "Share your details and we'll connect you with {name}.",
+    'profCmp.contactModalSubtitleGeneric':
+      "Share your details and we'll connect you with this professional.",
+    'profCmp.contactClose': 'Close',
+    'profCmp.contactName': 'Full name',
+    'profCmp.contactPhone': 'Phone with country code',
+    'profCmp.contactEmail': 'Email',
+    'profCmp.contactBrief': 'Briefly describe your matter',
+    'profCmp.contactConsent':
+      'By submitting you agree to be contacted by Pro Firmo about your request.',
+    'profCmp.contactSubmit': 'Send request',
+    'profCmp.contactSending': 'Sending…',
+    'profCmp.contactSuccessTitle': 'Request received',
+    'profCmp.contactSuccessBody':
+      "We'll be in touch shortly to connect you with {name}.",
+    'profCmp.contactSuccessBodyGeneric': "We'll be in touch shortly.",
+    'profCmp.contactDone': 'Done',
     'profCmp.regBar': 'Bar Council Reg. No.',
     'profCmp.regTax': 'Tax / Professional Reg. No.',
     // Filters panel
@@ -237,6 +264,10 @@ export const translations = {
     'searchPage.title': 'उन्नत खोज',
     'searchPage.subtitle':
       'व्यक्तिगत प्रोफेशनल्स और फर्मों में खोजें। ठीक उसी विशेषज्ञता तक पहुँचने के लिए फ़िल्टर संयोजित करें जिसकी आपको आवश्यकता है।',
+    'searchPage.leadThanksTitle': 'आपका विवरण साझा करने के लिए धन्यवाद।',
+    'searchPage.leadThanksBody':
+      'हमारी टीम से कोई शीघ्र ही आपसे संपर्क करेगा। इस बीच, आप अपने मामले पर हमारे AI असिस्टेंट से चर्चा कर सकते हैं।',
+    'searchPage.leadThanksDismiss': 'बंद करें',
     'searchPage.individuals': 'व्यक्ति',
     'searchPage.firms': 'फर्में',
     'searchPage.keyword': 'कीवर्ड',
@@ -275,6 +306,29 @@ export const translations = {
     'profCmp.bookNow': 'अभी बुक करें',
     'profCmp.bookConsultation': 'परामर्श बुक करें',
     'profCmp.payOnlyMinutes': 'केवल उपयोग किए गए मिनटों का भुगतान करें',
+    // "संपर्क विवरण" लीड-कैप्चर मॉडल (उन प्रोफेशनल्स के लिए जो तुरंत
+    // ऑनलाइन बुकिंग के लिए उपलब्ध नहीं हैं)।
+    'profCmp.contactDetails': 'संपर्क',
+    'profCmp.contactSent': 'अनुरोध भेजा गया',
+    'profCmp.contactModalTitle': 'कॉलबैक का अनुरोध करें',
+    'profCmp.contactModalSubtitle':
+      'अपना विवरण साझा करें, हम आपको {name} से जोड़ेंगे।',
+    'profCmp.contactModalSubtitleGeneric':
+      'अपना विवरण साझा करें, हम आपको इस प्रोफेशनल से जोड़ेंगे।',
+    'profCmp.contactClose': 'बंद करें',
+    'profCmp.contactName': 'पूरा नाम',
+    'profCmp.contactPhone': 'देश कोड सहित फ़ोन',
+    'profCmp.contactEmail': 'ईमेल',
+    'profCmp.contactBrief': 'अपने मामले का संक्षेप में वर्णन करें',
+    'profCmp.contactConsent':
+      'सबमिट करके आप अपने अनुरोध के संबंध में Pro Firmo द्वारा संपर्क किए जाने से सहमत होते हैं।',
+    'profCmp.contactSubmit': 'अनुरोध भेजें',
+    'profCmp.contactSending': 'भेजा जा रहा है…',
+    'profCmp.contactSuccessTitle': 'अनुरोध प्राप्त हुआ',
+    'profCmp.contactSuccessBody':
+      'हम शीघ्र ही आपको {name} से जोड़ने के लिए संपर्क करेंगे।',
+    'profCmp.contactSuccessBodyGeneric': 'हम शीघ्र ही आपसे संपर्क करेंगे।',
+    'profCmp.contactDone': 'हो गया',
     'profCmp.regBar': 'बार काउंसिल पंजीकरण सं.',
     'profCmp.regTax': 'टैक्स / प्रोफेशनल पंजीकरण सं.',
     // Filters panel

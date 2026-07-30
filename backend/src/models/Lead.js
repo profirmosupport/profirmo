@@ -27,6 +27,11 @@ const Lead = sequelize.define(
     // firm-profile "Contact firm" modal). Nullable for legacy homepage /
     // advanced-search leads which aren't tied to any specific firm.
     firmId: { type: DataTypes.STRING(64), allowNull: true },
+    // Professional the visitor was contacting (when the lead was submitted
+    // via the "Contact Details" modal on a professional card / profile —
+    // shown for pros who aren't available for instant online booking).
+    // Nullable for every other lead source.
+    professionalId: { type: DataTypes.STRING(64), allowNull: true },
     // Where the lead came from. Sources today: "Homepage AI CTA",
     // "Advanced Search", "Firm contact". Free-form string so the admin can
     // add more sources later.
@@ -56,6 +61,7 @@ const Lead = sequelize.define(
       { fields: ['status'] },
       { fields: ['assignedToUserId'] },
       { fields: ['firmId'] },
+      { fields: ['professionalId'] },
     ],
   }
 );

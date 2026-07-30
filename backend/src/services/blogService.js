@@ -2,7 +2,7 @@
 // path used by /blog and /blog/[slug]. Slugs are auto-derived from names
 // and the post's title; the admin can override slug at save time.
 
-const { Op } = require('sequelize');
+const { Op, literal } = require('sequelize');
 const {
   BlogCategory,
   BlogTag,
@@ -137,8 +137,16 @@ const deleteTag = async (id) => {
   const row = await BlogTag.findByPk(id);
   if (!row) return null;
   // Strip the tag from every post that carried it.
+  //
+  // NOTE: blog_posts.tagIds is declared DataTypes.JSON on the model
+  // but the underlying MySQL column is LONGTEXT. When we do a
+  // { tagIds: { [Op.like]: … } } predicate, Sequelize applies the
+  // JSON serialiser to the RHS and wraps the LIKE pattern in
+  // double-quotes ('"%…"%'), which never matches the raw JSON blob.
+  // We bypass the serialiser with a raw literal — the id is
+  // server-generated ("blogtag-<ts>-<n>") and can't contain a quote.
   const posts = await BlogPost.findAll({
-    where: { tagIds: { [Op.like]: `%${id}%` } },
+    where: { [Op.and]: [literal(`\`tagIds\` LIKE '%${id}%'`)] },
   });
   for (const p of posts) {
     const next = Array.isArray(p.tagIds)
@@ -227,9 +235,16 @@ const listPublicPosts = async ({
   if (tagSlug) {
     const tag = await BlogTag.findOne({ where: { slug: tagSlug }, raw: true });
     if (!tag) return { items: [], page: safePage, limit: safeLimit, total: 0 };
-    // tagIds is JSON in the DB; LIKE on the serialised string is good enough
-    // for our scale (single-digit thousands of posts).
-    where.tagIds = { [Op.like]: `%${tag.id}%` };
+    // tagIds is DataTypes.JSON on the model but LONGTEXT in the DB.
+    // A plain { [Op.like]: … } predicate would be JSON-serialised
+    // ('"%…"%') by Sequelize's type layer and match nothing. Use a
+    // raw literal so the pattern lands as a plain '%…%'. Tag ids
+    // are server-generated in the form "blogtag-<ts>-<n>" — no
+    // quotes or wildcards to escape.
+    where[Op.and] = [
+      ...(where[Op.and] || []),
+      literal(`\`tagIds\` LIKE '%${tag.id}%'`),
+    ];
   }
 
   const { rows, count } = await BlogPost.findAndCountAll({

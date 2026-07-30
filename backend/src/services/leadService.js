@@ -26,6 +26,7 @@ const {
 } = require('../models');
 const { hashPassword } = require('../utils/password');
 const authService = require('./authService');
+const env = require('../config/env');
 
 const LEAD_STATUSES = [
   'New',
@@ -109,12 +110,14 @@ async function capturePublic(payload) {
   const source = norm(payload.source) || 'Homepage AI CTA';
   const message = norm(payload.message) || null;
   const firmId = norm(payload.firmId) || null;
+  const professionalId = norm(payload.professionalId) || null;
 
-  // Firm-contact leads bypass dedup so every inquiry shows up on the firm's
-  // dashboard, even if the visitor has previously contacted somebody else.
-  // The legacy homepage / advanced-search lead capture still dedups so we
-  // don't pile up duplicate marketing rows for the same email.
-  if (!firmId) {
+  // Firm-contact and professional-contact leads bypass dedup so every
+  // inquiry shows up against that firm / professional, even if the visitor
+  // has previously contacted somebody else. The legacy homepage / advanced-
+  // search lead capture still dedups so we don't pile up duplicate
+  // marketing rows for the same email.
+  if (!firmId && !professionalId) {
     const existing = await Lead.findOne({
       where: {
         [Op.or]: [
@@ -139,7 +142,9 @@ async function capturePublic(payload) {
         toValue: source,
         note: `Submission re-captured from ${source}.`,
       });
-      return { lead: existing.get({ plain: true }), deduped: true };
+      const resubmitted = existing.get({ plain: true });
+      await notifyAdminsOfLead(resubmitted);
+      return { lead: resubmitted, deduped: true };
     }
   }
 
@@ -149,6 +154,7 @@ async function capturePublic(payload) {
     phone: clean.phone,
     message,
     firmId,
+    professionalId,
     source,
     status: 'New',
   });
@@ -159,12 +165,80 @@ async function capturePublic(payload) {
     toValue: source,
     note: `Lead captured from ${source}.`,
   });
-  return { lead: lead.get({ plain: true }), deduped: false };
+  const created = lead.get({ plain: true });
+  await notifyAdminsOfLead(created);
+  return { lead: created, deduped: false };
+}
+
+// Email the admin inbox whenever a lead form is submitted. Recipients:
+// the admin-configured `supportEmail` if set, otherwise every
+// platform_admin user's email so a lead is never silently dropped. Best
+// effort — any failure is logged and swallowed so it never breaks capture
+// (the lead row is already persisted by the time we get here).
+async function notifyAdminsOfLead(lead) {
+  try {
+    const recipients = new Set();
+    try {
+      // eslint-disable-next-line global-require
+      const adminSettings = require('./adminSettingsService');
+      const configured = await adminSettings.getString('supportEmail');
+      if (configured && configured.trim()) recipients.add(configured.trim());
+    } catch {
+      /* fall back to platform_admin users below */
+    }
+    if (recipients.size === 0) {
+      const admins = await User.findAll({
+        where: { role: 'platform_admin' },
+        attributes: ['email'],
+        raw: true,
+      });
+      admins.forEach((a) => a.email && recipients.add(a.email));
+    }
+    if (recipients.size === 0) {
+      console.warn('[Leads] No admin recipient for new-lead notification.');
+      return;
+    }
+
+    // Resolve the professional's display name for professional-contact leads.
+    await decorateProfessionalNames([lead]);
+
+    // eslint-disable-next-line global-require
+    const { enqueue } = require('./queueService');
+    // The admin panel lives on the FRONTEND host (profirmo.com/admin), not
+    // the API host (env.appUrl → proapi.profirmo.com), so link via frontendUrl.
+    const base = String(env.frontendUrl || env.appUrl || '').replace(/\/$/, '');
+    const leadUrl = `${base}/admin/leads/${lead.id}`;
+    for (const to of recipients) {
+      await enqueue('email', {
+        to,
+        template: 'newLead',
+        vars: {
+          fullName: lead.fullName || '',
+          email: lead.email || '',
+          phone: lead.phone || '',
+          message: lead.message || '',
+          source: lead.source || '',
+          professionalName: lead.professionalName || '',
+          leadUrl,
+        },
+      });
+    }
+  } catch (err) {
+    console.error(
+      '[Leads] Failed to notify admins of new lead:',
+      (err && err.message) || err
+    );
+  }
 }
 
 async function getLeadById(id) {
   const lead = await Lead.findByPk(id);
-  return lead ? lead.get({ plain: true }) : null;
+  if (!lead) return null;
+  const plain = lead.get({ plain: true });
+  // Decorate with the professional's display name (when this is a
+  // professional-contact lead) so the admin detail view can show it.
+  await decorateProfessionalNames([plain]);
+  return plain;
 }
 
 // --- Admin: leads ---------------------------------------------------------
@@ -231,12 +305,44 @@ async function listLeads({
       r.firmName = null;
     });
   }
+  // Same treatment for professional-contact leads: decorate with the
+  // professional's display name so the admin panel shows who the inquiry
+  // was addressed to instead of an opaque id. Batched by unique id.
+  await decorateProfessionalNames(rows);
   return {
     rows,
     page: safePage,
     limit: safeLimit,
     total: count,
   };
+}
+
+// Attach `professionalName` to each lead row that carries a professionalId,
+// resolving the id (User.linkedId or ProfessionalDetail.id) in one batched
+// lookup. Mutates rows in place; sets null when there's nothing to resolve.
+// Lazy-required to keep the service dependency graph acyclic.
+async function decorateProfessionalNames(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const proIds = [...new Set(list.map((r) => r.professionalId).filter(Boolean))];
+  if (proIds.length === 0) {
+    list.forEach((r) => {
+      r.professionalName = null;
+    });
+    return;
+  }
+  // eslint-disable-next-line global-require
+  const professionalService = require('./professionalService');
+  let nameById = new Map();
+  try {
+    nameById = await professionalService.getNamesByIds(proIds);
+  } catch {
+    nameById = new Map();
+  }
+  list.forEach((r) => {
+    r.professionalName = r.professionalId
+      ? nameById.get(String(r.professionalId)) || null
+      : null;
+  });
 }
 
 /**
