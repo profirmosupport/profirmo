@@ -14,7 +14,7 @@
 //                success banner above the form.
 
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import AuthInput from '../AuthInput';
 import GradientButton from '../GradientButton';
@@ -289,8 +289,21 @@ export default function ClientForm({
 
       {isEdit ? null : (
         <Text style={styles.tos}>
-          By continuing you agree to Profirmo&apos;s Terms of Service and
-          Privacy Policy.
+          By continuing you agree to Profirmo&apos;s{' '}
+          <Text
+            style={styles.tosLink}
+            onPress={() => Linking.openURL('https://profirmo.com/terms')}
+          >
+            Terms of Service
+          </Text>{' '}
+          and{' '}
+          <Text
+            style={styles.tosLink}
+            onPress={() => Linking.openURL('https://profirmo.com/privacy')}
+          >
+            Privacy Policy
+          </Text>
+          .
         </Text>
       )}
     </View>
@@ -531,5 +544,10 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xs,
     color: colors.textMuted,
     textAlign: 'center',
+  },
+  tosLink: {
+    fontSize: fontSize.xs,
+    color: colors.primary,
+    fontWeight: fontWeight.bold,
   },
 });
