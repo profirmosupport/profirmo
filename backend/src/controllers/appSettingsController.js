@@ -3,6 +3,7 @@ const { successResponse } = require('../utils/responseHandler');
 const { logAudit } = require('../utils/auditLogger');
 const svc = require('../services/appSettingsService');
 const storageService = require('../services/storageService');
+const adminSettingsService = require('../services/adminSettingsService');
 
 // --- Public read endpoints ------------------------------------------------
 
@@ -24,6 +25,17 @@ const publicListCities = asyncHandler(async (req, res) => {
 const publicGetStorage = asyncHandler(async (req, res) => {
   const cfg = await storageService.getPublicConfig();
   return successResponse(res, 200, 'Storage config', cfg);
+});
+
+// GET /api/app-settings/recaptcha
+// Public-safe reCAPTCHA config — the site key only (never the secret). The
+// /contact form fetches this at load to decide whether to render the
+// "I'm not a robot" widget. Empty siteKey => CAPTCHA disabled.
+const publicGetRecaptcha = asyncHandler(async (req, res) => {
+  const siteKey = await adminSettingsService.getString('recaptcha_site_key');
+  return successResponse(res, 200, 'reCAPTCHA config', {
+    siteKey: siteKey || '',
+  });
 });
 
 // GET /api/app-settings/mobile-version
@@ -511,6 +523,7 @@ module.exports = {
   publicListCities,
   publicGetCityBySlug,
   publicGetStorage,
+  publicGetRecaptcha,
   publicGetMobileVersion,
   adminListCategories,
   adminCreateCategory,

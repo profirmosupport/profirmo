@@ -6,10 +6,21 @@ const asyncHandler = require('../utils/asyncHandler');
 const { successResponse } = require('../utils/responseHandler');
 const supportService = require('../services/supportService');
 const { logAudit } = require('../utils/auditLogger');
+const recaptcha = require('../utils/recaptcha');
 
-// POST /api/support/contact — body: { name, email, subject, message }
+// POST /api/support/contact — body: { name, email, subject, message,
+// recaptchaToken }. Bot protection: when a reCAPTCHA secret is configured
+// (RECAPTCHA_SECRET_KEY) the token is verified with Google before a ticket
+// is created; otherwise the check is a no-op so the form stays open.
 const submitContact = asyncHandler(async (req, res) => {
   const body = req.body || {};
+  const captchaOk = await recaptcha.verifyToken(body.recaptchaToken, req.ip);
+  if (!captchaOk) {
+    throw {
+      statusCode: 400,
+      message: 'CAPTCHA verification failed. Please try again.',
+    };
+  }
   const ticket = await supportService.createTicket({
     name: body.name,
     email: body.email,

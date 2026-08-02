@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import Script from 'next/script';
 import { Mail, Phone, MapPin, CheckCircle2, Clock, Loader2, AlertCircle } from 'lucide-react';
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
@@ -9,7 +10,7 @@ import Card from '@/components/common/Card';
 import Input from '@/components/common/Input';
 import Button from '@/components/common/Button';
 import { useLanguage } from '@/components/LanguageProvider';
-import { post } from '@/services/api';
+import { post, getApiBaseUrl } from '@/services/api';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -48,6 +49,64 @@ export default function ContactPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
+  // reCAPTCHA v2 site key, fetched at runtime from the backend (managed in
+  // the admin panel → reCAPTCHA settings). Empty => CAPTCHA disabled, form
+  // stays open.
+  const [siteKey, setSiteKey] = useState('');
+  const captchaEnabled = Boolean(siteKey);
+  // Explicit-render container + widget id. We render the widget imperatively
+  // (render=explicit) into a ref'd div so React never manages the injected
+  // iframe and can't wipe it on the form's per-keystroke re-renders.
+  const captchaRef = useRef(null);
+  const captchaWidgetId = useRef(null);
+
+  useEffect(() => {
+    let active = true;
+    fetch(`${getApiBaseUrl()}/api/app-settings/recaptcha`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (active) setSiteKey((body && body.data && body.data.siteKey) || '');
+      })
+      .catch(() => {
+        /* leave CAPTCHA disabled on fetch failure */
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!captchaEnabled) return undefined;
+    let cancelled = false;
+    const render = () => {
+      if (cancelled) return;
+      const g = typeof window !== 'undefined' ? window.grecaptcha : null;
+      if (g && g.render && captchaRef.current && captchaWidgetId.current === null) {
+        captchaWidgetId.current = g.render(captchaRef.current, {
+          sitekey: siteKey,
+        });
+        return;
+      }
+      // grecaptcha script not ready yet — retry shortly.
+      setTimeout(render, 300);
+    };
+    render();
+    return () => {
+      cancelled = true;
+    };
+  }, [captchaEnabled, siteKey]);
+
+  function getCaptchaToken() {
+    const g = typeof window !== 'undefined' ? window.grecaptcha : null;
+    if (!g || captchaWidgetId.current === null) return '';
+    return g.getResponse(captchaWidgetId.current) || '';
+  }
+
+  function resetCaptcha() {
+    const g = typeof window !== 'undefined' ? window.grecaptcha : null;
+    if (g && captchaWidgetId.current !== null) g.reset(captchaWidgetId.current);
+  }
+
   function handleChange(e) {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
@@ -78,6 +137,15 @@ export default function ContactPage() {
       setSubmitted(false);
       return;
     }
+    // Require a completed CAPTCHA before hitting the API.
+    let captchaToken = '';
+    if (captchaEnabled) {
+      captchaToken = getCaptchaToken();
+      if (!captchaToken) {
+        setSubmitError(t('contact.error.captcha'));
+        return;
+      }
+    }
     setSubmitting(true);
     setSubmitError('');
     try {
@@ -86,13 +154,17 @@ export default function ContactPage() {
         email: form.email.trim(),
         subject: form.subject.trim(),
         message: form.message.trim(),
+        recaptchaToken: captchaToken,
       });
       setSubmitted(true);
       setForm({ name: '', email: '', subject: '', message: '' });
+      resetCaptcha();
     } catch (err) {
       setSubmitError(
         err.message || 'Could not send your message. Please try again.'
       );
+      // Tokens are single-use — clear it so the user can retry.
+      resetCaptcha();
     } finally {
       setSubmitting(false);
     }
@@ -203,6 +275,9 @@ export default function ContactPage() {
                         </p>
                       )}
                     </div>
+                    {captchaEnabled && (
+                      <div ref={captchaRef} className="g-recaptcha" />
+                    )}
                     <Button type="submit" size="lg" disabled={submitting}>
                       {submitting ? (
                         <>
@@ -273,6 +348,12 @@ export default function ContactPage() {
       </main>
       <Footer />
       <LeadGenFloater source="contact-page" />
+      {captchaEnabled && (
+        <Script
+          src="https://www.google.com/recaptcha/api.js?render=explicit"
+          strategy="afterInteractive"
+        />
+      )}
     </div>
   );
 }

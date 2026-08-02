@@ -21,6 +21,9 @@ router.get('/cause-list-types', ctrl.publicListCauseListTypes);
 // bare S3 keys (e.g. `profile-images/<uuid>.jpg`) to absolute URLs.
 // Never exposes credentials.
 router.get('/storage', ctrl.publicGetStorage);
+// reCAPTCHA v2 site key (public) so the /contact form can render the
+// "I'm not a robot" widget. Never exposes the secret.
+router.get('/recaptcha', ctrl.publicGetRecaptcha);
 // Latest + minimum supported mobile app version per platform plus the
 // store URL. Drives the in-app update prompt + forced-update gate.
 router.get('/mobile-version', ctrl.publicGetMobileVersion);

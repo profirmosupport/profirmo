@@ -309,6 +309,38 @@ const SETTINGS = {
     format: stringCoerce,
   },
 
+  // --- reCAPTCHA (bot protection) --------------------------------------
+  // Google reCAPTCHA v2 ("I'm not a robot") keys for the public /contact
+  // form. Both blank = no CAPTCHA enforced (form stays open). The site key
+  // is public (isPublic → served to the browser via
+  // GET /api/app-settings/recaptcha); the secret is masked in the admin GET
+  // response (secret: true) and read server-side to verify tokens.
+  recaptcha_site_key: {
+    label: 'reCAPTCHA site key',
+    description:
+      'Public Google reCAPTCHA v2 ("I\'m not a robot") site key. Rendered in the /contact form. Get it (with the secret) at https://www.google.com/recaptcha/admin. Leave blank to disable the CAPTCHA.',
+    defaultGetter: () =>
+      process.env.RECAPTCHA_SITE_KEY ||
+      process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY ||
+      '',
+    type: 'string',
+    group: 'reCAPTCHA (bot protection)',
+    isPublic: true,
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  recaptcha_secret_key: {
+    label: 'reCAPTCHA secret key',
+    description:
+      'Google reCAPTCHA v2 secret key — used server-side to verify contact-form tokens with Google. Masked in this panel via `secret: true`; re-enter to rotate. Must pair with the site key above.',
+    defaultGetter: () => process.env.RECAPTCHA_SECRET_KEY || '',
+    type: 'string',
+    group: 'reCAPTCHA (bot protection)',
+    secret: true,
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+
   // --- Storage / AWS S3 -------------------------------------------------
   // The `storage_driver` key flips the entire upload pipeline between
   // local disk and AWS S3 at runtime (no restart required). The S3
