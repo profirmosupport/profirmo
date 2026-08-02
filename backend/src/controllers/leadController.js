@@ -5,11 +5,12 @@ const {
 } = require('../utils/responseHandler');
 const { logAudit } = require('../utils/auditLogger');
 const leadService = require('../services/leadService');
+const env = require('../config/env');
 
-// HttpOnly cookie that flags "this visitor already submitted the lead form".
-// /api/leads/me reads it to decide whether the gated advanced-search popup
-// should re-appear. 90 days is long enough to skip the popup on repeat
-// visits but short enough that the data refreshes for new campaigns.
+// HttpOnly cookie that unlocks /search. It is set ONLY after a lead's phone
+// OTP is verified (see verifyLeadOtp) — never on plain capture — so /search
+// stays gated behind a genuine, phone-verified lead and can't be reached by
+// direct navigation. 90 days so repeat visits skip the gate.
 const LEAD_COOKIE = 'pf_lead';
 const LEAD_COOKIE_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
 
@@ -23,7 +24,30 @@ function setLeadCookie(res, leadId) {
   });
 }
 
-// POST /api/leads  (public)
+// Only leak the OTP code to the client off-production (local/staging QA).
+function publicOtp(otp) {
+  if (!otp) return null;
+  const { debugCode, ...rest } = otp;
+  return env.nodeEnv === 'production' ? rest : { ...rest, debugCode };
+}
+
+// Relay a phoneOtpService/leadService typed error (OTP_INCORRECT, …) as the
+// standard JSON envelope; rethrow anything untyped for the global handler.
+function relayTypedError(res, err) {
+  if (err && err.code) {
+    return res.status(err.statusCode || 400).json({
+      success: false,
+      message: err.message,
+      errors: null,
+      code: err.code,
+      data: err.data || null,
+    });
+  }
+  throw err;
+}
+
+// POST /api/leads  (public) — save the lead (unverified) and send the phone
+// OTP. Does NOT set the access cookie; that happens only after verify-otp.
 const captureLead = asyncHandler(async (req, res) => {
   const { fullName, email, phone, source, message, firmId, professionalId } =
     req.body || {};
@@ -36,21 +60,73 @@ const captureLead = asyncHandler(async (req, res) => {
     firmId,
     professionalId,
   });
-  setLeadCookie(res, result.lead.id);
   return successResponse(res, 201, 'Lead captured', {
     lead: { id: result.lead.id, fullName: result.lead.fullName },
     deduped: result.deduped,
+    otp: publicOtp(result.otp),
   });
 });
 
+// POST /api/leads/verify-otp  (public) — body { leadId, code }. On success
+// marks the lead verified AND sets the pf_lead access cookie (the only path
+// that does), so the visitor can now reach /search.
+const verifyLeadOtp = asyncHandler(async (req, res) => {
+  const leadId = String((req.body && req.body.leadId) || '').trim();
+  const code = String((req.body && req.body.code) || '').trim();
+  if (!leadId || !code) {
+    return res.status(422).json({
+      success: false,
+      message: 'leadId and code are required.',
+      errors: {
+        leadId: leadId ? undefined : 'leadId is required',
+        code: code ? undefined : 'code is required',
+      },
+    });
+  }
+  let lead;
+  try {
+    lead = await leadService.verifyLeadOtp({ leadId, code });
+  } catch (err) {
+    return relayTypedError(res, err);
+  }
+  setLeadCookie(res, lead.id);
+  return successResponse(res, 200, 'Phone verified', {
+    verified: true,
+    leadId: lead.id,
+  });
+});
+
+// POST /api/leads/resend-otp  (public) — body { leadId }. Rate-limited
+// (cooldown + cap in the service, plus authLimiter on the route).
+const resendLeadOtp = asyncHandler(async (req, res) => {
+  const leadId = String((req.body && req.body.leadId) || '').trim();
+  if (!leadId) {
+    return res.status(422).json({
+      success: false,
+      message: 'leadId is required.',
+      errors: { leadId: 'leadId is required' },
+    });
+  }
+  try {
+    const info = await leadService.resendLeadOtp({ leadId });
+    return successResponse(res, 200, 'OTP resent', {
+      resent: info.resent,
+      expiresAt: info.expiresAt,
+      debugCode: env.nodeEnv === 'production' ? undefined : info.debugCode,
+    });
+  } catch (err) {
+    return relayTypedError(res, err);
+  }
+});
+
 // GET /api/leads/me  (public — reads the cookie)
-// Returns { hasLead: bool } so the frontend can decide whether to gate the
-// advanced-search popup. Never reveals lead contents to the visitor.
+// Returns { hasLead: bool } — TRUE only when the cookie points at a lead
+// whose phone is OTP-verified. Drives the /search access gate.
 const getMyLead = asyncHandler(async (req, res) => {
   const id = req.cookies && req.cookies[LEAD_COOKIE];
   if (!id) return successResponse(res, 200, 'OK', { hasLead: false });
   const lead = await leadService.getLeadById(id);
-  if (!lead) {
+  if (!lead || !lead.phoneVerified) {
     res.clearCookie(LEAD_COOKIE, { path: '/' });
     return successResponse(res, 200, 'OK', { hasLead: false });
   }
@@ -261,6 +337,8 @@ const adminConvertOpportunity = asyncHandler(async (req, res) => {
 
 module.exports = {
   captureLead,
+  verifyLeadOtp,
+  resendLeadOtp,
   getMyLead,
   adminListLeads,
   adminGetLead,

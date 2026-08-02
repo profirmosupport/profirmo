@@ -27,6 +27,51 @@ const {
 const { hashPassword } = require('../utils/password');
 const authService = require('./authService');
 const env = require('../config/env');
+const phoneOtpService = require('./phoneOtpService');
+
+// Lead phone-OTP resend policy: at least 30s between sends, at most 3
+// resends per live code. Belt to the route-level authLimiter's braces.
+const LEAD_OTP_PURPOSE = 'lead';
+const LEAD_OTP_RESEND_COOLDOWN_MS = 30 * 1000;
+const LEAD_OTP_MAX_RESENDS = 3;
+
+// Send (best-effort) the lead-verification OTP and normalise the result
+// into an `otp` payload the controller can echo to the client. A cooldown
+// or cap just means a live code was already sent — not an error. Provider
+// failures ARE surfaced (error flag) so the UI can offer a retry.
+async function sendLeadOtp(lead) {
+  try {
+    const sent = await phoneOtpService.sendOtp({
+      phone: lead.phone,
+      purpose: LEAD_OTP_PURPOSE,
+      minResendMs: LEAD_OTP_RESEND_COOLDOWN_MS,
+      maxResends: LEAD_OTP_MAX_RESENDS,
+    });
+    return {
+      sent: true,
+      resent: Boolean(sent.resent),
+      expiresAt: sent.expiresAt,
+      // Only forwarded to the client in non-production (controller decides).
+      debugCode: sent.debugCode,
+    };
+  } catch (err) {
+    if (
+      err &&
+      (err.code === 'OTP_RESEND_COOLDOWN' || err.code === 'OTP_RESEND_LIMIT')
+    ) {
+      return { sent: false, throttled: true, code: err.code };
+    }
+    console.warn(
+      '[Leads] OTP send failed:',
+      (err && err.message) || err
+    );
+    return {
+      sent: false,
+      error: true,
+      message: (err && err.message) || 'Could not send the verification code.',
+    };
+  }
+}
 
 const LEAD_STATUSES = [
   'New',
@@ -144,7 +189,8 @@ async function capturePublic(payload) {
       });
       const resubmitted = existing.get({ plain: true });
       await notifyAdminsOfLead(resubmitted);
-      return { lead: resubmitted, deduped: true };
+      const otp = await sendLeadOtp(resubmitted);
+      return { lead: resubmitted, deduped: true, otp };
     }
   }
 
@@ -167,7 +213,55 @@ async function capturePublic(payload) {
   });
   const created = lead.get({ plain: true });
   await notifyAdminsOfLead(created);
-  return { lead: created, deduped: false };
+  const otp = await sendLeadOtp(created);
+  return { lead: created, deduped: false, otp };
+}
+
+// Verify a lead's phone OTP. On success marks the lead phoneVerified and
+// consumes the code. Throws phoneOtpService's typed errors (OTP_INCORRECT,
+// OTP_EXPIRED, …) for the controller to relay.
+async function verifyLeadOtp({ leadId, code }) {
+  const lead = await Lead.findByPk(leadId);
+  if (!lead) throw httpError(404, 'Lead not found.');
+  await phoneOtpService.verifyOtp({
+    phone: lead.phone,
+    purpose: LEAD_OTP_PURPOSE,
+    code,
+  });
+  await phoneOtpService.consumeOtp({
+    phone: lead.phone,
+    purpose: LEAD_OTP_PURPOSE,
+  });
+  if (!lead.phoneVerified) {
+    lead.phoneVerified = true;
+    lead.phoneVerifiedAt = new Date();
+    await lead.save();
+    await recordActivity({
+      entityType: 'lead',
+      entityId: lead.id,
+      action: 'lead.phone_verified',
+      note: 'Phone number verified via OTP.',
+    });
+  }
+  return lead.get({ plain: true });
+}
+
+// Resend a lead's OTP (rate-limited by cooldown + cap). Throws
+// OTP_RESEND_COOLDOWN / OTP_RESEND_LIMIT so the UI can show a countdown.
+async function resendLeadOtp({ leadId }) {
+  const lead = await Lead.findByPk(leadId);
+  if (!lead) throw httpError(404, 'Lead not found.');
+  const sent = await phoneOtpService.sendOtp({
+    phone: lead.phone,
+    purpose: LEAD_OTP_PURPOSE,
+    minResendMs: LEAD_OTP_RESEND_COOLDOWN_MS,
+    maxResends: LEAD_OTP_MAX_RESENDS,
+  });
+  return {
+    resent: Boolean(sent.resent),
+    expiresAt: sent.expiresAt,
+    debugCode: sent.debugCode,
+  };
 }
 
 // Email the admin inbox whenever a lead form is submitted. Recipients:
@@ -733,6 +827,8 @@ module.exports = {
   LEAD_STATUSES,
   OPPORTUNITY_STATUSES,
   capturePublic,
+  verifyLeadOtp,
+  resendLeadOtp,
   getLeadById,
   listLeads,
   listLeadsByFirm,

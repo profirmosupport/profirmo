@@ -32,6 +32,15 @@ const Lead = sequelize.define(
     // shown for pros who aren't available for instant online booking).
     // Nullable for every other lead source.
     professionalId: { type: DataTypes.STRING(64), allowNull: true },
+    // Phone OTP verification (Ping4SMS, purpose 'lead'). A lead is created
+    // unverified; it flips to verified only after the visitor enters the
+    // 6-digit code sent to their phone. Only verified leads unlock /search.
+    phoneVerified: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    phoneVerifiedAt: { type: DataTypes.DATE, allowNull: true },
     // Where the lead came from. Sources today: "Homepage AI CTA",
     // "Advanced Search", "Firm contact". Free-form string so the admin can
     // add more sources later.

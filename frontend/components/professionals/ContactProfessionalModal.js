@@ -16,6 +16,7 @@ import { useRouter } from 'next/navigation';
 import { X, Send, Loader2 } from 'lucide-react';
 import { useLanguage } from '@/components/LanguageProvider';
 import { submitLead } from '@/services/leadService';
+import LeadOtpVerification from '@/components/leads/LeadOtpVerification';
 
 // Matches the backend validator (leadService.validateLeadInput): name,
 // email and phone are all required; the brief is our own requirement so
@@ -47,6 +48,8 @@ export default function ContactProfessionalModal({
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [step, setStep] = useState('form'); // 'form' | 'otp'
+  const [leadInfo, setLeadInfo] = useState(null);
   // Portal target only exists on the client. Gate the render on mount so
   // createPortal never runs against an undefined document.
   const [mounted, setMounted] = useState(false);
@@ -89,7 +92,7 @@ export default function ContactProfessionalModal({
     setError('');
     setBusy(true);
     try {
-      await submitLead({
+      const result = await submitLead({
         fullName: form.fullName.trim(),
         phone: form.phone.trim(),
         email: form.email.trim(),
@@ -97,16 +100,26 @@ export default function ContactProfessionalModal({
         source: 'Professional contact',
         professionalId,
       });
-      onSubmitted?.();
-      // Redirect to /search with the thank-you banner + AI assistant,
-      // matching the homepage "Discuss with AI" flow.
-      router.push('/search?submitted=1');
+      // Lead saved + OTP sent — verify the phone before granting access.
+      setLeadInfo({
+        leadId: result && result.lead && result.lead.id,
+        phone: form.phone.trim(),
+        otp: result && result.otp,
+      });
+      setStep('otp');
+      setBusy(false);
     } catch (err2) {
       setError(
         (err2 && err2.message) || 'Could not submit. Try again in a minute.'
       );
       setBusy(false);
     }
+  }
+
+  function handleVerified() {
+    onSubmitted?.();
+    // Redirect to /search with the thank-you banner + AI assistant.
+    router.push('/search?submitted=1');
   }
 
   if (!mounted) return null;
@@ -145,6 +158,16 @@ export default function ContactProfessionalModal({
           </button>
         </div>
 
+        {step === 'otp' ? (
+          <div className="px-5 py-4">
+            <LeadOtpVerification
+              leadId={leadInfo && leadInfo.leadId}
+              phone={leadInfo && leadInfo.phone}
+              otp={leadInfo && leadInfo.otp}
+              onVerified={handleVerified}
+            />
+          </div>
+        ) : (
         <form onSubmit={submit} className="space-y-2.5 px-5 py-4">
             <input
               name="fullName"
@@ -204,6 +227,7 @@ export default function ContactProfessionalModal({
                 : t('profCmp.contactSubmit')}
             </button>
         </form>
+        )}
       </div>
     </div>
   );

@@ -9,12 +9,15 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { X, Send, Loader2 } from 'lucide-react';
-import { getApiBaseUrl } from '@/services/api';
+import { submitLead } from '@/services/leadService';
+import LeadOtpVerification from '@/components/leads/LeadOtpVerification';
 
 export default function LeadGenFloaterForm({ source, onClose, onSubmitted }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [step, setStep] = useState('form'); // 'form' | 'otp'
+  const [leadInfo, setLeadInfo] = useState(null);
   const [form, setForm] = useState({
     fullName: '',
     phone: '',
@@ -51,31 +54,33 @@ export default function LeadGenFloaterForm({ source, onClose, onSubmitted }) {
     setError('');
     setBusy(true);
     try {
-      const res = await fetch(`${getApiBaseUrl()}/api/leads`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          fullName: form.fullName.trim(),
-          phone: form.phone.trim(),
-          email: form.email.trim() || undefined,
-          message: form.message.trim(),
-          source,
-        }),
+      const result = await submitLead({
+        fullName: form.fullName.trim(),
+        phone: form.phone.trim(),
+        email: form.email.trim(),
+        message: form.message.trim(),
+        source,
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.message || 'Could not submit. Try again in a minute.');
-      }
-      // Mark as submitted (stops the floater re-appearing) then send the
-      // visitor to /search with the thank-you banner + AI assistant.
-      onSubmitted?.();
-      router.push('/search?submitted=1');
+      // Lead saved + OTP sent — move to the phone-verification step. Only
+      // after verification do we redirect (verify sets the /search cookie).
+      setLeadInfo({
+        leadId: result && result.lead && result.lead.id,
+        phone: form.phone.trim(),
+        otp: result && result.otp,
+      });
+      setStep('otp');
     } catch (err2) {
       setError(err2.message || 'Could not submit. Try again.');
     } finally {
       setBusy(false);
     }
+  }
+
+  function handleVerified() {
+    // Stops the floater re-appearing, then send the visitor to /search
+    // with the thank-you banner + AI assistant.
+    onSubmitted?.();
+    router.push('/search?submitted=1');
   }
 
   return (
@@ -90,7 +95,9 @@ export default function LeadGenFloaterForm({ source, onClose, onSubmitted }) {
             Talk to a verified expert
           </p>
           <p className="mt-0.5 text-[11px] leading-snug text-slate-500">
-            Share your contact + a one-liner; we&apos;ll match you in minutes.
+            {step === 'otp'
+              ? 'Verify your phone number to continue.'
+              : "Share your contact + a one-liner; we'll match you in minutes."}
           </p>
         </div>
         <button
@@ -103,6 +110,16 @@ export default function LeadGenFloaterForm({ source, onClose, onSubmitted }) {
         </button>
       </div>
 
+      {step === 'otp' ? (
+        <div className="px-4 py-3">
+          <LeadOtpVerification
+            leadId={leadInfo && leadInfo.leadId}
+            phone={leadInfo && leadInfo.phone}
+            otp={leadInfo && leadInfo.otp}
+            onVerified={handleVerified}
+          />
+        </div>
+      ) : (
       <form onSubmit={submit} className="space-y-2 px-4 py-3">
         <input
           name="fullName"
@@ -161,6 +178,7 @@ export default function LeadGenFloaterForm({ source, onClose, onSubmitted }) {
           {busy ? 'Sending…' : 'Request callback'}
         </button>
       </form>
+      )}
     </div>
   );
 }

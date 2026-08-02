@@ -26,6 +26,7 @@ import { Loader2, Sparkles, X } from 'lucide-react';
 import Button from '@/components/common/Button';
 import Input from '@/components/common/Input';
 import { submitLead } from '@/services/leadService';
+import LeadOtpVerification from '@/components/leads/LeadOtpVerification';
 
 const DEFAULT_FORM = { fullName: '', email: '', phone: '' };
 
@@ -51,6 +52,9 @@ export default function LeadCaptureModal({
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState('');
+  // Two-step flow: collect details ('form') → verify phone OTP ('otp').
+  const [step, setStep] = useState('form');
+  const [leadInfo, setLeadInfo] = useState(null); // { leadId, phone, otp }
 
   // Auto-focus the first field whenever the modal opens.
   useEffect(() => {
@@ -80,6 +84,8 @@ export default function LeadCaptureModal({
       setForm(DEFAULT_FORM);
       setErrors({});
       setServerError('');
+      setStep('form');
+      setLeadInfo(null);
     }
   }, [open]);
 
@@ -120,7 +126,14 @@ export default function LeadCaptureModal({
         phone: form.phone.trim(),
         source,
       });
-      if (typeof onSuccess === 'function') onSuccess(result);
+      // Lead saved (unverified) + OTP sent — move to the verify step. We
+      // only call onSuccess AFTER the phone OTP is verified.
+      setLeadInfo({
+        leadId: result && result.lead && result.lead.id,
+        phone: form.phone.trim(),
+        otp: result && result.otp,
+      });
+      setStep('otp');
     } catch (err) {
       // 422 with field-level errors gets surfaced inline; everything else is
       // a single banner message.
@@ -175,7 +188,11 @@ export default function LeadCaptureModal({
                 {title}
               </h2>
             </div>
-            <p className="mt-1.5 text-sm text-slate-500">{subtitle}</p>
+            <p className="mt-1.5 text-sm text-slate-500">
+              {step === 'otp'
+                ? 'One last step — verify your phone number to continue.'
+                : subtitle}
+            </p>
           </div>
           {!blocking && (
             <button
@@ -189,6 +206,16 @@ export default function LeadCaptureModal({
           )}
         </div>
 
+        {step === 'otp' ? (
+          <div className="px-6 py-5">
+            <LeadOtpVerification
+              leadId={leadInfo && leadInfo.leadId}
+              phone={leadInfo && leadInfo.phone}
+              otp={leadInfo && leadInfo.otp}
+              onVerified={() => onSuccess?.(leadInfo)}
+            />
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-4 px-6 py-5" noValidate>
           <Input
             label="Full name"
@@ -250,6 +277,7 @@ export default function LeadCaptureModal({
             professional.
           </p>
         </form>
+        )}
       </div>
     </div>
   );

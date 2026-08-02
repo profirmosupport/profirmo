@@ -15,6 +15,7 @@ import {
   RefreshCw,
   AlertTriangle,
   ShieldAlert,
+  ShieldCheck,
   Mail,
   Phone,
   MapPin,
@@ -333,7 +334,18 @@ export default function AdminLeadDetailPage() {
                 <Phone size={14} className="mt-0.5 text-slate-400" />
                 <div>
                   <dt className="text-xs text-slate-500">Phone</dt>
-                  <dd className="font-medium text-slate-800">{lead.phone}</dd>
+                  <dd className="flex items-center gap-2 font-medium text-slate-800">
+                    {lead.phone}
+                    {lead.phoneVerified ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+                        <ShieldCheck size={11} /> OTP verified
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
+                        Not verified
+                      </span>
+                    )}
+                  </dd>
                 </div>
               </div>
               <div className="flex items-start gap-2">

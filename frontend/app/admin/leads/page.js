@@ -20,6 +20,7 @@ import {
   ArrowRight,
   Filter,
   ShieldAlert,
+  CheckCircle2,
 } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import Card from '@/components/common/Card';
@@ -420,7 +421,26 @@ export default function AdminLeadsPage() {
                       </Link>
                     </td>
                     <td className="px-4 py-3 text-slate-600">{row.email}</td>
-                    <td className="px-4 py-3 text-slate-600">{row.phone}</td>
+                    <td className="px-4 py-3 text-slate-600">
+                      <span className="inline-flex items-center gap-1.5">
+                        {row.phone}
+                        {row.phoneVerified ? (
+                          <span
+                            title="Phone verified via OTP"
+                            className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200"
+                          >
+                            <CheckCircle2 size={10} /> Verified
+                          </span>
+                        ) : (
+                          <span
+                            title="Phone not verified"
+                            className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500"
+                          >
+                            Unverified
+                          </span>
+                        )}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-slate-600">
                       {row.firmName || row.professionalName || (
                         <span className="text-slate-400">—</span>

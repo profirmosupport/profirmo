@@ -1106,6 +1106,34 @@ async function runMigrations() {
     }
   }
 
+  // Phone-OTP verification columns on `leads` (Ping4SMS lead flow). Same
+  // information_schema-probe pattern as above — this RDS MySQL rejects
+  // `ADD COLUMN IF NOT EXISTS`. Additive + nullable/defaulted so existing
+  // rows are untouched (they read as unverified).
+  for (const [col, ddl] of [
+    ['phoneVerified', 'TINYINT(1) NOT NULL DEFAULT 0'],
+    ['phoneVerifiedAt', 'DATETIME NULL'],
+  ]) {
+    try {
+      const [cols] = await sequelize.query(
+        'SELECT COUNT(*) AS n FROM information_schema.COLUMNS ' +
+          "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leads' " +
+          `AND COLUMN_NAME = '${col}'`
+      );
+      const present = cols && cols[0] && Number(cols[0].n) > 0;
+      if (!present) {
+        await sequelize.query(
+          `ALTER TABLE \`leads\` ADD COLUMN \`${col}\` ${ddl}`
+        );
+        console.log(`[Migrate] Added leads.${col} column.`);
+      }
+    } catch (err) {
+      if (!/doesn'?t exist|Unknown table/i.test(err.message)) {
+        console.warn(`[Migrate] Could not ensure leads.${col}: ${err.message}`);
+      }
+    }
+  }
+
   console.log('[Migrate] Migrations finished successfully.');
 }
 

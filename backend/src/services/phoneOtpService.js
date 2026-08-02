@@ -36,6 +36,9 @@ const ALLOWED_PURPOSES = new Set([
   // replayed against the login endpoint and vice versa.
   'employee-signup',
   'employee-login',
+  // Public lead-capture forms — phone verification before a lead unlocks
+  // /search. Separate purpose so a lead OTP can't be replayed elsewhere.
+  'lead',
 ]);
 
 function genCode() {
@@ -71,7 +74,7 @@ async function findLiveOtp(phone, purpose) {
  * @param {string} opts.purpose — 'login' | 'signup' | 'change-phone'
  * @returns {Promise<{ phone: string, expiresAt: Date, resent: boolean }>}
  */
-async function sendOtp({ phone, purpose }) {
+async function sendOtp({ phone, purpose, minResendMs = 0, maxResends = 0 }) {
   if (!phone) {
     throw {
       statusCode: 422,
@@ -86,6 +89,31 @@ async function sendOtp({ phone, purpose }) {
   let row = await findLiveOtp(phone, p);
   let resent = false;
   if (row) {
+    // Resend throttling (opt-in per caller — 0 disables, so login/signup
+    // keep their existing unthrottled behaviour). Lead capture passes a
+    // cooldown + cap to stop a visitor spamming the SMS gateway.
+    if (maxResends > 0 && (row.resendCount || 0) >= maxResends) {
+      throw {
+        statusCode: 429,
+        message:
+          'You have requested the code too many times. Please wait for it to arrive or try again later.',
+        code: 'OTP_RESEND_LIMIT',
+      };
+    }
+    if (minResendMs > 0 && row.lastSentAt) {
+      const elapsed = Date.now() - new Date(row.lastSentAt).getTime();
+      if (elapsed < minResendMs) {
+        const retryAfterMs = minResendMs - elapsed;
+        throw {
+          statusCode: 429,
+          message: `Please wait ${Math.ceil(
+            retryAfterMs / 1000
+          )}s before requesting another code.`,
+          code: 'OTP_RESEND_COOLDOWN',
+          data: { retryAfterMs },
+        };
+      }
+    }
     row.resendCount = (row.resendCount || 0) + 1;
     row.lastSentAt = new Date();
     await row.save();

@@ -72,6 +72,19 @@ export default function SearchPage() {
     }
   }, []);
 
+  // Fire a deliberate Google Ads conversion signal ONLY for a freshly
+  // OTP-verified lead (showThanks flips true on redirect from a verified
+  // form, or when the on-page gate is completed). This is more precise than
+  // a raw /search pageview trigger — returning visitors and any blocked /
+  // direct load never reach this. Point the Ads conversion action at the
+  // `lead_verified` event to count only real, phone-verified leads.
+  useEffect(() => {
+    if (!showThanks) return;
+    if (typeof window !== 'undefined' && typeof window.gtag === 'function') {
+      window.gtag('event', 'lead_verified');
+    }
+  }, [showThanks]);
+
   useEffect(() => {
     let active = true;
     if (authLoading) return undefined;

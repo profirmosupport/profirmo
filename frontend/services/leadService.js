@@ -30,6 +30,21 @@ export async function submitLead({
     firmId,
     professionalId,
   });
+  // Returns { lead: { id, fullName }, deduped, otp }. The lead is saved but
+  // NOT yet phone-verified — the caller must run the OTP step next.
+  return unwrap(res);
+}
+
+// Verify the 6-digit phone OTP for a just-created lead. On success the
+// backend sets the httpOnly access cookie that unlocks /search.
+export async function verifyLeadOtp(leadId, code) {
+  const res = await post('/api/leads/verify-otp', { leadId, code });
+  return unwrap(res);
+}
+
+// Resend the lead OTP (rate-limited server-side: 30s cooldown, max 3).
+export async function resendLeadOtp(leadId) {
+  const res = await post('/api/leads/resend-otp', { leadId });
   return unwrap(res);
 }
 
@@ -161,6 +176,8 @@ export const OPPORTUNITY_STATUSES = [
 
 export default {
   submitLead,
+  verifyLeadOtp,
+  resendLeadOtp,
   fetchMyLeadStatus,
   adminListLeads,
   adminGetLead,
