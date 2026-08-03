@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react';
 import { Loader2, ShieldCheck, RefreshCw } from 'lucide-react';
 import { verifyLeadOtp, resendLeadOtp } from '@/services/leadService';
+import { trackLeadConversion } from '@/utils/adsConversion';
 
 const RESEND_COOLDOWN_S = 30;
 
@@ -22,7 +23,13 @@ function fmtCountdown(sec) {
   return m > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${s}s`;
 }
 
-export default function LeadOtpVerification({ leadId, phone, otp, onVerified }) {
+export default function LeadOtpVerification({
+  leadId,
+  phone,
+  email,
+  otp,
+  onVerified,
+}) {
   const [code, setCode] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState('');
@@ -65,6 +72,10 @@ export default function LeadOtpVerification({ leadId, phone, otp, onVerified }) 
     setVerifying(true);
     try {
       await verifyLeadOtp(leadId, c);
+      // Phone is now OTP-verified — record the Google Ads conversion with
+      // Enhanced Conversions data (verified phone + email), deduped by
+      // leadId. Fires here (not on /search) so the identifiers are present.
+      trackLeadConversion({ leadId, email, phone });
       onVerified?.();
     } catch (err) {
       const data = err && err.payload && err.payload.data;

@@ -104,6 +104,7 @@ export default function ContactProfessionalModal({
       setLeadInfo({
         leadId: result && result.lead && result.lead.id,
         phone: form.phone.trim(),
+        email: form.email.trim(),
         otp: result && result.otp,
       });
       setStep('otp');
@@ -163,6 +164,7 @@ export default function ContactProfessionalModal({
             <LeadOtpVerification
               leadId={leadInfo && leadInfo.leadId}
               phone={leadInfo && leadInfo.phone}
+              email={leadInfo && leadInfo.email}
               otp={leadInfo && leadInfo.otp}
               onVerified={handleVerified}
             />

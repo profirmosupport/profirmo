@@ -209,7 +209,7 @@ export default function RootLayout({ children }) {
             window.gtag = gtag;
             gtag('js', new Date());
             gtag('config', '${GA_MEASUREMENT_ID}');
-            gtag('config', '${GOOGLE_ADS_ID}');`}
+            gtag('config', '${GOOGLE_ADS_ID}', { 'allow_enhanced_conversions': true });`}
         </Script>
         <Script
           src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}

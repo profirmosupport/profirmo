@@ -131,6 +131,7 @@ export default function LeadCaptureModal({
       setLeadInfo({
         leadId: result && result.lead && result.lead.id,
         phone: form.phone.trim(),
+        email: form.email.trim(),
         otp: result && result.otp,
       });
       setStep('otp');
@@ -211,6 +212,7 @@ export default function LeadCaptureModal({
             <LeadOtpVerification
               leadId={leadInfo && leadInfo.leadId}
               phone={leadInfo && leadInfo.phone}
+              email={leadInfo && leadInfo.email}
               otp={leadInfo && leadInfo.otp}
               onVerified={() => onSuccess?.(leadInfo)}
             />
