@@ -10,21 +10,23 @@
     "newArchEnabled": true,
     "backgroundColor": "#0f172a",
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.profirmo.app",
       "backgroundColor": "#0f172a",
       "icon": "./src/assets/icon.png",
-      "buildNumber": "1",
       "infoPlist": {
         "NSCameraUsageDescription": "Profirmo uses your camera to capture photos of documents for your cases and bookings.",
-        "NSPhotoLibraryUsageDescription": "Profirmo needs access to your photo library so you can attach existing photos of documents to your cases and bookings."
+        "NSPhotoLibraryUsageDescription": "Profirmo needs access to your photo library so you can attach existing photos of documents to your cases and bookings.",
+        "NSMicrophoneUsageDescription": "Profirmo uses the microphone so you can talk with FirmoAI, our voice legal assistant.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "package": "com.profirmo.app",
       "versionCode": 8,
       "permissions": [
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./src/assets/adaptive-icon.png",

@@ -159,7 +159,7 @@
 |---|---|---|
 | **Camera** | ✅ | Profile photo, firm logo, document uploads (via `expo-image-picker`). `NSCameraUsageDescription`: *"Profirmo uses the camera to capture your profile photo, firm logo, and document uploads."* |
 | **Photos** | ✅ | Pick existing profile photo / firm logo / documents. `NSPhotoLibraryUsageDescription`: *"Profirmo accesses your photo library so you can choose a profile photo, firm logo, or upload documents."* |
-| **Microphone** | ⚠️ [CONFIRM] | Only if ElevenLabs voice agent needs mic access for "Talk to Firmo". If yes: `NSMicrophoneUsageDescription`: *"Profirmo uses the microphone to talk with FirmoAI, our voice legal assistant."* |
+| **Microphone** | ✅ | ElevenLabs voice agent ("Talk to Firmo") needs mic access. `NSMicrophoneUsageDescription`: *"Profirmo uses the microphone so you can talk with FirmoAI, our voice legal assistant."* — set in `apps/app.json` → `ios.infoPlist`. |
 | **Location** | ❌ | Not used |
 | **Notifications** | ❌ | Not used (in-app only) |
 | **Contacts** | ❌ | Not used |
@@ -196,24 +196,44 @@
 
 ## Action Items Before Submission
 
-1. **Publish privacy + terms** pages on `profirmo.com` if not already up.
-2. **Create dedicated review accounts** (client + professional) and document the credentials in this checklist.
-3. **Razorpay test mode**: switch the review build to test keys (or document a backend toggle).
-4. **Add iOS info-plist usage descriptions** (`apps/app.json` → `ios.infoPlist`):
-   - `NSCameraUsageDescription`
-   - `NSPhotoLibraryUsageDescription`
-   - `NSMicrophoneUsageDescription` (if mic is needed)
-   - Android permissions are inferred by Expo from the plugins.
-5. **App icon**: confirm the 1024×1024 PNG has **no alpha channel** (iOS rejects transparent icons).
-6. **Decide on push notifications**: enabling later requires a fresh update with a new permission prompt — easier to ship with the option built in (even if unused at launch).
-7. **EAS build & submit**:
-   ```sh
-   npx eas build -p ios
-   npx eas build -p android
-   npx eas submit -p ios
-   npx eas submit -p android
-   ```
+1. **Publish privacy + terms** pages on `profirmo.com` — [CONFIRM live]: `https://profirmo.com/privacy`, `https://profirmo.com/terms` (now linked from the in-app signup screen too).
+2. **Create dedicated review accounts** (client + professional) and document the credentials in this checklist. — [NEEDED, still open]
+3. **Razorpay test mode**: switch the review build to test keys (or document a backend toggle). — [CONFIRM, still open]
+4. ~~Add iOS info-plist usage descriptions~~ — ✅ **done** (`apps/app.json` → `ios.infoPlist`): `NSCameraUsageDescription`, `NSPhotoLibraryUsageDescription`, `NSMicrophoneUsageDescription` all set. `expo-image-picker` config plugin added too. Android permissions are inferred by Expo from the plugins.
+5. ~~App icon: confirm no alpha channel~~ — ✅ **done**, flattened via `sips`.
+6. **Decide on push notifications**: enabling later requires a fresh update with a new permission prompt — easier to ship with the option built in (even if unused at launch). — still open, not built yet.
+7. ~~EAS build & submit~~ — ✅ **done for iOS**, see Submission Log below. Android build/submit still pending.
 
 ---
 
-*Generated for Profirmo (com.profirmo.app, v0.1.0).*
+## Submission Log
+
+### iOS — v0.1.7 (build 1) — submitted 2026-07-31
+
+- **App**: Profirmo, bundle ID `com.profirmo.app`
+- **Apple Team**: LOAM IT Solutions Private Limited (`9ZL4WXFMQC`)
+- **App Store Connect App ID (ascAppId)**: `6796593564`
+- **EAS project**: `@dcexpo/profirmo` (`35655f73-2172-4c19-b061-c94899ca263d`)
+- **Build ID**: `8df68c32-1dbf-4e77-a11c-f8e2d5a2b222`
+- **Build artifact**: https://expo.dev/artifacts/eas/CV1vB5XR2grWM6X4jeoZwfuMbylMYONQlKP0WaY8ofI.ipa
+- **Submission**: https://expo.dev/accounts/dcexpo/projects/profirmo/submissions/5b3de1ae-d7dc-47ce-802e-4e83430374e0
+- **TestFlight**: https://appstoreconnect.apple.com/apps/6796593564/testflight/ios
+- **App Store Connect API Key**: `[Expo] EAS Submit nX3aMyVN_O` (Key ID `AW6SHVM7QT`, role ADMIN, stored on EAS servers — reused automatically for future `eas submit` runs)
+- **eas.json config**: `cli.appVersionSource: "remote"`, `build.production.ios.autoIncrement: true`, `submit.production.ios.ascAppId: "6796593564"`
+
+### iOS — v0.1.7 (build 2) — submitted 2026-08-03
+
+Superseded build 1: rebuilt to include `NSMicrophoneUsageDescription` (Talk to Firmo voice feature) and `supportsTablet: false` (iPad support removed — the app is phone-layout only, so no iPad screenshots are required).
+
+- **Build ID**: `494a8118-aedb-4114-aebf-fd4f4a4997fb`
+- **Build artifact**: https://expo.dev/artifacts/eas/igZT3Q_z3FmrfjK1J4KfB3_jJjPhI2E7iefhh1A-6Q8.ipa
+- **Submission**: https://expo.dev/accounts/dcexpo/projects/profirmo/submissions/14947958-1a02-4059-be1a-2a28a02a728c
+- **App Store screenshots**: generated in `apps/Screenshots/AppStore/` — `6.9-inch/` (1320×2868) and `6.5-inch/` (1242×2688), 7 images each, cover-cropped from the phone captures in `apps/Screenshots/`.
+
+Remaining before this build can go out for public review: reviewer test accounts (item 2), Razorpay test-mode confirmation (item 3), rest of the App Store Connect listing (description, App Privacy questionnaire, age rating), then attach build 0.1.7 (2) to a version and **Submit for Review**.
+
+### Android — not yet built/submitted
+
+---
+
+*Generated for Profirmo (com.profirmo.app). Last updated 2026-07-31 after first iOS TestFlight submission.*
