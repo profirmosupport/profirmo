@@ -296,7 +296,7 @@ export default function AIAssistantSection() {
         onClose={() => setLeadOpen(false)}
         onSuccess={() => {
           setLeadOpen(false);
-          router.push('/search?submitted=1');
+          router.push('/search?requestVerifed');
         }}
         source="Homepage AI CTA"
         title="Discuss with AI"

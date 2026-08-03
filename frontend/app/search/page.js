@@ -33,6 +33,7 @@ import { useSubCategoriesFlat } from '@/hooks/useAppSettings';
 import { useLocations } from '@/hooks/useLocations';
 import LeadCaptureModal from '@/components/leads/LeadCaptureModal';
 import { fetchMyLeadStatus } from '@/services/leadService';
+import { fireLeadConversionIfPending } from '@/utils/adsConversion';
 
 const INITIAL_FILTERS = {
   keyword: '',
@@ -56,27 +57,32 @@ export default function SearchPage() {
   // is the filter panel + results allowed to interact.
   const [leadCheck, setLeadCheck] = useState('pending'); // pending|granted|blocked
 
-  // Thank-you banner shown after any lead form redirects here with
-  // ?submitted=1 (homepage "Discuss with AI", the callback floater, the
-  // professional "Contact" modal, and the advanced-search gate). Strip the
-  // flag from the URL so a refresh / back doesn't re-trigger it.
+  // Thank-you banner + Google Ads conversion are both gated on the URL
+  // carrying `?requestVerifed` — the marker every lead form appends after a
+  // successful phone-OTP verification. The param is deliberately LEFT in the
+  // URL so a URL-based Ads conversion rule can also match it.
   const [showThanks, setShowThanks] = useState(false);
+  // A freshly-verified lead is waiting to be counted as a conversion.
+  const [firePending, setFirePending] = useState(false);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get('submitted') === '1') {
+    if (params.has('requestVerifed')) {
       setShowThanks(true);
-      params.delete('submitted');
-      const qs = params.toString();
-      window.history.replaceState(null, '', `/search${qs ? `?${qs}` : ''}`);
+      setFirePending(true);
     }
   }, []);
 
-  // NOTE: the Google Ads conversion (with Enhanced Conversions data) is
-  // fired at the moment of OTP verification in LeadOtpVerification via
-  // utils/adsConversion — that's the only point with the verified phone +
-  // email + leadId. We deliberately do NOT fire it here on /search, where
-  // that identity isn't available and a raw pageview would over-count.
+  // Count the conversion only once access is granted (a genuine verified
+  // lead) — never on a blocked/direct hit. fireLeadConversionIfPending is
+  // idempotent (it consumes the stashed leadId), so a reload of
+  // /search?requestVerifed never double-counts.
+  useEffect(() => {
+    if (firePending && leadCheck === 'granted') {
+      fireLeadConversionIfPending();
+      setFirePending(false);
+    }
+  }, [firePending, leadCheck]);
 
   useEffect(() => {
     let active = true;
@@ -263,6 +269,12 @@ export default function SearchPage() {
           onSuccess={() => {
             setLeadCheck('granted');
             setShowThanks(true);
+            // Verified on-page (no redirect) — mark the URL as a verified
+            // landing so it matches ?requestVerifed, then count once.
+            if (typeof window !== 'undefined') {
+              window.history.replaceState(null, '', '/search?requestVerifed');
+            }
+            setFirePending(true);
           }}
         />
       </div>

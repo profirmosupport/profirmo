@@ -1,23 +1,27 @@
 // Google Ads conversion tracking for verified leads.
 //
-// Fired once, at the moment a lead's phone OTP is verified (from
-// LeadOtpVerification) — the only point where we have the full, trusted
-// identity (verified phone + email + leadId). This is far better than a raw
-// /search pageview trigger: it counts only real, phone-verified leads and
-// feeds Enhanced Conversions with high-quality match data, which is what
-// lets Smart Bidding actually optimise.
+// Two-phase, so the conversion is counted ONLY when the visitor lands on
+// /search?requestVerifed after a genuine phone-OTP verification:
 //
-// Two signals are emitted:
-//   1. `lead_verified` event — use this as an event-based conversion trigger
-//      in Google Ads (works even before a conversion label is configured).
-//   2. `conversion` with send_to — the direct conversion action, active once
-//      NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABEL is set (Vercel env).
-// Both carry transaction_id = leadId so Google de-duplicates a lead to a
-// single conversion no matter how many times the event reaches it.
+//   1. primeLeadConversion()  — at OTP verification (LeadOtpVerification):
+//      set Enhanced-Conversions identifiers (verified email + E.164 phone,
+//      hashed client-side by the Google tag) and stash the leadId. Does NOT
+//      count a conversion yet.
+//   2. fireLeadConversionIfPending() — on /search when the URL contains
+//      `requestVerifed`: fire `lead_verified` (event-based trigger) and,
+//      when NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABEL is set, a `conversion`
+//      with send_to. Consumes the stashed leadId (transaction_id) so it
+//      counts exactly once — a reload of the same URL never double-counts,
+//      and a hand-typed ?requestVerifed with no prior verification counts
+//      nothing.
 
 const ADS_ID = 'AW-18292736304';
 const CONVERSION_LABEL =
   process.env.NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABEL || '';
+
+// sessionStorage key holding the leadId of a just-verified lead that hasn't
+// been counted as a conversion yet.
+const STASH_KEY = 'pf_lead_conv_pending';
 
 // Normalise an Indian phone number to E.164 (+91XXXXXXXXXX) for Enhanced
 // Conversions matching. Best-effort — Google re-normalises + hashes anyway.
@@ -31,47 +35,58 @@ function toE164(phone) {
 }
 
 /**
- * Record a verified-lead conversion. No-ops safely when gtag isn't loaded.
- *
- * @param {object} opts
- * @param {string} opts.leadId - dedup / transaction id
- * @param {string} [opts.email]
- * @param {string} [opts.phone]
+ * Phase 1 — called the instant a lead's phone OTP is verified. Primes
+ * Enhanced-Conversions identity and marks a conversion as pending. No-ops
+ * safely when gtag isn't loaded.
  */
-export function trackLeadConversion({ leadId, email, phone } = {}) {
+export function primeLeadConversion({ leadId, email, phone } = {}) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (typeof window.gtag === 'function') {
+      const userData = {};
+      const e = String(email || '').trim().toLowerCase();
+      const p = toE164(phone);
+      if (e) userData.email = e;
+      if (p) userData.phone_number = p;
+      if (Object.keys(userData).length > 0) {
+        window.gtag('set', 'user_data', userData);
+      }
+    }
+    if (leadId) window.sessionStorage.setItem(STASH_KEY, String(leadId));
+  } catch {
+    /* never break the verification flow */
+  }
+}
+
+/**
+ * Phase 2 — called on /search when the URL contains `requestVerifed`. Fires
+ * the conversion once (deduped by the stashed leadId) and clears the stash.
+ * Returns true if a conversion was counted.
+ */
+export function fireLeadConversionIfPending() {
   if (typeof window === 'undefined' || typeof window.gtag !== 'function') {
-    return;
+    return false;
   }
   try {
-    // Enhanced Conversions: provide user-provided identifiers. The Google
-    // tag hashes these (SHA-256) client-side before they ever leave the
-    // browser. Requires "Enhanced conversions" to also be turned ON in the
-    // Google Ads UI.
-    const userData = {};
-    const e = String(email || '').trim().toLowerCase();
-    const p = toE164(phone);
-    if (e) userData.email = e;
-    if (p) userData.phone_number = p;
-    if (Object.keys(userData).length > 0) {
-      window.gtag('set', 'user_data', userData);
-    }
+    const leadId = window.sessionStorage.getItem(STASH_KEY) || '';
+    // Only count when this session actually just verified a lead — guards
+    // against a hand-typed ?requestVerifed or a page reload.
+    if (!leadId) return false;
 
-    const params = leadId ? { transaction_id: String(leadId) } : {};
-
-    // Generic signal — usable as an event-based conversion trigger.
+    const params = { transaction_id: leadId };
     window.gtag('event', 'lead_verified', params);
-
-    // Direct conversion action (once the label is configured).
     if (CONVERSION_LABEL) {
       window.gtag('event', 'conversion', {
         send_to: `${ADS_ID}/${CONVERSION_LABEL}`,
         ...params,
       });
     }
+    window.sessionStorage.removeItem(STASH_KEY);
+    return true;
   } catch {
-    /* never let analytics break the verification flow */
+    return false;
   }
 }
 
-const adsConversion = { trackLeadConversion };
+const adsConversion = { primeLeadConversion, fireLeadConversionIfPending };
 export default adsConversion;

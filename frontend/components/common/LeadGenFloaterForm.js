@@ -81,7 +81,7 @@ export default function LeadGenFloaterForm({ source, onClose, onSubmitted }) {
     // Stops the floater re-appearing, then send the visitor to /search
     // with the thank-you banner + AI assistant.
     onSubmitted?.();
-    router.push('/search?submitted=1');
+    router.push('/search?requestVerifed');
   }
 
   return (

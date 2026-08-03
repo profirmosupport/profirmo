@@ -120,7 +120,7 @@ export default function ContactProfessionalModal({
   function handleVerified() {
     onSubmitted?.();
     // Redirect to /search with the thank-you banner + AI assistant.
-    router.push('/search?submitted=1');
+    router.push('/search?requestVerifed');
   }
 
   if (!mounted) return null;

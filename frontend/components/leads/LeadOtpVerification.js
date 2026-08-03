@@ -13,7 +13,7 @@
 import { useEffect, useState } from 'react';
 import { Loader2, ShieldCheck, RefreshCw } from 'lucide-react';
 import { verifyLeadOtp, resendLeadOtp } from '@/services/leadService';
-import { trackLeadConversion } from '@/utils/adsConversion';
+import { primeLeadConversion } from '@/utils/adsConversion';
 
 const RESEND_COOLDOWN_S = 30;
 
@@ -72,10 +72,11 @@ export default function LeadOtpVerification({
     setVerifying(true);
     try {
       await verifyLeadOtp(leadId, c);
-      // Phone is now OTP-verified — record the Google Ads conversion with
-      // Enhanced Conversions data (verified phone + email), deduped by
-      // leadId. Fires here (not on /search) so the identifiers are present.
-      trackLeadConversion({ leadId, email, phone });
+      // Phone verified — prime Enhanced-Conversions identity (verified email
+      // + phone) and mark the conversion pending. It is actually COUNTED on
+      // /search once the URL carries ?requestVerifed (see adsConversion +
+      // app/search/page.js), so verified leads map 1:1 to that landing.
+      primeLeadConversion({ leadId, email, phone });
       onVerified?.();
     } catch (err) {
       const data = err && err.payload && err.payload.data;
