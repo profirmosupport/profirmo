@@ -77,6 +77,53 @@ export const translations = {
     'landing.final.subtitle': "Share your details and we'll take it from there.",
     'landing.final.button': 'Talk to Firmo',
 
+    // Brand tagline (shown identically on both language versions)
+    'landing.tagline': 'Ab sabka bhai Vakeel hai',
+    'landing.taglineNote':
+      'Friendly, verified help for your legal & tax matters — in your language.',
+
+    // Top legal categories in India
+    'landing.cats.title': 'Top legal help people look for in India',
+    'landing.cats.subtitle':
+      "Pick what fits your matter — tap a topic and we'll take it from there.",
+    'landing.cats.prompt': 'Tap a topic to get started',
+    'landing.cats.divorce': 'Divorce & family',
+    'landing.cats.property': 'Property & land',
+    'landing.cats.cheque': 'Cheque bounce',
+    'landing.cats.consumer': 'Consumer complaint',
+    'landing.cats.criminal': 'Criminal / bail',
+    'landing.cats.employment': 'Job & salary',
+    'landing.cats.cyber': 'Cyber & online fraud',
+    'landing.cats.will': 'Will & succession',
+    'landing.cats.tax': 'GST & tax notice',
+    'landing.cats.company': 'Company registration',
+    'landing.cats.rent': 'Rent & tenancy',
+    'landing.cats.notice': 'Legal notice',
+
+    // FAQ
+    'landing.faq.title': 'Questions people ask',
+    'landing.faq.q1': 'Is my information private?',
+    'landing.faq.a1':
+      'Yes. Your details are confidential, protected with a mobile OTP, and never shown publicly.',
+    'landing.faq.q2': 'Does it cost anything to submit?',
+    'landing.faq.a2':
+      'No. Sharing your details and getting connected is free. Any consultation fee is agreed directly with the professional.',
+    'landing.faq.q3': 'Are the professionals genuine?',
+    'landing.faq.a3':
+      'Every professional’s identity is verified before they are listed on Profirmo.',
+    'landing.faq.q4': 'Can I talk online?',
+    'landing.faq.a4':
+      'Yes — connect online or in person, whichever suits your matter.',
+    'landing.faq.q5': 'Why do you ask for an OTP?',
+    'landing.faq.a5':
+      'A quick one-time code confirms the mobile number is really yours. It takes a few seconds.',
+
+    // Popup
+    'landing.modal.title': 'Talk to Firmo',
+    'landing.modal.subtitle':
+      "Share a few details — we'll connect you with the right professional.",
+    'landing.modal.caption': 'Verified professionals · Private & secure',
+
     'landing.disclaimer':
       'Profirmo is a technology platform that helps you connect with independent, verified professionals. This page is for information only and is not an advertisement or solicitation of work by any advocate or professional. By proceeding, you acknowledge that you are seeking information of your own accord.',
   },
@@ -147,6 +194,49 @@ export const translations = {
     'landing.final.title': 'शुरू करने के लिए तैयार हैं?',
     'landing.final.subtitle': 'अपना विवरण साझा करें, आगे का काम हम संभाल लेंगे।',
     'landing.final.button': 'Firmo से बात करें',
+
+    'landing.tagline': 'Ab sabka bhai Vakeel hai',
+    'landing.taglineNote':
+      'आपके कानूनी और टैक्स मामलों के लिए भरोसेमंद, सत्यापित मदद — आपकी भाषा में।',
+
+    'landing.cats.title': 'भारत में लोग सबसे ज़्यादा किन कानूनी मामलों में मदद ढूँढते हैं',
+    'landing.cats.subtitle':
+      'जो आपके मामले से मेल खाए उसे चुनें — किसी विषय पर टैप करें, आगे का काम हम संभालेंगे।',
+    'landing.cats.prompt': 'शुरू करने के लिए किसी विषय पर टैप करें',
+    'landing.cats.divorce': 'तलाक और परिवार',
+    'landing.cats.property': 'संपत्ति और ज़मीन',
+    'landing.cats.cheque': 'चेक बाउंस',
+    'landing.cats.consumer': 'उपभोक्ता शिकायत',
+    'landing.cats.criminal': 'आपराधिक / ज़मानत',
+    'landing.cats.employment': 'नौकरी और वेतन',
+    'landing.cats.cyber': 'साइबर और ऑनलाइन धोखाधड़ी',
+    'landing.cats.will': 'वसीयत और उत्तराधिकार',
+    'landing.cats.tax': 'GST और टैक्स नोटिस',
+    'landing.cats.company': 'कंपनी पंजीकरण',
+    'landing.cats.rent': 'किराया और किरायेदारी',
+    'landing.cats.notice': 'कानूनी नोटिस',
+
+    'landing.faq.title': 'लोग जो सवाल पूछते हैं',
+    'landing.faq.q1': 'क्या मेरी जानकारी निजी है?',
+    'landing.faq.a1':
+      'हाँ। आपका विवरण गोपनीय है, मोबाइल OTP से सुरक्षित है, और कभी सार्वजनिक नहीं किया जाता।',
+    'landing.faq.q2': 'क्या जानकारी भेजने का कोई शुल्क है?',
+    'landing.faq.a2':
+      'नहीं। अपना विवरण साझा करना और जुड़ना निःशुल्क है। कोई भी परामर्श शुल्क सीधे प्रोफेशनल के साथ तय होता है।',
+    'landing.faq.q3': 'क्या प्रोफेशनल्स असली हैं?',
+    'landing.faq.a3':
+      'Profirmo पर सूचीबद्ध करने से पहले हर प्रोफेशनल की पहचान सत्यापित की जाती है।',
+    'landing.faq.q4': 'क्या मैं ऑनलाइन बात कर सकता/सकती हूँ?',
+    'landing.faq.a4':
+      'हाँ — अपने मामले के अनुसार ऑनलाइन या व्यक्तिगत रूप से जुड़ें।',
+    'landing.faq.q5': 'आप OTP क्यों माँगते हैं?',
+    'landing.faq.a5':
+      'एक त्वरित एक-बार कोड पुष्टि करता है कि मोबाइल नंबर वाकई आपका है। इसमें कुछ सेकंड लगते हैं।',
+
+    'landing.modal.title': 'Firmo से बात करें',
+    'landing.modal.subtitle':
+      'कुछ विवरण साझा करें — हम आपको सही प्रोफेशनल से जोड़ेंगे।',
+    'landing.modal.caption': 'सत्यापित प्रोफेशनल्स · निजी और सुरक्षित',
 
     'landing.disclaimer':
       'Profirmo एक तकनीकी प्लेटफ़ॉर्म है जो आपको स्वतंत्र, सत्यापित प्रोफेशनल्स से जुड़ने में मदद करता है। यह पृष्ठ केवल जानकारी के लिए है और किसी अधिवक्ता या प्रोफेशनल द्वारा कार्य का विज्ञापन या याचना नहीं है। आगे बढ़कर, आप स्वीकार करते हैं कि आप अपनी स्वेच्छा से जानकारी प्राप्त कर रहे हैं।',

@@ -15,14 +15,17 @@ import LeadOtpVerification from '@/components/leads/LeadOtpVerification';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^\+?\d{8,15}$/;
 
-export default function LandingLeadForm({ source = 'Landing page' }) {
+export default function LandingLeadForm({
+  source = 'Landing page',
+  prefillMessage = '',
+}) {
   const { t } = useLanguage();
   const router = useRouter();
   const [form, setForm] = useState({
     fullName: '',
     phone: '',
     email: '',
-    message: '',
+    message: prefillMessage,
   });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
