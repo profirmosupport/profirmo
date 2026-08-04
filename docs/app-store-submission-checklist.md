@@ -90,7 +90,6 @@
   - For App Review, use the **email + password** path on the sign-in screen so reviewers can bypass SMS.
   - If they need to test phone flows, provide a sandbox number or static OTP override.
 - **Reviewer Access Instructions**:
-
   1. Open app → tap **Sign in** → enter the test email + password (above).
   2. To exercise the **Pro** role, switch to the Pro test account (also above).
   3. Razorpay payments are in **test mode** for review — use card `4111 1111 1111 1111`, any future expiry, any CVV.
@@ -125,18 +124,18 @@
 
 ## 8. Third-Party Services
 
-| Service | Used? | Notes |
-|---|---|---|
-| Firebase | ❌ | Not used |
-| Google Sign-In | ❌ | Not used |
-| Apple Sign-In | ❌ | Not used. *(If any social sign-in is added, Apple requires it as an alternative — Guideline 4.8.)* |
-| Payments | ✅ | **Razorpay** (web-embedded via system browser through `Linking.openURL(shortUrl)` — no native SDK, no card collection in-app) |
-| Notifications | ❌ | No push (in-app only). [CONFIRM intentional] |
-| Analytics | ❌ | None |
-| Other | ✅ | **ElevenLabs Convai** (voice assistant — "Talk to Firmo" via WebView) |
-| Storage | ✅ | **AWS S3** (profile photos, firm docs) |
-| Backend | ✅ | Profirmo own backend (`profirmo.onrender.com`) |
-| Native modules | ✅ | `expo-image-picker` (camera + photo library), `react-native-webview` (Razorpay + ElevenLabs) |
+| Service        | Used? | Notes                                                                                                                         |
+| -------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Firebase       | ❌    | Not used                                                                                                                      |
+| Google Sign-In | ❌    | Not used                                                                                                                      |
+| Apple Sign-In  | ❌    | Not used. _(If any social sign-in is added, Apple requires it as an alternative — Guideline 4.8.)_                            |
+| Payments       | ✅    | **Razorpay** (web-embedded via system browser through `Linking.openURL(shortUrl)` — no native SDK, no card collection in-app) |
+| Notifications  | ❌    | No push (in-app only). [CONFIRM intentional]                                                                                  |
+| Analytics      | ❌    | None                                                                                                                          |
+| Other          | ✅    | **ElevenLabs Convai** (voice assistant — "Talk to Firmo" via WebView)                                                         |
+| Storage        | ✅    | **AWS S3** (profile photos, firm docs)                                                                                        |
+| Backend        | ✅    | Profirmo own backend (`profirmo.onrender.com`)                                                                                |
+| Native modules | ✅    | `expo-image-picker` (camera + photo library), `react-native-webview` (Razorpay + ElevenLabs)                                  |
 
 ---
 
@@ -155,15 +154,15 @@
 
 ## 10. Permissions
 
-| Permission | Used? | Purpose / Usage Description |
-|---|---|---|
-| **Camera** | ✅ | Profile photo, firm logo, document uploads (via `expo-image-picker`). `NSCameraUsageDescription`: *"Profirmo uses the camera to capture your profile photo, firm logo, and document uploads."* |
-| **Photos** | ✅ | Pick existing profile photo / firm logo / documents. `NSPhotoLibraryUsageDescription`: *"Profirmo accesses your photo library so you can choose a profile photo, firm logo, or upload documents."* |
-| **Microphone** | ✅ | ElevenLabs voice agent ("Talk to Firmo") needs mic access. `NSMicrophoneUsageDescription`: *"Profirmo uses the microphone so you can talk with FirmoAI, our voice legal assistant."* — set in `apps/app.json` → `ios.infoPlist`. |
-| **Location** | ❌ | Not used |
-| **Notifications** | ❌ | Not used (in-app only) |
-| **Contacts** | ❌ | Not used |
-| **Bluetooth** | ❌ | Not used |
+| Permission        | Used? | Purpose / Usage Description                                                                                                                                                                                                      |
+| ----------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Camera**        | ✅    | Profile photo, firm logo, document uploads (via `expo-image-picker`). `NSCameraUsageDescription`: _"Profirmo uses the camera to capture your profile photo, firm logo, and document uploads."_                                   |
+| **Photos**        | ✅    | Pick existing profile photo / firm logo / documents. `NSPhotoLibraryUsageDescription`: _"Profirmo accesses your photo library so you can choose a profile photo, firm logo, or upload documents."_                               |
+| **Microphone**    | ✅    | ElevenLabs voice agent ("Talk to Firmo") needs mic access. `NSMicrophoneUsageDescription`: _"Profirmo uses the microphone so you can talk with FirmoAI, our voice legal assistant."_ — set in `apps/app.json` → `ios.infoPlist`. |
+| **Location**      | ❌    | Not used                                                                                                                                                                                                                         |
+| **Notifications** | ❌    | Not used (in-app only)                                                                                                                                                                                                           |
+| **Contacts**      | ❌    | Not used                                                                                                                                                                                                                         |
+| **Bluetooth**     | ❌    | Not used                                                                                                                                                                                                                         |
 
 ---
 
@@ -236,4 +235,4 @@ Remaining before this build can go out for public review: reviewer test accounts
 
 ---
 
-*Generated for Profirmo (com.profirmo.app). Last updated 2026-07-31 after first iOS TestFlight submission.*
+_Generated for Profirmo (com.profirmo.app). Last updated 2026-07-31 after first iOS TestFlight submission._
