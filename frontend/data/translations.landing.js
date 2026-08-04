@@ -6,11 +6,15 @@
 export const translations = {
   en: {
     'landing.eyebrow': 'Legal & tax matters, made simple',
-    'landing.hero.title': 'Talk to Firmo about your legal or tax matter',
+    'landing.hero.title':
+      'Talk to verified advocates, lawyers & professionals',
     'landing.hero.subtitle':
-      'Share a few details, verify your mobile number, and get connected with verified, independent professionals — privately and with no obligation.',
-    'landing.hero.cta': 'Talk to Firmo',
-    'landing.hero.ctaAlt': 'Talk to a professional',
+      'Share a few details, verify your mobile number, and connect privately with identity-verified advocates, lawyers, chartered accountants and tax consultants — with no obligation.',
+    'landing.hero.proTypes':
+      'Advocates · Lawyers · Chartered Accountants · Tax consultants',
+    'landing.hero.cta': 'Talk to a professional',
+    'landing.hero.ctaAlt': 'Request a callback',
+    'landing.cta.short': 'Get help',
 
     'landing.trust.verified': 'Identity-verified professionals',
     'landing.trust.otp': 'OTP-secured',
@@ -75,7 +79,7 @@ export const translations = {
     // Final CTA
     'landing.final.title': 'Ready to get started?',
     'landing.final.subtitle': "Share your details and we'll take it from there.",
-    'landing.final.button': 'Talk to Firmo',
+    'landing.final.button': 'Talk to a professional',
 
     // Brand tagline (shown identically on both language versions)
     'landing.tagline': 'Ab sabka bhai Vakeel hai',
@@ -119,10 +123,11 @@ export const translations = {
       'A quick one-time code confirms the mobile number is really yours. It takes a few seconds.',
 
     // Popup
-    'landing.modal.title': 'Talk to Firmo',
+    'landing.modal.title': 'Talk to a verified professional',
     'landing.modal.subtitle':
-      "Share a few details — we'll connect you with the right professional.",
-    'landing.modal.caption': 'Verified professionals · Private & secure',
+      "Share a few details — we'll connect you with the right advocate, lawyer or professional.",
+    'landing.modal.caption':
+      'Verified advocates, lawyers & professionals · Private & secure',
 
     'landing.disclaimer':
       'Profirmo is a technology platform that helps you connect with independent, verified professionals. This page is for information only and is not an advertisement or solicitation of work by any advocate or professional. By proceeding, you acknowledge that you are seeking information of your own accord.',
@@ -130,11 +135,14 @@ export const translations = {
 
   hi: {
     'landing.eyebrow': 'कानूनी और टैक्स मामले, अब आसान',
-    'landing.hero.title': 'अपने कानूनी या टैक्स मामले के लिए Firmo से बात करें',
+    'landing.hero.title': 'सत्यापित अधिवक्ताओं, वकीलों और प्रोफेशनल्स से बात करें',
     'landing.hero.subtitle':
-      'कुछ जानकारी साझा करें, अपना मोबाइल नंबर सत्यापित करें, और सत्यापित, स्वतंत्र प्रोफेशनल्स से जुड़ें — निजी तौर पर और बिना किसी बाध्यता के।',
-    'landing.hero.cta': 'Firmo से बात करें',
-    'landing.hero.ctaAlt': 'प्रोफेशनल से बात करें',
+      'कुछ जानकारी साझा करें, अपना मोबाइल नंबर सत्यापित करें, और पहचान-सत्यापित अधिवक्ताओं, वकीलों, चार्टर्ड अकाउंटेंट्स और टैक्स सलाहकारों से निजी तौर पर जुड़ें — बिना किसी बाध्यता के।',
+    'landing.hero.proTypes':
+      'अधिवक्ता · वकील · चार्टर्ड अकाउंटेंट · टैक्स सलाहकार',
+    'landing.hero.cta': 'प्रोफेशनल से बात करें',
+    'landing.hero.ctaAlt': 'कॉलबैक का अनुरोध करें',
+    'landing.cta.short': 'मदद लें',
 
     'landing.trust.verified': 'पहचान-सत्यापित प्रोफेशनल्स',
     'landing.trust.otp': 'OTP-सुरक्षित',
@@ -193,7 +201,7 @@ export const translations = {
 
     'landing.final.title': 'शुरू करने के लिए तैयार हैं?',
     'landing.final.subtitle': 'अपना विवरण साझा करें, आगे का काम हम संभाल लेंगे।',
-    'landing.final.button': 'Firmo से बात करें',
+    'landing.final.button': 'प्रोफेशनल से बात करें',
 
     'landing.tagline': 'Ab sabka bhai Vakeel hai',
     'landing.taglineNote':
@@ -233,10 +241,11 @@ export const translations = {
     'landing.faq.a5':
       'एक त्वरित एक-बार कोड पुष्टि करता है कि मोबाइल नंबर वाकई आपका है। इसमें कुछ सेकंड लगते हैं।',
 
-    'landing.modal.title': 'Firmo से बात करें',
+    'landing.modal.title': 'सत्यापित प्रोफेशनल से बात करें',
     'landing.modal.subtitle':
-      'कुछ विवरण साझा करें — हम आपको सही प्रोफेशनल से जोड़ेंगे।',
-    'landing.modal.caption': 'सत्यापित प्रोफेशनल्स · निजी और सुरक्षित',
+      'कुछ विवरण साझा करें — हम आपको सही अधिवक्ता, वकील या प्रोफेशनल से जोड़ेंगे।',
+    'landing.modal.caption':
+      'सत्यापित अधिवक्ता, वकील और प्रोफेशनल्स · निजी और सुरक्षित',
 
     'landing.disclaimer':
       'Profirmo एक तकनीकी प्लेटफ़ॉर्म है जो आपको स्वतंत्र, सत्यापित प्रोफेशनल्स से जुड़ने में मदद करता है। यह पृष्ठ केवल जानकारी के लिए है और किसी अधिवक्ता या प्रोफेशनल द्वारा कार्य का विज्ञापन या याचना नहीं है। आगे बढ़कर, आप स्वीकार करते हैं कि आप अपनी स्वेच्छा से जानकारी प्राप्त कर रहे हैं।',

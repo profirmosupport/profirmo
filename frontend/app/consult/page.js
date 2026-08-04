@@ -120,11 +120,16 @@ export default function ConsultLandingPage() {
                 {t('landing.hero.subtitle')}
               </p>
 
-              <div className="mt-7 flex flex-wrap gap-3">
+              <p className="mt-4 inline-flex items-center gap-2 rounded-full bg-white/70 px-3.5 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-inset ring-slate-200 sm:text-sm">
+                <BadgeCheck className="h-4 w-4 shrink-0 text-emerald-600" />
+                {t('landing.hero.proTypes')}
+              </p>
+
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                 <button
                   type="button"
                   onClick={() => openModal('')}
-                  className="group inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 px-6 py-3.5 text-base font-semibold text-white shadow-lg shadow-amber-500/30 transition hover:-translate-y-0.5 hover:from-amber-700 hover:to-amber-600"
+                  className="group inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 px-6 py-3.5 text-base font-semibold text-white shadow-lg shadow-amber-500/30 transition hover:-translate-y-0.5 hover:from-amber-700 hover:to-amber-600 sm:w-auto"
                 >
                   <MessageSquare className="h-4 w-4" />
                   {t('landing.hero.cta')}
@@ -133,7 +138,7 @@ export default function ConsultLandingPage() {
                 <button
                   type="button"
                   onClick={() => openModal('')}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3.5 text-base font-semibold text-slate-700 transition hover:border-amber-400 hover:text-amber-700"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3.5 text-base font-semibold text-slate-700 transition hover:border-amber-400 hover:text-amber-700 sm:w-auto"
                 >
                   {t('landing.hero.ctaAlt')}
                 </button>
@@ -232,7 +237,7 @@ export default function ConsultLandingPage() {
                   </p>
                   <p className="relative mt-1.5 text-sm text-slate-600">{t(d)}</p>
                   <span className="relative mt-4 inline-flex items-center gap-1 text-sm font-semibold text-teal-700">
-                    {t('landing.hero.cta')}
+                    {t('landing.cta.short')}
                     <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
                   </span>
                 </button>
