@@ -13,6 +13,7 @@ import { translations as authT } from '@/data/translations.auth';
 import { translations as dashboardT } from '@/data/translations.dashboard';
 import { translations as marketplaceT } from '@/data/translations.marketplace';
 import { translations as bookingT } from '@/data/translations.booking';
+import { translations as landingT } from '@/data/translations.landing';
 
 // Merge the core dictionary with the per-area dictionaries into one lookup table.
 const translations = {
@@ -23,6 +24,7 @@ const translations = {
     ...dashboardT.en,
     ...marketplaceT.en,
     ...bookingT.en,
+    ...landingT.en,
   },
   hi: {
     ...coreT.hi,
@@ -31,6 +33,7 @@ const translations = {
     ...dashboardT.hi,
     ...marketplaceT.hi,
     ...bookingT.hi,
+    ...landingT.hi,
   },
 };
 
