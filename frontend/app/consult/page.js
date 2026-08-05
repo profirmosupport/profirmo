@@ -109,12 +109,12 @@ export default function ConsultLandingPage() {
     { q: 'landing.faq.q5', a: 'landing.faq.a5' },
   ];
 
-  // Three steps only — each is one of the provided square infographics
-  // (which already carry the step's heading/text) plus its own CTA.
+  // Three steps — image + text content + CTA, laid out side-by-side and
+  // alternating (a zigzag "walking path" connects them).
   const STORY = [
-    { img: IMAGES.story.worried, cta: 'landing.story.cta1' },
-    { img: IMAGES.story.share, cta: 'landing.story.cta2' },
-    { img: IMAGES.story.connect, cta: 'landing.story.cta3' },
+    { img: IMAGES.story.worried, t: 'landing.story.s1Title', d: 'landing.story.s1Desc', cta: 'landing.story.cta1' },
+    { img: IMAGES.story.share, t: 'landing.story.s2Title', d: 'landing.story.s2Desc', cta: 'landing.story.cta2' },
+    { img: IMAGES.story.connect, t: 'landing.story.s3Title', d: 'landing.story.s3Desc', cta: 'landing.story.cta3' },
   ];
 
   return (
@@ -274,64 +274,130 @@ export default function ConsultLandingPage() {
         </section>
 
         {/* ===== STORYBOARD (worry → clarity) ===== */}
-        <section className="relative overflow-hidden bg-white py-14 sm:py-20">
+        <section className="relative overflow-hidden bg-gradient-to-b from-white via-amber-50/40 to-white py-14 sm:py-20">
           <div className="pointer-events-none absolute inset-0 bg-grid opacity-40" aria-hidden="true" />
-          <div className="relative mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+          <div className="pointer-events-none absolute -left-20 top-1/3 h-64 w-64 rounded-full bg-amber-300/20 blur-3xl animate-pulse-glow" aria-hidden="true" />
+          <div className="pointer-events-none absolute -right-20 top-2/3 h-64 w-64 rounded-full bg-teal-300/20 blur-3xl animate-float-slow" aria-hidden="true" />
+
+          <div className="relative mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
             <div className="text-center">
-              <h2 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+              <span className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-3.5 py-1.5 text-xs font-bold uppercase tracking-widest text-amber-700 ring-1 ring-inset ring-amber-200">
+                <Footprints className="h-4 w-4" />
                 {t('landing.story.title')}
-              </h2>
-              <p className="mx-auto mt-3 max-w-2xl text-sm text-slate-600 sm:text-base">
+              </span>
+              <p className="mx-auto mt-4 max-w-2xl text-base text-slate-600 sm:text-lg">
                 {t('landing.story.subtitle')}
               </p>
             </div>
 
-            {/* Dotted "walking path" connecting the three steps */}
-            <ol className="mx-auto mt-10 max-w-xl">
-              {STORY.map(({ img, cta }, i) => {
+            <div className="mt-12 sm:mt-16">
+              {STORY.map(({ img, t: title, d, cta }, i) => {
+                const flip = i % 2 === 1; // alternate sides → zigzag
                 const isLast = i === STORY.length - 1;
                 return (
-                  <li key={cta} className="relative flex gap-4 sm:gap-6">
-                    {/* Left rail: numbered node + dashed line with footprints */}
-                    <div className="flex flex-col items-center">
-                      <span className="z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-600 text-base font-bold text-white shadow-glow-sm ring-4 ring-amber-100">
-                        {i + 1}
-                      </span>
-                      {!isLast && (
-                        <div className="relative my-1 w-px flex-1 border-l-2 border-dashed border-amber-300">
-                          <Footprints
-                            className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rotate-90 bg-white text-amber-400"
-                            aria-hidden="true"
+                  <div key={cta}>
+                    <div className="grid items-center gap-6 sm:grid-cols-2 sm:gap-10 lg:gap-14">
+                      {/* Image frame */}
+                      <div
+                        className={`group relative animate-fade-up ${
+                          flip ? 'sm:order-2' : ''
+                        }`}
+                      >
+                        <div
+                          className={`pointer-events-none absolute -inset-3 -z-10 rounded-[2rem] blur-2xl ${
+                            i === 0
+                              ? 'bg-gradient-to-br from-rose-300/30 to-amber-300/30'
+                              : i === 1
+                                ? 'bg-gradient-to-br from-amber-300/30 to-teal-300/30'
+                                : 'bg-gradient-to-br from-teal-300/30 to-emerald-300/30'
+                          }`}
+                          aria-hidden="true"
+                        />
+                        {/* Big watermark step number (desktop flourish) */}
+                        <span
+                          className={`pointer-events-none absolute -top-8 z-0 hidden select-none text-[9rem] font-black leading-none text-amber-500/10 sm:block ${
+                            flip ? '-right-2' : '-left-2'
+                          }`}
+                          aria-hidden="true"
+                        >
+                          {i + 1}
+                        </span>
+                        <div className="relative overflow-hidden rounded-[1.75rem] border border-white/60 shadow-2xl ring-1 ring-slate-900/5">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={img}
+                            alt=""
+                            loading="lazy"
+                            className="block w-full transition duration-700 group-hover:scale-[1.04]"
                           />
+                          <span className="absolute left-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-amber-600 text-sm font-bold text-white shadow-lg ring-4 ring-white/70">
+                            {i + 1}
+                          </span>
                         </div>
-                      )}
+                      </div>
+
+                      {/* Text content + CTA */}
+                      <div
+                        className={`animate-fade-up ${
+                          flip ? 'sm:order-1 sm:text-right' : ''
+                        }`}
+                      >
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-amber-300">
+                          {t('landing.story.step')} {i + 1}
+                        </span>
+                        <h3 className="mt-3 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+                          {t(title)}
+                        </h3>
+                        <p
+                          className={`mt-3 max-w-md text-sm leading-relaxed text-slate-600 sm:text-base ${
+                            flip ? 'sm:ml-auto' : ''
+                          }`}
+                        >
+                          {t(d)}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => openModal('')}
+                          className="group mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-amber-500/30 transition hover:-translate-y-0.5 hover:from-amber-700 hover:to-amber-600"
+                        >
+                          <MessageSquare className="h-4 w-4" />
+                          {t(cta)}
+                          <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+                        </button>
+                      </div>
                     </div>
 
-                    {/* Content: infographic image + its CTA */}
-                    <div className={`min-w-0 flex-1 ${isLast ? 'pb-0' : 'pb-8'}`}>
-                      <div className="group relative animate-fade-up overflow-hidden rounded-2xl border border-slate-200 shadow-lg">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={img}
-                          alt=""
-                          loading="lazy"
-                          className="block w-full transition duration-500 group-hover:scale-[1.03]"
-                        />
+                    {/* Zigzag dotted walking connector to the next step */}
+                    {!isLast && (
+                      <div className="my-2 flex justify-center sm:my-4" aria-hidden="true">
+                        <svg
+                          width="260"
+                          height="72"
+                          viewBox="0 0 260 72"
+                          fill="none"
+                          className={`text-amber-400 ${flip ? '-scale-x-100' : ''}`}
+                        >
+                          <path
+                            d="M18 12 L78 60 L138 12 L198 60 L242 30"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeDasharray="2 12"
+                          />
+                          <g className="text-amber-500">
+                            <circle cx="78" cy="60" r="3.5" fill="currentColor" />
+                            <circle cx="138" cy="12" r="3.5" fill="currentColor" />
+                            <circle cx="198" cy="60" r="3.5" fill="currentColor" />
+                          </g>
+                        </svg>
+                        <Footprints className="absolute mt-6 h-5 w-5 text-amber-500/80" />
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => openModal('')}
-                        className="group mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-amber-500/30 transition hover:-translate-y-0.5 sm:w-auto"
-                      >
-                        <MessageSquare className="h-4 w-4" />
-                        {t(cta)}
-                        <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-                      </button>
-                    </div>
-                  </li>
+                    )}
+                  </div>
                 );
               })}
-            </ol>
+            </div>
           </div>
         </section>
 
