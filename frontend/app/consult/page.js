@@ -50,13 +50,12 @@ import ConsultLeadModal from '@/components/leads/ConsultLeadModal';
 const IMAGES = {
   heroBg: 'https://picsum.photos/seed/pf-hero-bg/1600/1000',
   ctaBg: 'https://picsum.photos/seed/pf-cta-bg/1600/900',
-  // Storyboard frames — save the three provided square infographics here
-  // (in frontend/public/images/consult/). They already contain the step
-  // text, so we render the image + a CTA per step.
+  // Storyboard frames — the three provided square infographics (they
+  // already contain the step text), rendered as image + CTA per step.
   story: {
-    worried: '/images/consult/step-1-worry.jpg',
-    share: '/images/consult/step-2-share.jpg',
-    connect: '/images/consult/step-3-connect.jpg',
+    worried: '/images/consult/step1.png',
+    share: '/images/consult/step2.png',
+    connect: '/images/consult/step3.png',
   },
 };
 
