@@ -424,6 +424,19 @@ export default function ConsultLandingPage() {
                 </div>
               ))}
             </div>
+
+            {/* Big CTA */}
+            <div className="mt-12 flex justify-center">
+              <button
+                type="button"
+                onClick={() => openModal('')}
+                className="group inline-flex w-full max-w-xl items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-amber-600 to-amber-500 px-8 py-5 text-lg font-bold text-white shadow-xl shadow-amber-500/40 transition hover:-translate-y-0.5 hover:from-amber-700 hover:to-amber-600 sm:text-xl"
+              >
+                <MessageSquare className="h-6 w-6" />
+                {t('landing.hero.cta')}
+                <ArrowRight className="h-6 w-6 transition group-hover:translate-x-1" />
+              </button>
+            </div>
           </div>
         </section>
 
