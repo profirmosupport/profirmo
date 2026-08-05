@@ -31,6 +31,7 @@ import {
   KeyRound,
   FileWarning,
   ChevronDown,
+  Footprints,
 } from 'lucide-react';
 import Header from '@/components/common/Header';
 import Footer from '@/components/common/Footer';
@@ -49,11 +50,13 @@ import ConsultLeadModal from '@/components/leads/ConsultLeadModal';
 const IMAGES = {
   heroBg: 'https://picsum.photos/seed/pf-hero-bg/1600/1000',
   ctaBg: 'https://picsum.photos/seed/pf-cta-bg/1600/900',
+  // Storyboard frames — save the three provided square infographics here
+  // (in frontend/public/images/consult/). They already contain the step
+  // text, so we render the image + a CTA per step.
   story: {
-    worried: 'https://picsum.photos/seed/pf-story-worried/900/700',
-    share: 'https://picsum.photos/seed/pf-story-share/900/700',
-    connect: 'https://picsum.photos/seed/pf-story-connect/900/700',
-    relief: 'https://picsum.photos/seed/pf-story-relief/900/700',
+    worried: '/images/consult/step-1-worry.jpg',
+    share: '/images/consult/step-2-share.jpg',
+    connect: '/images/consult/step-3-connect.jpg',
   },
 };
 
@@ -107,11 +110,12 @@ export default function ConsultLandingPage() {
     { q: 'landing.faq.q5', a: 'landing.faq.a5' },
   ];
 
+  // Three steps only — each is one of the provided square infographics
+  // (which already carry the step's heading/text) plus its own CTA.
   const STORY = [
-    { img: IMAGES.story.worried, t: 'landing.story.s1Title', d: 'landing.story.s1Desc' },
-    { img: IMAGES.story.share, t: 'landing.story.s2Title', d: 'landing.story.s2Desc' },
-    { img: IMAGES.story.connect, t: 'landing.story.s3Title', d: 'landing.story.s3Desc' },
-    { img: IMAGES.story.relief, t: 'landing.story.s4Title', d: 'landing.story.s4Desc' },
+    { img: IMAGES.story.worried, cta: 'landing.story.cta1' },
+    { img: IMAGES.story.share, cta: 'landing.story.cta2' },
+    { img: IMAGES.story.connect, cta: 'landing.story.cta3' },
   ];
 
   return (
@@ -283,58 +287,52 @@ export default function ConsultLandingPage() {
               </p>
             </div>
 
-            <div className="mt-12 space-y-10 sm:space-y-14">
-              {STORY.map(({ img, t: title, d }, i) => (
-                <div
-                  key={title}
-                  className={`grid items-center gap-6 sm:grid-cols-2 sm:gap-10 ${
-                    i % 2 === 1 ? 'sm:[&>*:first-child]:order-2' : ''
-                  }`}
-                >
-                  {/* Frame image */}
-                  <div className="group relative animate-fade-up">
-                    <div className="pointer-events-none absolute -inset-2 -z-10 rounded-[1.75rem] bg-gradient-to-br from-amber-400/25 to-teal-400/25 blur-xl" aria-hidden="true" />
-                    <div className="relative overflow-hidden rounded-3xl border border-slate-200 shadow-xl">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={img}
-                        alt=""
-                        loading="lazy"
-                        className="aspect-[4/3] w-full object-cover transition duration-500 group-hover:scale-105"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-900/25 to-transparent" aria-hidden="true" />
-                      <span className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-amber-700 shadow">
-                        {t('landing.story.step')} {i + 1}
+            {/* Dotted "walking path" connecting the three steps */}
+            <ol className="mx-auto mt-10 max-w-xl">
+              {STORY.map(({ img, cta }, i) => {
+                const isLast = i === STORY.length - 1;
+                return (
+                  <li key={cta} className="relative flex gap-4 sm:gap-6">
+                    {/* Left rail: numbered node + dashed line with footprints */}
+                    <div className="flex flex-col items-center">
+                      <span className="z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-600 text-base font-bold text-white shadow-glow-sm ring-4 ring-amber-100">
+                        {i + 1}
                       </span>
+                      {!isLast && (
+                        <div className="relative my-1 w-px flex-1 border-l-2 border-dashed border-amber-300">
+                          <Footprints
+                            className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rotate-90 bg-white text-amber-400"
+                            aria-hidden="true"
+                          />
+                        </div>
+                      )}
                     </div>
-                  </div>
 
-                  {/* Copy */}
-                  <div>
-                    <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-600 text-lg font-bold text-white shadow-glow-sm">
-                      {i + 1}
-                    </span>
-                    <h3 className="mt-4 text-xl font-bold text-slate-900 sm:text-2xl">
-                      {t(title)}
-                    </h3>
-                    <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-600 sm:text-base">
-                      {t(d)}
-                    </p>
-                    {i === STORY.length - 1 && (
+                    {/* Content: infographic image + its CTA */}
+                    <div className={`min-w-0 flex-1 ${isLast ? 'pb-0' : 'pb-8'}`}>
+                      <div className="group relative animate-fade-up overflow-hidden rounded-2xl border border-slate-200 shadow-lg">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={img}
+                          alt=""
+                          loading="lazy"
+                          className="block w-full transition duration-500 group-hover:scale-[1.03]"
+                        />
+                      </div>
                       <button
                         type="button"
                         onClick={() => openModal('')}
-                        className="group mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-amber-500/30 transition hover:-translate-y-0.5"
+                        className="group mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-amber-500/30 transition hover:-translate-y-0.5 sm:w-auto"
                       >
                         <MessageSquare className="h-4 w-4" />
-                        {t('landing.hero.cta')}
+                        {t(cta)}
                         <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
                       </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
           </div>
         </section>
 

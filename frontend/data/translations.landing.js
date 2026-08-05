@@ -146,6 +146,9 @@ export const translations = {
     'landing.story.s4Title': 'Move forward with clarity',
     'landing.story.s4Desc':
       'Understand your options and take the next step with confidence — online or in person.',
+    'landing.story.cta1': 'Yes, I need help',
+    'landing.story.cta2': 'Share my matter',
+    'landing.story.cta3': 'Talk to a professional',
 
     'landing.disclaimer':
       'Profirmo is a technology platform that helps you connect with independent, verified professionals. This page is for information only and is not an advertisement or solicitation of work by any advocate or professional. By proceeding, you acknowledge that you are seeking information of your own accord.',
@@ -281,6 +284,9 @@ export const translations = {
     'landing.story.s4Title': 'स्पष्टता के साथ आगे बढ़ें',
     'landing.story.s4Desc':
       'अपने विकल्प समझें और आत्मविश्वास से अगला कदम उठाएँ — ऑनलाइन या व्यक्तिगत रूप से।',
+    'landing.story.cta1': 'हाँ, मुझे मदद चाहिए',
+    'landing.story.cta2': 'अपना मामला साझा करें',
+    'landing.story.cta3': 'प्रोफेशनल से बात करें',
 
     'landing.disclaimer':
       'Profirmo एक तकनीकी प्लेटफ़ॉर्म है जो आपको स्वतंत्र, सत्यापित प्रोफेशनल्स से जुड़ने में मदद करता है। यह पृष्ठ केवल जानकारी के लिए है और किसी अधिवक्ता या प्रोफेशनल द्वारा कार्य का विज्ञापन या याचना नहीं है। आगे बढ़कर, आप स्वीकार करते हैं कि आप अपनी स्वेच्छा से जानकारी प्राप्त कर रहे हैं।',
