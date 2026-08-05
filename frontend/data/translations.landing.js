@@ -129,6 +129,24 @@ export const translations = {
     'landing.modal.caption':
       'Verified advocates, lawyers & professionals · Private & secure',
 
+    // Storyboard (illustrative journey — not testimonials)
+    'landing.story.title': 'From worry to clarity',
+    'landing.story.subtitle':
+      'A calmer way to handle a legal or tax matter.',
+    'landing.story.step': 'Step',
+    'landing.story.s1Title': 'Feeling stuck?',
+    'landing.story.s1Desc':
+      'A notice, a dispute, a deadline — it’s easy to feel lost and unsure who to trust.',
+    'landing.story.s2Title': 'Share your matter, privately',
+    'landing.story.s2Desc':
+      'Tell us what’s going on and verify your mobile number. It takes only a few minutes.',
+    'landing.story.s3Title': 'Connect with a verified professional',
+    'landing.story.s3Desc':
+      'We connect you with an identity-verified advocate, lawyer or professional for your matter.',
+    'landing.story.s4Title': 'Move forward with clarity',
+    'landing.story.s4Desc':
+      'Understand your options and take the next step with confidence — online or in person.',
+
     'landing.disclaimer':
       'Profirmo is a technology platform that helps you connect with independent, verified professionals. This page is for information only and is not an advertisement or solicitation of work by any advocate or professional. By proceeding, you acknowledge that you are seeking information of your own accord.',
   },
@@ -246,6 +264,23 @@ export const translations = {
       'कुछ विवरण साझा करें — हम आपको सही अधिवक्ता, वकील या प्रोफेशनल से जोड़ेंगे।',
     'landing.modal.caption':
       'सत्यापित अधिवक्ता, वकील और प्रोफेशनल्स · निजी और सुरक्षित',
+
+    'landing.story.title': 'चिंता से समाधान तक',
+    'landing.story.subtitle':
+      'कानूनी या टैक्स मामले को संभालने का एक शांत तरीका।',
+    'landing.story.step': 'चरण',
+    'landing.story.s1Title': 'उलझन में हैं?',
+    'landing.story.s1Desc':
+      'एक नोटिस, एक विवाद, एक समयसीमा — यह समझना मुश्किल हो जाता है कि किस पर भरोसा करें।',
+    'landing.story.s2Title': 'अपना मामला निजी तौर पर साझा करें',
+    'landing.story.s2Desc':
+      'बताएँ कि क्या हो रहा है और अपना मोबाइल नंबर सत्यापित करें। इसमें कुछ ही मिनट लगते हैं।',
+    'landing.story.s3Title': 'सत्यापित प्रोफेशनल से जुड़ें',
+    'landing.story.s3Desc':
+      'हम आपको आपके मामले के लिए पहचान-सत्यापित अधिवक्ता, वकील या प्रोफेशनल से जोड़ते हैं।',
+    'landing.story.s4Title': 'स्पष्टता के साथ आगे बढ़ें',
+    'landing.story.s4Desc':
+      'अपने विकल्प समझें और आत्मविश्वास से अगला कदम उठाएँ — ऑनलाइन या व्यक्तिगत रूप से।',
 
     'landing.disclaimer':
       'Profirmo एक तकनीकी प्लेटफ़ॉर्म है जो आपको स्वतंत्र, सत्यापित प्रोफेशनल्स से जुड़ने में मदद करता है। यह पृष्ठ केवल जानकारी के लिए है और किसी अधिवक्ता या प्रोफेशनल द्वारा कार्य का विज्ञापन या याचना नहीं है। आगे बढ़कर, आप स्वीकार करते हैं कि आप अपनी स्वेच्छा से जानकारी प्राप्त कर रहे हैं।',

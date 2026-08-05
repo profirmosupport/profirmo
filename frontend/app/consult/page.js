@@ -12,7 +12,6 @@ import {
   Lock,
   BadgeCheck,
   MessageSquare,
-  Phone,
   ArrowRight,
   Scale,
   Calculator,
@@ -38,6 +37,25 @@ import Footer from '@/components/common/Footer';
 import { useLanguage } from '@/components/LanguageProvider';
 import LandingLeadForm from '@/components/leads/LandingLeadForm';
 import ConsultLeadModal from '@/components/leads/ConsultLeadModal';
+
+// ─── Imagery ─────────────────────────────────────────────────────────────
+// All page images live here so they're trivial to swap. These are
+// illustrative PLACEHOLDER stock photos (picsum) — NOT real Profirmo
+// clients. Replace each URL with your own licensed photos of real people
+// (e.g. upload to the profirmomain S3 bucket, already whitelisted, and paste
+// the URLs here). Recommended: ~900×700 for story frames, ~1600×900 for
+// backgrounds. We intentionally use no names/quotes/outcomes with these
+// images, so nothing reads as a fabricated testimonial.
+const IMAGES = {
+  heroBg: 'https://picsum.photos/seed/pf-hero-bg/1600/1000',
+  ctaBg: 'https://picsum.photos/seed/pf-cta-bg/1600/900',
+  story: {
+    worried: 'https://picsum.photos/seed/pf-story-worried/900/700',
+    share: 'https://picsum.photos/seed/pf-story-share/900/700',
+    connect: 'https://picsum.photos/seed/pf-story-connect/900/700',
+    relief: 'https://picsum.photos/seed/pf-story-relief/900/700',
+  },
+};
 
 export default function ConsultLandingPage() {
   const { t } = useLanguage();
@@ -74,12 +92,6 @@ export default function ConsultLandingPage() {
     { icon: FileText, t: 'landing.areas.docs', d: 'landing.areas.docsDesc' },
   ];
 
-  const STEPS = [
-    { icon: MessageSquare, t: 'landing.how.step1Title', d: 'landing.how.step1Desc' },
-    { icon: Phone, t: 'landing.how.step2Title', d: 'landing.how.step2Desc' },
-    { icon: BadgeCheck, t: 'landing.how.step3Title', d: 'landing.how.step3Desc' },
-  ];
-
   const WHY = [
     { icon: BadgeCheck, t: 'landing.why.verifiedTitle', d: 'landing.why.verifiedDesc' },
     { icon: Lock, t: 'landing.why.privateTitle', d: 'landing.why.privateDesc' },
@@ -95,6 +107,13 @@ export default function ConsultLandingPage() {
     { q: 'landing.faq.q5', a: 'landing.faq.a5' },
   ];
 
+  const STORY = [
+    { img: IMAGES.story.worried, t: 'landing.story.s1Title', d: 'landing.story.s1Desc' },
+    { img: IMAGES.story.share, t: 'landing.story.s2Title', d: 'landing.story.s2Desc' },
+    { img: IMAGES.story.connect, t: 'landing.story.s3Title', d: 'landing.story.s3Desc' },
+    { img: IMAGES.story.relief, t: 'landing.story.s4Title', d: 'landing.story.s4Desc' },
+  ];
+
   return (
     <div className="flex min-h-screen flex-col overflow-x-hidden">
       <Header />
@@ -102,6 +121,11 @@ export default function ConsultLandingPage() {
       <main className="flex-1">
         {/* ===== HERO ===== */}
         <section className="relative overflow-hidden bg-gradient-to-b from-amber-50 via-white to-teal-50">
+          <div
+            className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-[0.07]"
+            style={{ backgroundImage: `url(${IMAGES.heroBg})` }}
+            aria-hidden="true"
+          />
           <div className="pointer-events-none absolute inset-0 bg-grid opacity-60" aria-hidden="true" />
           <div className="pointer-events-none absolute -left-24 top-0 h-72 w-72 rounded-full bg-amber-400/25 blur-3xl animate-pulse-glow" aria-hidden="true" />
           <div className="pointer-events-none absolute -right-16 top-32 h-72 w-72 rounded-full bg-teal-400/25 blur-3xl animate-float-slow" aria-hidden="true" />
@@ -246,35 +270,70 @@ export default function ConsultLandingPage() {
           </div>
         </section>
 
-        {/* ===== HOW IT WORKS ===== */}
-        <section className="bg-white py-14 sm:py-20">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <h2 className="text-center text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-              {t('landing.how.title')}
-            </h2>
-            <div className="mt-10 grid gap-6 sm:grid-cols-3">
-              {STEPS.map(({ icon: Icon, t: title, d }, i) => (
-                <div key={title} className="relative rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center transition hover:-translate-y-0.5 hover:shadow-lg">
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-amber-600 px-2.5 py-0.5 text-xs font-bold text-white">
-                    {i + 1}
-                  </span>
-                  <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
-                    <Icon className="h-6 w-6" />
-                  </span>
-                  <p className="mt-4 text-base font-semibold text-slate-900">{t(title)}</p>
-                  <p className="mt-1.5 text-sm text-slate-600">{t(d)}</p>
+        {/* ===== STORYBOARD (worry → clarity) ===== */}
+        <section className="relative overflow-hidden bg-white py-14 sm:py-20">
+          <div className="pointer-events-none absolute inset-0 bg-grid opacity-40" aria-hidden="true" />
+          <div className="relative mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+            <div className="text-center">
+              <h2 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+                {t('landing.story.title')}
+              </h2>
+              <p className="mx-auto mt-3 max-w-2xl text-sm text-slate-600 sm:text-base">
+                {t('landing.story.subtitle')}
+              </p>
+            </div>
+
+            <div className="mt-12 space-y-10 sm:space-y-14">
+              {STORY.map(({ img, t: title, d }, i) => (
+                <div
+                  key={title}
+                  className={`grid items-center gap-6 sm:grid-cols-2 sm:gap-10 ${
+                    i % 2 === 1 ? 'sm:[&>*:first-child]:order-2' : ''
+                  }`}
+                >
+                  {/* Frame image */}
+                  <div className="group relative animate-fade-up">
+                    <div className="pointer-events-none absolute -inset-2 -z-10 rounded-[1.75rem] bg-gradient-to-br from-amber-400/25 to-teal-400/25 blur-xl" aria-hidden="true" />
+                    <div className="relative overflow-hidden rounded-3xl border border-slate-200 shadow-xl">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={img}
+                        alt=""
+                        loading="lazy"
+                        className="aspect-[4/3] w-full object-cover transition duration-500 group-hover:scale-105"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-900/25 to-transparent" aria-hidden="true" />
+                      <span className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-amber-700 shadow">
+                        {t('landing.story.step')} {i + 1}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Copy */}
+                  <div>
+                    <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-600 text-lg font-bold text-white shadow-glow-sm">
+                      {i + 1}
+                    </span>
+                    <h3 className="mt-4 text-xl font-bold text-slate-900 sm:text-2xl">
+                      {t(title)}
+                    </h3>
+                    <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-600 sm:text-base">
+                      {t(d)}
+                    </p>
+                    {i === STORY.length - 1 && (
+                      <button
+                        type="button"
+                        onClick={() => openModal('')}
+                        className="group mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-amber-500/30 transition hover:-translate-y-0.5"
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                        {t('landing.hero.cta')}
+                        <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
-            </div>
-            <div className="mt-10 flex justify-center">
-              <button
-                type="button"
-                onClick={() => openModal('')}
-                className="group inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 py-3.5 text-base font-semibold text-white transition hover:-translate-y-0.5 hover:bg-slate-800"
-              >
-                {t('landing.hero.cta')}
-                <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-              </button>
             </div>
           </div>
         </section>
@@ -325,6 +384,12 @@ export default function ConsultLandingPage() {
 
         {/* ===== FINAL CTA ===== */}
         <section className="relative overflow-hidden bg-gradient-to-br from-slate-900 to-slate-800 py-16">
+          <div
+            className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-25"
+            style={{ backgroundImage: `url(${IMAGES.ctaBg})` }}
+            aria-hidden="true"
+          />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-slate-900/85 to-slate-900/70" aria-hidden="true" />
           <div className="pointer-events-none absolute -left-16 top-0 h-56 w-56 rounded-full bg-amber-500/20 blur-3xl animate-pulse-glow" aria-hidden="true" />
           <div className="relative mx-auto max-w-3xl px-4 text-center sm:px-6 lg:px-8">
             <p className="text-sm font-bold uppercase tracking-widest text-amber-300">
