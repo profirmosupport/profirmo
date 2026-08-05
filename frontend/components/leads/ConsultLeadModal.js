@@ -53,8 +53,18 @@ export default function ConsultLeadModal({
         aria-modal="true"
         aria-label={t('landing.modal.title')}
         onClick={(e) => e.stopPropagation()}
-        className="relative grid max-h-[94vh] w-full max-w-3xl grid-cols-1 overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl md:grid-cols-2"
+        className="relative flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl md:grid md:max-h-[88vh] md:grid-cols-2"
       >
+        {/* Close — pinned to the panel (outside the scroll area) */}
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={t('profCmp.contactClose')}
+          className="absolute right-3 top-3 z-20 rounded-lg bg-white/80 p-1.5 text-slate-500 shadow-sm backdrop-blur transition hover:bg-slate-100 hover:text-slate-700"
+        >
+          <X size={18} />
+        </button>
+
         {/* Branded image / tagline panel */}
         <div
           className="relative hidden flex-col justify-between overflow-hidden bg-slate-900 p-6 md:flex"
@@ -93,16 +103,8 @@ export default function ConsultLeadModal({
           </ul>
         </div>
 
-        {/* Form panel */}
-        <div className="relative overflow-y-auto p-5 sm:p-6">
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={t('profCmp.contactClose')}
-            className="absolute right-3 top-3 z-10 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-          >
-            <X size={18} />
-          </button>
+        {/* Form panel — scrolls within the modal on small screens */}
+        <div className="relative min-h-0 flex-1 overflow-y-auto p-5 sm:p-6">
           {/* Mobile-only tagline banner */}
           <div className="mb-4 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 px-4 py-3 text-white md:hidden">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-amber-100">
