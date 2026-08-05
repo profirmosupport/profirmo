@@ -279,7 +279,50 @@ export default function ConsultLandingPage() {
           <div className="pointer-events-none absolute -left-20 top-1/3 h-64 w-64 rounded-full bg-amber-300/20 blur-3xl animate-pulse-glow" aria-hidden="true" />
           <div className="pointer-events-none absolute -right-20 top-2/3 h-64 w-64 rounded-full bg-teal-300/20 blur-3xl animate-float-slow" aria-hidden="true" />
 
-          <div className="relative mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+          {/* Background dotted walking trail — runs from the top of the
+              section down to the last step, weaving behind the alternating
+              cards. */}
+          <div
+            className="pointer-events-none absolute inset-y-10 left-1/2 hidden w-full max-w-3xl -translate-x-1/2 sm:block"
+            aria-hidden="true"
+          >
+            <div className="relative h-full w-full">
+              <svg
+                className="h-full w-full text-amber-300"
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                fill="none"
+              >
+                <path
+                  d="M50 1 L30 20 L70 40 L30 60 L70 80 L50 99"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeDasharray="0.5 6"
+                  vectorEffect="non-scaling-stroke"
+                />
+              </svg>
+              {[
+                { l: '30%', top: '20%', r: '28deg' },
+                { l: '70%', top: '40%', r: '-28deg' },
+                { l: '30%', top: '60%', r: '28deg' },
+                { l: '70%', top: '80%', r: '-28deg' },
+              ].map((f, k) => (
+                <Footprints
+                  key={k}
+                  className="absolute h-6 w-6 text-amber-400/60"
+                  style={{
+                    left: f.l,
+                    top: f.top,
+                    transform: `translate(-50%, -50%) rotate(${f.r})`,
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="relative z-10 mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
             <div className="text-center">
               <span className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-3.5 py-1.5 text-xs font-bold uppercase tracking-widest text-amber-700 ring-1 ring-inset ring-amber-200">
                 <Footprints className="h-4 w-4" />
@@ -313,15 +356,6 @@ export default function ConsultLandingPage() {
                           }`}
                           aria-hidden="true"
                         />
-                        {/* Big watermark step number (desktop flourish) */}
-                        <span
-                          className={`pointer-events-none absolute -top-8 z-0 hidden select-none text-[9rem] font-black leading-none text-amber-500/10 sm:block ${
-                            flip ? '-right-2' : '-left-2'
-                          }`}
-                          aria-hidden="true"
-                        >
-                          {i + 1}
-                        </span>
                         <div className="relative overflow-hidden rounded-[1.75rem] border border-white/60 shadow-2xl ring-1 ring-slate-900/5">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
@@ -330,9 +364,6 @@ export default function ConsultLandingPage() {
                             loading="lazy"
                             className="block w-full transition duration-700 group-hover:scale-[1.04]"
                           />
-                          <span className="absolute left-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-amber-600 text-sm font-bold text-white shadow-lg ring-4 ring-white/70">
-                            {i + 1}
-                          </span>
                         </div>
                       </div>
 
@@ -366,34 +397,7 @@ export default function ConsultLandingPage() {
                         </button>
                       </div>
                     </div>
-
-                    {/* Zigzag dotted walking connector to the next step */}
-                    {!isLast && (
-                      <div className="my-2 flex justify-center sm:my-4" aria-hidden="true">
-                        <svg
-                          width="260"
-                          height="72"
-                          viewBox="0 0 260 72"
-                          fill="none"
-                          className={`text-amber-400 ${flip ? '-scale-x-100' : ''}`}
-                        >
-                          <path
-                            d="M18 12 L78 60 L138 12 L198 60 L242 30"
-                            stroke="currentColor"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeDasharray="2 12"
-                          />
-                          <g className="text-amber-500">
-                            <circle cx="78" cy="60" r="3.5" fill="currentColor" />
-                            <circle cx="138" cy="12" r="3.5" fill="currentColor" />
-                            <circle cx="198" cy="60" r="3.5" fill="currentColor" />
-                          </g>
-                        </svg>
-                        <Footprints className="absolute mt-6 h-5 w-5 text-amber-500/80" />
-                      </div>
-                    )}
+                    {!isLast && <div className="h-8 sm:h-14" aria-hidden="true" />}
                   </div>
                 );
               })}
