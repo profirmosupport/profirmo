@@ -38,6 +38,7 @@ import Footer from '@/components/common/Footer';
 import { useLanguage } from '@/components/LanguageProvider';
 import LandingLeadForm from '@/components/leads/LandingLeadForm';
 import ConsultLeadModal from '@/components/leads/ConsultLeadModal';
+import FeaturedProfessionals from '@/components/leads/FeaturedProfessionals';
 
 // ─── Imagery ─────────────────────────────────────────────────────────────
 // All page images live here so they're trivial to swap. These are
@@ -190,6 +191,9 @@ export default function ConsultLandingPage() {
             </div>
           </div>
         </section>
+
+        {/* ===== FEATURED PROFESSIONALS ===== */}
+        <FeaturedProfessionals onCallback={() => openModal('')} />
 
         {/* ===== TOP CATEGORIES (India) ===== */}
         <section className="bg-white py-14 sm:py-20">

@@ -21,6 +21,11 @@ export const translations = {
     'landing.trust.private': 'Private & confidential',
     'landing.trust.noObligation': 'No obligation',
 
+    'landing.featured.title': 'Verified professionals on Profirmo',
+    'landing.featured.subtitle':
+      'A few of the identity-verified professionals available for your matter.',
+    'landing.featured.callback': 'Request a callback',
+
     // Inline form
     'landing.form.title': 'Request a callback',
     'landing.form.subtitle':
@@ -169,6 +174,11 @@ export const translations = {
     'landing.trust.otp': 'OTP-सुरक्षित',
     'landing.trust.private': 'निजी और गोपनीय',
     'landing.trust.noObligation': 'कोई बाध्यता नहीं',
+
+    'landing.featured.title': 'Profirmo पर सत्यापित प्रोफेशनल्स',
+    'landing.featured.subtitle':
+      'आपके मामले के लिए उपलब्ध कुछ पहचान-सत्यापित प्रोफेशनल्स।',
+    'landing.featured.callback': 'कॉलबैक का अनुरोध करें',
 
     'landing.form.title': 'कॉलबैक का अनुरोध करें',
     'landing.form.subtitle':
