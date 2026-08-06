@@ -38,7 +38,7 @@ import Footer from '@/components/common/Footer';
 import { useLanguage } from '@/components/LanguageProvider';
 import LandingLeadForm from '@/components/leads/LandingLeadForm';
 import ConsultLeadModal from '@/components/leads/ConsultLeadModal';
-import FeaturedProfessionals from '@/components/leads/FeaturedProfessionals';
+import FeaturedProfessionals from '@/components/home/FeaturedProfessionals';
 
 // ─── Imagery ─────────────────────────────────────────────────────────────
 // All page images live here so they're trivial to swap. These are
@@ -62,8 +62,9 @@ const IMAGES = {
 
 export default function ConsultLandingPage() {
   const { t } = useLanguage();
-  const [modal, setModal] = useState({ open: false, prefill: '' });
-  const openModal = (prefill = '') => setModal({ open: true, prefill });
+  const [modal, setModal] = useState({ open: false, prefill: '', proName: '' });
+  const openModal = (prefill = '', proName = '') =>
+    setModal({ open: true, prefill, proName });
   const closeModal = () => setModal((m) => ({ ...m, open: false }));
 
   const TRUST = [
@@ -192,8 +193,11 @@ export default function ConsultLandingPage() {
           </div>
         </section>
 
-        {/* ===== FEATURED PROFESSIONALS ===== */}
-        <FeaturedProfessionals onCallback={() => openModal('')} />
+        {/* ===== FEATURED PROFESSIONALS (same as home, callback mode) ===== */}
+        <FeaturedProfessionals
+          onCallback={(pro) => openModal('', pro && pro.name)}
+          sectionClassName="bg-gradient-to-br from-amber-50 via-white to-teal-50"
+        />
 
         {/* ===== TOP CATEGORIES (India) ===== */}
         <section className="bg-white py-14 sm:py-20">
@@ -515,6 +519,7 @@ export default function ConsultLandingPage() {
         open={modal.open}
         onClose={closeModal}
         prefillMessage={modal.prefill}
+        proName={modal.proName}
         source="Landing page"
       />
     </div>

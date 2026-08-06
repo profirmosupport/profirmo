@@ -25,6 +25,8 @@ export const translations = {
     'landing.featured.subtitle':
       'A few of the identity-verified professionals available for your matter.',
     'landing.featured.callback': 'Request a callback',
+    'landing.featured.callbackNote':
+      'Your request will be submitted to {name} for a callback.',
 
     // Inline form
     'landing.form.title': 'Request a callback',
@@ -179,6 +181,8 @@ export const translations = {
     'landing.featured.subtitle':
       'आपके मामले के लिए उपलब्ध कुछ पहचान-सत्यापित प्रोफेशनल्स।',
     'landing.featured.callback': 'कॉलबैक का अनुरोध करें',
+    'landing.featured.callbackNote':
+      'आपका अनुरोध कॉलबैक के लिए {name} को भेजा जाएगा।',
 
     'landing.form.title': 'कॉलबैक का अनुरोध करें',
     'landing.form.subtitle':

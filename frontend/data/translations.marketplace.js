@@ -104,6 +104,7 @@ export const translations = {
     'profCmp.offline': 'Offline',
     'profCmp.viewProfile': 'View profile',
     'profCmp.bookNow': 'Book now',
+    'profCmp.requestCallback': 'Request a callback',
     'profCmp.bookConsultation': 'Book consultation',
     'profCmp.payOnlyMinutes': 'Pay only for the minutes you use',
     // "Contact Details" lead-capture modal (shown for pros not available
@@ -304,6 +305,7 @@ export const translations = {
     'profCmp.offline': 'ऑफ़लाइन',
     'profCmp.viewProfile': 'प्रोफ़ाइल देखें',
     'profCmp.bookNow': 'अभी बुक करें',
+    'profCmp.requestCallback': 'कॉलबैक का अनुरोध करें',
     'profCmp.bookConsultation': 'परामर्श बुक करें',
     'profCmp.payOnlyMinutes': 'केवल उपयोग किए गए मिनटों का भुगतान करें',
     // "संपर्क विवरण" लीड-कैप्चर मॉडल (उन प्रोफेशनल्स के लिए जो तुरंत

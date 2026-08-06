@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, ShieldCheck, BadgeCheck, Lock } from 'lucide-react';
+import { X, ShieldCheck, BadgeCheck, Lock, Phone } from 'lucide-react';
 import { useLanguage } from '@/components/LanguageProvider';
 import LandingLeadForm from '@/components/leads/LandingLeadForm';
 
@@ -15,6 +15,7 @@ export default function ConsultLeadModal({
   open,
   onClose,
   prefillMessage = '',
+  proName = '',
   source = 'Landing page',
 }) {
   const { t } = useLanguage();
@@ -120,6 +121,12 @@ export default function ConsultLeadModal({
           <p className="mt-1 text-sm text-slate-500">
             {t('landing.modal.subtitle')}
           </p>
+          {proName && (
+            <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm font-medium text-amber-800">
+              <Phone className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{t('landing.featured.callbackNote', { name: proName })}</span>
+            </div>
+          )}
           <div className="mt-4">
             {/* key remounts the form so a new prefill (category) takes effect */}
             <LandingLeadForm

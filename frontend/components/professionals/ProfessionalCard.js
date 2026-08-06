@@ -1,6 +1,6 @@
 'use client';
 
-import { MapPin, BadgeCheck, Briefcase, Video, Users2 } from 'lucide-react';
+import { MapPin, BadgeCheck, Briefcase, Video, Users2, Phone } from 'lucide-react';
 import Card from '@/components/common/Card';
 import Badge from '@/components/common/Badge';
 import Button from '@/components/common/Button';
@@ -19,7 +19,7 @@ import { formatCurrency, slugify } from '@/utils/formatters';
  *
  * Props: { professional }
  */
-export default function ProfessionalCard({ professional }) {
+export default function ProfessionalCard({ professional, onCallback }) {
   const { t } = useLanguage();
   const { cityById } = useLocations();
   if (!professional) return null;
@@ -209,37 +209,54 @@ export default function ProfessionalCard({ professional }) {
         )}
       </div>
 
-      <div className="mt-4 flex gap-2">
-        <Button
-          href={`/professionals/${id}${
-            slugify(name) ? `/${slugify(name)}` : ''
-          }`}
-          variant="outline"
-          size="sm"
-          className="flex-1"
-        >
-          {t('profCmp.viewProfile')}
-        </Button>
-        {bookingAllowed ? (
+      {onCallback ? (
+        // Callback mode (e.g. the /consult landing) — a single button that
+        // opens the lead form pre-addressed to this professional.
+        <div className="mt-4">
           <Button
-            href={`/booking/${id}`}
+            type="button"
+            onClick={() => onCallback(professional)}
             variant="primary"
+            size="sm"
+            className="w-full"
+          >
+            <Phone size={14} />
+            {t('profCmp.requestCallback')}
+          </Button>
+        </div>
+      ) : (
+        <div className="mt-4 flex gap-2">
+          <Button
+            href={`/professionals/${id}${
+              slugify(name) ? `/${slugify(name)}` : ''
+            }`}
+            variant="outline"
             size="sm"
             className="flex-1"
           >
-            {t('profCmp.bookNow')}
+            {t('profCmp.viewProfile')}
           </Button>
-        ) : (
-          // Not available for instant online booking — let the visitor
-          // submit a lead instead of leaving with no CTA.
-          <ContactProfessionalButton
-            professional={professional}
-            variant="primary"
-            size="sm"
-            className="flex-1"
-          />
-        )}
-      </div>
+          {bookingAllowed ? (
+            <Button
+              href={`/booking/${id}`}
+              variant="primary"
+              size="sm"
+              className="flex-1"
+            >
+              {t('profCmp.bookNow')}
+            </Button>
+          ) : (
+            // Not available for instant online booking — let the visitor
+            // submit a lead instead of leaving with no CTA.
+            <ContactProfessionalButton
+              professional={professional}
+              variant="primary"
+              size="sm"
+              className="flex-1"
+            />
+          )}
+        </div>
+      )}
     </Card>
   );
 }

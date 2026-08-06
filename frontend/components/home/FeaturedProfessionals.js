@@ -24,7 +24,10 @@ function CardSkeleton() {
   );
 }
 
-export default function FeaturedProfessionals() {
+export default function FeaturedProfessionals({
+  onCallback,
+  sectionClassName = 'bg-white',
+}) {
   const { t } = useLanguage();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -58,8 +61,14 @@ export default function FeaturedProfessionals() {
   }, []);
 
   return (
-    <section className="bg-white py-20 sm:py-28">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <section className={`relative overflow-hidden py-20 sm:py-28 ${sectionClassName}`}>
+      {onCallback && (
+        <>
+          <div className="pointer-events-none absolute -left-24 top-10 h-72 w-72 rounded-full bg-amber-300/20 blur-3xl" aria-hidden="true" />
+          <div className="pointer-events-none absolute -right-24 bottom-10 h-72 w-72 rounded-full bg-teal-300/20 blur-3xl" aria-hidden="true" />
+        </>
+      )}
+      <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col items-start justify-between gap-5 sm:flex-row sm:items-end">
           <div className="max-w-2xl">
             <span className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3.5 py-1.5 text-xs font-semibold uppercase tracking-wider text-indigo-600 ring-1 ring-inset ring-indigo-200">
@@ -99,7 +108,11 @@ export default function FeaturedProfessionals() {
         ) : (
           <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {items.map((pro) => (
-              <ProfessionalCard key={pro.id} professional={pro} />
+              <ProfessionalCard
+                key={pro.id}
+                professional={pro}
+                onCallback={onCallback}
+              />
             ))}
           </div>
         )}
