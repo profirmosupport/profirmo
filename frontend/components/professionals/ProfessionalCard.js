@@ -185,29 +185,33 @@ export default function ProfessionalCard({ professional, onCallback }) {
         <RatingStars rating={rating || 0} count={reviewsCount || 0} size="sm" />
       </div>
 
-      <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
-        <div className="min-w-0 flex-1 pr-3">
-          {Number(consultationFee) > 0 ? (
-            <>
-              <p className="text-base font-semibold text-slate-900">
-                {formatCurrency(consultationFee)}
+      {/* Fee + availability row — hidden in callback mode (/consult), where
+          the per-minute fee / "not available online" isn't relevant. */}
+      {!onCallback && (
+        <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
+          <div className="min-w-0 flex-1 pr-3">
+            {Number(consultationFee) > 0 ? (
+              <>
+                <p className="text-base font-semibold text-slate-900">
+                  {formatCurrency(consultationFee)}
+                </p>
+                <p className="text-xs text-slate-400">
+                  {t('profCmp.consultationRate')}
+                </p>
+              </>
+            ) : (
+              <p className="text-xs font-medium leading-snug text-slate-500">
+                Not available for online consultation
               </p>
-              <p className="text-xs text-slate-400">
-                {t('profCmp.consultationRate')}
-              </p>
-            </>
+            )}
+          </div>
+          {availableNow ? (
+            <Badge variant="green">{t('profCmp.availableNow')}</Badge>
           ) : (
-            <p className="text-xs font-medium leading-snug text-slate-500">
-              Not available for online consultation
-            </p>
+            <Badge variant="gray">{t('profCmp.offline')}</Badge>
           )}
         </div>
-        {availableNow ? (
-          <Badge variant="green">{t('profCmp.availableNow')}</Badge>
-        ) : (
-          <Badge variant="gray">{t('profCmp.offline')}</Badge>
-        )}
-      </div>
+      )}
 
       {onCallback ? (
         // Callback mode (e.g. the /consult landing) — a single button that
