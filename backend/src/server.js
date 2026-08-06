@@ -156,7 +156,14 @@ async function start() {
     await db.sequelize.authenticate();
     console.log('[DB] Connection established successfully.');
 
-    await runMigrations();
+    // SKIP_MIGRATIONS lets a local/read-only instance connect to a shared DB
+    // without re-running schema migrations. Unset in production → migrations
+    // run as normal.
+    if (process.env.SKIP_MIGRATIONS === 'true') {
+      console.log('[DB] Migrations skipped (SKIP_MIGRATIONS=true).');
+    } else {
+      await runMigrations();
+    }
 
     for (const model of SYNC_ORDER) {
       await model.sync();
@@ -181,15 +188,22 @@ async function start() {
 
     // Start the background-job worker once the HTTP server is up. Handler
     // errors are caught inside the worker and never crash the process.
-    startWorker();
+    // DISABLE_WORKER lets a local/read-only instance sharing a DB avoid
+    // competing with the real worker (double-processing jobs / emails / SMS).
+    // Unset in production → the worker runs as normal.
+    if (process.env.DISABLE_WORKER === 'true') {
+      console.log('[server] Job worker disabled (DISABLE_WORKER=true).');
+    } else {
+      startWorker();
 
-    // Ensure exactly one ai-blog-generate job is queued. The handler
-    // self-reschedules every successful run, so this only inserts
-    // when the chain has somehow been broken (fresh DB, last job
-    // permanently failed, etc).
-    ensureAiBlogJobQueued().catch((err) =>
-      console.warn('[server] ai-blog-generate bootstrap failed:', err.message)
-    );
+      // Ensure exactly one ai-blog-generate job is queued. The handler
+      // self-reschedules every successful run, so this only inserts
+      // when the chain has somehow been broken (fresh DB, last job
+      // permanently failed, etc).
+      ensureAiBlogJobQueued().catch((err) =>
+        console.warn('[server] ai-blog-generate bootstrap failed:', err.message)
+      );
+    }
   });
 }
 
