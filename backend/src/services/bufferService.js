@@ -389,6 +389,136 @@ async function shareBlogPost(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Social account (Instagram + YouTube) — a SECOND Buffer token, separate from
+// the blog/LinkedIn account. Stored in admin_settings.buffer_access_token_social.
+// Used by socialNewsService to post the daily image carousel.
+// ---------------------------------------------------------------------------
+
+async function getSocialAccessToken() {
+  return adminSettings.getString('buffer_access_token_social');
+}
+
+async function isSocialConfigured() {
+  const t = await getSocialAccessToken();
+  return Boolean(t && t.trim());
+}
+
+// List channels for an explicit token (the social account). Mirrors
+// listChannels() but doesn't read the default blog token.
+async function listChannelsForToken(token) {
+  if (!token) throw new Error('Buffer social access token not configured.');
+  const organizationId = await getOrganizationId(token);
+  const withType = `query ($input: ChannelsInput!) {
+       channels(input: $input) { id service displayName descriptor isDisconnected type }
+     }`;
+  const base = `query ($input: ChannelsInput!) {
+       channels(input: $input) { id service displayName descriptor isDisconnected }
+     }`;
+  let data;
+  try {
+    data = await gqlRequest(withType, { input: { organizationId } }, token);
+  } catch {
+    data = await gqlRequest(base, { input: { organizationId } }, token);
+  }
+  return ((data && data.channels) || []).filter((c) => !c.isDisconnected);
+}
+
+// Create an image post (carousel when >1 image) on one channel. Instagram
+// treats multiple image assets as a carousel. Returns the post id.
+async function createImagePostOnChannel(
+  { channelId, text, imageUrls, altText },
+  { now = true, token }
+) {
+  const urls = (Array.isArray(imageUrls) ? imageUrls : []).filter(Boolean);
+  if (!urls.length) throw new Error('createImagePost requires at least one image URL.');
+  const assets = urls.map((url) => ({
+    image: {
+      url,
+      thumbnailUrl: url,
+      ...(altText ? { metadata: { altText: String(altText).slice(0, 280) } } : {}),
+    },
+  }));
+  const input = {
+    channelId,
+    schedulingType: 'automatic',
+    mode: now ? 'shareNow' : 'addToQueue',
+    needsApproval: false,
+    text: String(text || '').slice(0, 2200), // Instagram caption hard cap
+    assets,
+    source: 'profirmo-social-news',
+    aiAssisted: true,
+  };
+  const data = await gqlRequest(
+    `mutation ($input: CreatePostInput!) {
+       createPost(input: $input) {
+         __typename
+         ... on PostActionSuccess { post { id } }
+         ... on NotFoundError      { message }
+         ... on UnauthorizedError  { message }
+         ... on UnexpectedError    { message }
+         ... on RestProxyError     { message code link }
+         ... on LimitReachedError  { message }
+       }
+     }`,
+    { input },
+    token
+  );
+  const res = data && data.createPost;
+  if (!res) throw new Error('createPost returned no payload.');
+  if (res.__typename !== 'PostActionSuccess' || !res.post) {
+    throw new Error(res.message || `createPost rejected (${res.__typename || 'unknown'}).`);
+  }
+  return res.post.id;
+}
+
+/**
+ * Post a rendered image deck (carousel) to the social account's channels.
+ * Instagram gets a native carousel; YouTube is attempted best-effort (Buffer
+ * may reject an image-only post for a YouTube channel — that failure is
+ * captured, not thrown). Returns
+ *   { posted, results:[{service,channelId,ok,postId|error}], failures:[...] }
+ */
+async function shareImageDeck({ imageUrls, caption, hashtags }, { now = true } = {}) {
+  const token = await getSocialAccessToken();
+  if (!token) {
+    return { skipped: true, reason: 'buffer_access_token_social not configured' };
+  }
+  const urls = (Array.isArray(imageUrls) ? imageUrls : []).filter(Boolean);
+  if (!urls.length) throw new Error('shareImageDeck requires imageUrls.');
+
+  const channels = await listChannelsForToken(token);
+  if (!channels.length) {
+    return { skipped: true, reason: 'No connected channels on the social Buffer account.' };
+  }
+  const tagLine = Array.isArray(hashtags) && hashtags.length
+    ? hashtags.map((t) => '#' + String(t).replace(/^#/, '')).join(' ')
+    : '';
+  const text = [String(caption || '').trim(), tagLine].filter(Boolean).join('\n\n');
+
+  const results = await Promise.all(
+    channels.map(async (ch) => {
+      try {
+        const postId = await createImagePostOnChannel(
+          { channelId: ch.id, text, imageUrls: urls, altText: caption },
+          { now, token }
+        );
+        return { ok: true, service: ch.service, channelId: ch.id, postId };
+      } catch (err) {
+        return { ok: false, service: ch.service, channelId: ch.id, error: err.message };
+      }
+    })
+  );
+  const ok = results.filter((r) => r.ok);
+  return {
+    posted: ok.length,
+    results,
+    services: ok.map((r) => r.service),
+    postIds: ok.map((r) => r.postId),
+    failures: results.filter((r) => !r.ok).map(({ service, channelId, error }) => ({ service, channelId, error })),
+  };
+}
+
 // Legacy compat — the old REST API had a "profiles" concept. Map it
 // to channels so the existing /api/admin/buffer/profiles route keeps
 // returning sensible data without touching its caller.
@@ -425,4 +555,9 @@ module.exports = {
   buildShareText,
   buildAuthorizeUrl,
   exchangeCodeForToken,
+  // Social (Instagram + YouTube) — second Buffer account.
+  isSocialConfigured,
+  listChannelsForToken,
+  getSocialAccessToken,
+  shareImageDeck,
 };

@@ -7,6 +7,7 @@ const payoutController = require('../controllers/payoutController');
 const adminSettings = require('../controllers/adminSettingsController');
 const blog = require('../controllers/blogController');
 const buffer = require('../controllers/bufferController');
+const social = require('../controllers/socialController');
 const subscription = require('../controllers/subscriptionController');
 const adminEmployee = require('../controllers/adminEmployeeController');
 const { uploadSingle, handleUploadErrors } = require('../middleware/uploadMiddleware');
@@ -241,6 +242,14 @@ router.post('/blog/posts/:id/generate-image', blog.adminRegenerateImage);
 router.get('/buffer/oauth-start', buffer.oauthStart);
 router.get('/buffer/profiles', buffer.listProfiles);
 router.post('/buffer/share-test/:postId', buffer.shareTest);
+
+// --- Insta & YouTube posts (daily Hindi news carousel) --------------------
+router.get('/social/status', social.adminStatus);
+router.get('/social/posts', social.adminListPosts);
+router.post('/social/posts/generate', social.adminGeneratePost);
+router.get('/social/posts/:id', social.adminGetPost);
+router.post('/social/posts/:id/post', social.adminPostNow);
+router.delete('/social/posts/:id', social.adminDeletePost);
 router.get('/blog/posts/:id', blog.adminGetPost);
 router.patch('/blog/posts/:id', blog.adminUpdatePost);
 router.delete('/blog/posts/:id', blog.adminDeletePost);

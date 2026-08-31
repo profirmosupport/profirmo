@@ -119,6 +119,8 @@ const SYNC_ORDER = [
   db.Employee,
   db.EmployeeCommission,
   db.EmployeePayout,
+  // Daily Insta/YouTube news carousel posts — no FK dependency.
+  db.SocialPost,
   // Professional dashboard calendar reminders — soft links (no FKs) to
   // bookings + cases, so order vs. those tables doesn't matter, but it
   // does need to exist for the calendar widget to load.
@@ -203,8 +205,51 @@ async function start() {
       ensureAiBlogJobQueued().catch((err) =>
         console.warn('[server] ai-blog-generate bootstrap failed:', err.message)
       );
+
+      // Ensure exactly one social-news-generate job is queued (daily Insta +
+      // YouTube carousel). Self-reschedules on every run, like the blog job.
+      ensureSocialJobQueued().catch((err) =>
+        console.warn('[server] social-news-generate bootstrap failed:', err.message)
+      );
     }
   });
+}
+
+async function ensureSocialJobQueued() {
+  const { Job } = require('./models');
+  const { Op } = require('sequelize');
+  const pending = await Job.findOne({
+    where: {
+      type: 'social-news-generate',
+      status: { [Op.in]: ['pending', 'processing'] },
+    },
+  });
+  if (pending) {
+    console.log(
+      `[server] social-news-generate already scheduled for ${new Date(pending.runAt).toISOString()}.`
+    );
+    return;
+  }
+  const queueService = require('./services/queueService');
+  // Next 08:00 IST (02:30 UTC) — a morning post window. Staggered a few hours
+  // after the 03:00 IST blog run so the two AI jobs don't fire together.
+  const now = new Date();
+  const next = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+    2, // 08:00 IST = 02:30 UTC
+    30,
+    0,
+    0
+  ));
+  if (next.getTime() <= now.getTime()) {
+    next.setUTCDate(next.getUTCDate() + 1);
+  }
+  await queueService.enqueue('social-news-generate', {}, { runAt: next });
+  console.log(
+    `[server] social-news-generate scheduled for ${next.toISOString()} (08:00 IST).`
+  );
 }
 
 async function ensureAiBlogJobQueued() {

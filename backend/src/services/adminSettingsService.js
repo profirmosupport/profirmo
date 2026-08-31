@@ -594,6 +594,54 @@ const SETTINGS = {
     coerce: stringCoerce,
     format: stringCoerce,
   },
+
+  // --- Insta & YouTube daily news carousel (a SECOND Buffer account) ------
+  // Separate from buffer_access_token (blog/LinkedIn) so the daily Hindi news
+  // deck posts to the Instagram + YouTube channels on their own Buffer login.
+  buffer_access_token_social: {
+    label: 'Buffer access token (Instagram + YouTube)',
+    description:
+      'Personal access token for the SECOND Buffer account that owns the Instagram and YouTube channels. Used by the daily "Insta & YouTube posts" module to publish the Hindi news carousel. Paste it from publish.buffer.com/developers/apps.',
+    defaultGetter: () => process.env.BUFFER_ACCESS_TOKEN_SOCIAL || '',
+    type: 'string',
+    group: 'AI / Anthropic',
+    secret: true,
+    coerce: stringCoerce,
+    format: stringCoerce,
+  },
+  social_auto_post: {
+    label: 'Auto-post daily Insta/YouTube carousel',
+    description:
+      'When "true", the daily news deck is posted to Buffer automatically. When "false" (recommended to start), it is generated as a DRAFT for you to review and approve under Admin → Posts → Insta & YouTube posts.',
+    defaultGetter: () => process.env.SOCIAL_AUTO_POST || 'false',
+    type: 'string',
+    group: 'AI / Anthropic',
+    options: [
+      { value: 'false', label: 'Draft for approval (manual)' },
+      { value: 'true', label: 'Post automatically' },
+    ],
+    coerce: (raw) => {
+      const v = stringCoerce(raw).toLowerCase();
+      return v === 'true' ? 'true' : 'false';
+    },
+    format: stringCoerce,
+  },
+  social_posts_per_day: {
+    label: 'News items per daily carousel',
+    description:
+      'How many news/knowledge cards to include in each daily deck (2–5). The deck also adds a cover and a call-to-action slide around them.',
+    defaultGetter: () => Number(process.env.SOCIAL_POSTS_PER_DAY) || 3,
+    type: 'number',
+    group: 'AI / Anthropic',
+    coerce: (raw) => {
+      const n = Math.floor(Number(raw));
+      if (!Number.isFinite(n) || n < 2 || n > 5) {
+        throw { statusCode: 422, message: 'social_posts_per_day must be between 2 and 5.' };
+      }
+      return n;
+    },
+    format: (n) => String(Math.floor(Number(n) || 3)),
+  },
 };
 
 const KNOWN_KEYS = Object.keys(SETTINGS);

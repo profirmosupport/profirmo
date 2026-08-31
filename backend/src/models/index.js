@@ -127,6 +127,9 @@ const Employee = require('./Employee');
 const EmployeeCommission = require('./EmployeeCommission');
 const EmployeePayout = require('./EmployeePayout');
 
+// Daily Instagram + YouTube news carousel posts. No FK dependency.
+const SocialPost = require('./SocialPost');
+
 // Optional relationship — clearing the parent nulls the foreign key.
 const fkSetNull = (foreignKey) => ({
   foreignKey,
@@ -451,6 +454,7 @@ module.exports = {
   BlogCategory,
   BlogTag,
   BlogPost,
+  SocialPost,
   SubscriptionPlan,
   SubscriptionFeatureRule,
   ProfessionalSubscription,

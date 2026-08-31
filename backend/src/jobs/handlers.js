@@ -8,6 +8,7 @@ const emailService = require('../services/emailService');
 const emailTemplateService = require('../services/emailTemplateService');
 const notificationService = require('../services/notificationService');
 const aiBlogService = require('../services/aiBlogService');
+const socialNewsService = require('../services/socialNewsService');
 const queueService = require('../services/queueService');
 
 /**
@@ -97,6 +98,69 @@ async function aiBlogGenerateHandler(payload = {}) {
 }
 
 /**
+ * 'social-news-generate' job handler — builds the daily Instagram + YouTube
+ * Hindi news carousel (or an evergreen knowledge deck when there isn't enough
+ * fresh news), saving it as a draft (or auto-posting when social_auto_post is
+ * on). Reschedules tomorrow's run FIRST so a transient outage can't break the
+ * daily chain, then guards against a backlog double-run within 22h.
+ */
+async function socialNewsGenerateHandler(payload = {}) {
+  try {
+    await queueService.enqueue(
+      'social-news-generate',
+      {},
+      { runAt: nextSocialRunAt() }
+    );
+  } catch (err) {
+    console.warn(
+      '[Worker] could not schedule next social-news-generate run:',
+      (err && err.message) || err
+    );
+  }
+
+  if (!payload.force) {
+    const sequelize = require('../config/database');
+    const [[recent]] = await sequelize.query(
+      `SELECT id, runAt FROM jobs
+       WHERE type = 'social-news-generate'
+         AND status = 'completed'
+         AND runAt >= DATE_SUB(NOW(), INTERVAL 22 HOUR)
+         AND id <> :selfId
+       ORDER BY runAt DESC LIMIT 1`,
+      { replacements: { selfId: payload.__jobId || '' }, raw: true }
+    );
+    if (recent) {
+      console.log(
+        `[Worker] social-news-generate: previous run at ${recent.runAt} already completed within 22h — skipping.`
+      );
+      return;
+    }
+  }
+
+  await socialNewsService.generateDailyPost({});
+}
+
+/**
+ * Next 08:00 IST instant in UTC (02:30 UTC). Staggered after the blog run.
+ */
+function nextSocialRunAt() {
+  const now = new Date();
+  const next = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+    2,
+    30,
+    0,
+    0
+  ));
+  if (next.getTime() <= now.getTime()) {
+    next.setUTCDate(next.getUTCDate() + 1);
+  }
+  return next;
+}
+
+/**
  * Compute the next 03:00 IST instant in UTC. IST is fixed UTC+05:30
  * (no DST), so we can do it deterministically without a tz library.
  */
@@ -139,6 +203,7 @@ const handlers = {
   email: emailHandler,
   notification: notificationHandler,
   'ai-blog-generate': aiBlogGenerateHandler,
+  'social-news-generate': socialNewsGenerateHandler,
 };
 
 /**

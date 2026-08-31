@@ -28,6 +28,7 @@ import {
   ArrowDownToLine,
   CreditCard,
   Newspaper,
+  Instagram,
   Hash,
   Mail,
   Receipt,
@@ -336,6 +337,12 @@ const NAV_BY_ROLE = {
           labelKey: 'dash.nav.blogTags',
           href: '/admin/blog/tags',
           icon: Hash,
+        },
+        {
+          // Daily Hindi legal-news carousel → Instagram + YouTube.
+          label: 'Insta & YouTube posts',
+          href: '/admin/social',
+          icon: Instagram,
         },
       ],
     },
