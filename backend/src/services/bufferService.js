@@ -112,19 +112,26 @@ async function listChannels() {
   const token = await getAccessToken();
   if (!token) throw new Error('Buffer access token not configured.');
   const organizationId = await getOrganizationId(token);
-  const data = await gqlRequest(
-    `query ($input: ChannelsInput!) {
+  // `type` distinguishes a company Page from a personal Profile (LinkedIn,
+  // Facebook, …). Some older Buffer schemas may not expose it, so if the
+  // query is rejected we fall back to the base fields — posting still works,
+  // we just can't tell page from profile.
+  const withType = `query ($input: ChannelsInput!) {
        channels(input: $input) {
-         id
-         service
-         displayName
-         descriptor
-         isDisconnected
+         id service displayName descriptor isDisconnected type
        }
-     }`,
-    { input: { organizationId } },
-    token
-  );
+     }`;
+  const base = `query ($input: ChannelsInput!) {
+       channels(input: $input) {
+         id service displayName descriptor isDisconnected
+       }
+     }`;
+  let data;
+  try {
+    data = await gqlRequest(withType, { input: { organizationId } }, token);
+  } catch {
+    data = await gqlRequest(base, { input: { organizationId } }, token);
+  }
   return ((data && data.channels) || []).filter((c) => !c.isDisconnected);
 }
 
@@ -305,6 +312,32 @@ async function shareBlogPost(
     return { skipped: true, reason: 'No connected Buffer channels.' };
   }
 
+  // LinkedIn: post to the company PAGE only — skip a personal profile.
+  // Buffer's `type` is 'profile' for a personal account and 'page'/'business'
+  // for a company page. We drop LinkedIn channels typed 'profile' and keep
+  // the page (or an untyped channel, when the schema didn't return `type`).
+  // Other networks are unaffected.
+  const targetChannels = channels.filter((ch) => {
+    const svc = String(ch.service || '').toLowerCase();
+    const type = String(ch.type || '').toLowerCase();
+    if (svc === 'linkedin' && type === 'profile') {
+      console.log(
+        `[buffer] Skipping LinkedIn personal profile "${
+          ch.displayName || ch.descriptor || ch.id
+        }" — posting to the company page only.`
+      );
+      return false;
+    }
+    return true;
+  });
+  if (targetChannels.length === 0) {
+    return {
+      skipped: true,
+      reason:
+        'No eligible Buffer channels (LinkedIn personal profile skipped — connect the company page in Buffer).',
+    };
+  }
+
   const link = {
     url,
     title,
@@ -312,7 +345,7 @@ async function shareBlogPost(
   };
 
   const results = await Promise.all(
-    channels.map(async (ch) => {
+    targetChannels.map(async (ch) => {
       try {
         const text = buildTextForService(ch.service, {
           title,
