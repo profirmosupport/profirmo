@@ -329,6 +329,17 @@ function SocialPostCard({ post, busy, bufferConfigured, onPost, onDelete }) {
             {(post.postResult?.services || []).join(', ') || 'Buffer'}.
           </p>
         )}
+        {Array.isArray(post.postResult?.skippedChannels) &&
+          post.postResult.skippedChannels.length > 0 && (
+            <div className="flex flex-col gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+              {post.postResult.skippedChannels.map((s) => (
+                <span key={s.channelId} className="inline-flex items-center gap-1.5">
+                  <Youtube size={12} className="text-red-500" />
+                  <span className="font-medium capitalize">{s.service}</span> skipped — {s.reason}
+                </span>
+              ))}
+            </div>
+          )}
       </div>
     </Card>
   );

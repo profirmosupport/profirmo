@@ -424,10 +424,41 @@ async function listChannelsForToken(token) {
   return ((data && data.channels) || []).filter((c) => !c.isDisconnected);
 }
 
+// Networks that can accept an image carousel via Buffer. YouTube is
+// deliberately excluded — Buffer rejects image-only YouTube posts
+// ("YouTube posts require a video … do not support image attachments"),
+// so an image deck can never go to a YouTube channel.
+const IMAGE_CAROUSEL_SERVICES = new Set([
+  'instagram',
+  'facebook',
+  'threads',
+  'pinterest',
+  'linkedin',
+  'mastodon',
+  'bluesky',
+  'tiktok',
+]);
+
+// Per-service metadata required for an IMAGE post. Instagram rejects a post
+// with "Instagram posts require a type" unless metadata.instagram is set, and
+// the input further requires shouldShareToFeed. Facebook needs a type too.
+function imageMetadataForService(service) {
+  switch (String(service || '').toLowerCase()) {
+    case 'instagram':
+      // A multi-image post is a carousel; `type: post` + shareToFeed:true
+      // publishes it to the main grid (not just a story).
+      return { instagram: { type: 'post', shouldShareToFeed: true } };
+    case 'facebook':
+      return { facebook: { type: 'post' } };
+    default:
+      return null;
+  }
+}
+
 // Create an image post (carousel when >1 image) on one channel. Instagram
 // treats multiple image assets as a carousel. Returns the post id.
 async function createImagePostOnChannel(
-  { channelId, text, imageUrls, altText },
+  { channelId, service, text, imageUrls, altText },
   { now = true, token }
 ) {
   const urls = (Array.isArray(imageUrls) ? imageUrls : []).filter(Boolean);
@@ -449,6 +480,8 @@ async function createImagePostOnChannel(
     source: 'profirmo-social-news',
     aiAssisted: true,
   };
+  const metadata = imageMetadataForService(service);
+  if (metadata) input.metadata = metadata;
   const data = await gqlRequest(
     `mutation ($input: CreatePostInput!) {
        createPost(input: $input) {
@@ -459,6 +492,7 @@ async function createImagePostOnChannel(
          ... on UnexpectedError    { message }
          ... on RestProxyError     { message code link }
          ... on LimitReachedError  { message }
+         ... on InvalidInputError  { message }
        }
      }`,
     { input },
@@ -496,11 +530,27 @@ async function shareImageDeck({ imageUrls, caption, hashtags }, { now = true } =
     : '';
   const text = [String(caption || '').trim(), tagLine].filter(Boolean).join('\n\n');
 
+  // Partition: image-capable channels get the carousel; the rest (YouTube) are
+  // skipped with a clear reason — Buffer can't post images there.
+  const postable = channels.filter((ch) =>
+    IMAGE_CAROUSEL_SERVICES.has(String(ch.service || '').toLowerCase())
+  );
+  const skippedChannels = channels
+    .filter((ch) => !IMAGE_CAROUSEL_SERVICES.has(String(ch.service || '').toLowerCase()))
+    .map((ch) => ({
+      service: ch.service,
+      channelId: ch.id,
+      reason:
+        String(ch.service || '').toLowerCase() === 'youtube'
+          ? 'YouTube needs a video — an image carousel can’t be posted there via Buffer.'
+          : 'This channel does not accept an image carousel.',
+    }));
+
   const results = await Promise.all(
-    channels.map(async (ch) => {
+    postable.map(async (ch) => {
       try {
         const postId = await createImagePostOnChannel(
-          { channelId: ch.id, text, imageUrls: urls, altText: caption },
+          { channelId: ch.id, service: ch.service, text, imageUrls: urls, altText: caption },
           { now, token }
         );
         return { ok: true, service: ch.service, channelId: ch.id, postId };
@@ -515,6 +565,7 @@ async function shareImageDeck({ imageUrls, caption, hashtags }, { now = true } =
     results,
     services: ok.map((r) => r.service),
     postIds: ok.map((r) => r.postId),
+    skippedChannels,
     failures: results.filter((r) => !r.ok).map(({ service, channelId, error }) => ({ service, channelId, error })),
   };
 }
