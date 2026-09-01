@@ -184,8 +184,8 @@ async function writeNewsDeck(items, count) {
     `Return JSON exactly:\n` +
     `{"title":"<short english admin label>","selected":[<candidate indices you used>],` +
     `"cover":{"hook":"<hindi punchy day headline>","highlights":["<hindi teaser>","<...>"]},` +
-    `"cards":[{"tag":"<short hindi source/topic tag, e.g. सुप्रीम कोर्ट>","headline":"<hindi, <=64 chars>",` +
-    `"points":["<hindi bullet <=42 chars>","<...>"]}],` +
+    `"cards":[{"tag":"<short hindi source/topic tag, e.g. सुप्रीम कोर्ट>","headline":"<hindi, <=40 chars>",` +
+    `"points":["<hindi bullet <=30 chars>","<...>"]}],` +
     `"caption":"<hindi caption>","hashtags":["tag1","tag2"]}\n` +
     `Rules: 2–3 bullets per card; headline crisp; ${count} cards; the cover hook must ` +
     `reflect today's actual stories; JSON only.`;
@@ -212,8 +212,8 @@ async function writeKnowledgeDeck(count, avoidTopics) {
     `Return JSON exactly:\n` +
     `{"title":"<short english admin label>",` +
     `"cover":{"hook":"<hindi hook>","highlights":["<hindi teaser>","<...>"]},` +
-    `"cards":[{"tag":"<short hindi topic tag>","headline":"<hindi question/topic <=64 chars>",` +
-    `"points":["<hindi practical bullet <=42 chars>","<...>"]}],` +
+    `"cards":[{"tag":"<short hindi topic tag>","headline":"<hindi question/topic <=40 chars>",` +
+    `"points":["<hindi practical bullet <=30 chars>","<...>"]}],` +
     `"caption":"<hindi caption inviting people to consult verified professionals>",` +
     `"hashtags":["tag1","tag2"]}\n` +
     `Rules: 2–3 bullets per card; ${count} cards; JSON only.`;

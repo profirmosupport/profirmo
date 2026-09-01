@@ -90,49 +90,73 @@ function footerSvg(H, slide, total, dark = true) {
 
 function coverSvg({ eyebrow, hook, highlights, swipe }, total, H) {
   const hookLines = wrap(hook || '', 12, 3);
-  const hi = (Array.isArray(highlights) ? highlights : []).slice(0, 3);
+  // Each highlight is wrapped to fit the card width (≤2 lines) so long teasers
+  // never run off the right edge.
+  const hi = (Array.isArray(highlights) ? highlights : [])
+    .slice(0, 3)
+    .map((h) => wrap(h, 24, 2));
   const HOOK_LH = 108;
-  const HL_STEP = 118;
-  const blockH = hookLines.length * HOOK_LH + 70 + 56 + hi.length * HL_STEP;
+  const HL_LINE = 54;
+  const HL_GAP = 54;
+  const hiBlock = hi.reduce((s, lines) => s + lines.length * HL_LINE + HL_GAP, 0);
+  const blockH = hookLines.length * HOOK_LH + 70 + 56 + hiBlock;
   const top = centreTop(H, blockH, 340, 240);
   const hookTop = top + 80;
   const divY = hookTop + (hookLines.length - 1) * HOOK_LH + 34;
   const hiLabelY = divY + 96;
-  const hiTop = hiLabelY + 74;
+  let hy = hiLabelY + 76;
+  const hiSvg = hi
+    .map((lines) => {
+      const parts = [
+        `<text x="${LX}" y="${hy}" font-family="${FF}" font-size="46" font-weight="700" fill="#f59e0b">›</text>`,
+        ...lines.map((ln, li) => `<text x="${LX + 52}" y="${hy + li * HL_LINE}" font-family="${FF}" font-size="42" fill="#e2e8f0">${esc(ln)}</text>`),
+      ].join('');
+      hy += lines.length * HL_LINE + HL_GAP;
+      return parts;
+    })
+    .join('');
   return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${DEFS}
   <rect width="${W}" height="${H}" fill="url(#bg)"/>${blobs(H)}
   <text x="${LX}" y="330" font-family="${FF}" font-size="38" font-weight="700" fill="#f59e0b">${esc(eyebrow)}</text>
   ${hookLines.map((l, i) => `<text x="${LX}" y="${hookTop + i * HOOK_LH}" font-family="${FF}" font-size="94" font-weight="800" fill="#fff">${esc(l)}</text>`).join('')}
   <rect x="${LX}" y="${divY}" width="170" height="9" rx="4.5" fill="url(#acc)"/>
   <text x="${LX}" y="${hiLabelY}" font-family="${FF}" font-size="34" font-weight="700" fill="#f59e0b">आज की सुर्खियाँ</text>
-  ${hi.map((l, i) => {
-    const y = hiTop + i * HL_STEP;
-    return `<text x="${LX}" y="${y}" font-family="${FF}" font-size="46" font-weight="700" fill="#f59e0b">›</text><text x="${LX + 52}" y="${y}" font-family="${FF}" font-size="44" fill="#e2e8f0">${esc(l)}</text>`;
-  }).join('')}
+  ${hiSvg}
   <text x="${LX}" y="${H - 190}" font-family="${FF}" font-size="42" font-weight="700" fill="#f59e0b">${esc(swipe)}</text>
   <text x="990" y="${H - 66}" text-anchor="end" font-family="${FF}" font-size="30" font-weight="700" fill="#fff">1 / ${total} ›</text>
 </svg>`);
 }
 
 function contentSvg({ tag, headline, points }, slide, total, H) {
-  const hl = wrap(headline, 15, 4);
-  const pts = (points || []).slice(0, 4);
-  const HEAD_LH = 98;
-  const PT_STEP = 122;
-  const blockH = hl.length * HEAD_LH + 90 + pts.length * PT_STEP;
-  const top = centreTop(H, blockH, 380, 200);
+  const hl = wrap(headline, 15, 3);
+  // Wrap each bullet to the card width (≤2 lines) so a long point never runs
+  // off the right edge and gets cut; cap to 3 bullets so it fits the 4:5 card.
+  const pts = (points || []).slice(0, 3).map((p) => wrap(p, 20, 2));
+  const HEAD_LH = 94;
+  const PT_LINE = 52;
+  const PT_GAP = 44;
+  const ptsBlock = pts.reduce((s, lines) => s + lines.length * PT_LINE + PT_GAP, 0);
+  const blockH = hl.length * HEAD_LH + 100 + ptsBlock;
+  const top = centreTop(H, blockH, 360, 210);
   const headTop = top + 70;
   const divY = headTop + (hl.length - 1) * HEAD_LH + 34;
-  const ptsTop = divY + 110;
+  let py = divY + 110;
+  const ptsSvg = pts
+    .map((lines) => {
+      const parts = [
+        `<circle cx="${LX + 16}" cy="${py - 16}" r="13" fill="#f59e0b"/>`,
+        ...lines.map((ln, li) => `<text x="${LX + 58}" y="${py + li * PT_LINE}" font-family="${FF}" font-size="48" font-weight="600" fill="#e2e8f0">${esc(ln)}</text>`),
+      ].join('');
+      py += lines.length * PT_LINE + PT_GAP;
+      return parts;
+    })
+    .join('');
   return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${DEFS}
   <rect width="${W}" height="${H}" fill="url(#bg)"/>${blobs(H)}
   <text x="${LX}" y="330" font-family="${FF}" font-size="38" font-weight="700" fill="#f59e0b">${esc(tag)}</text>
-  ${hl.map((l, i) => `<text x="${LX}" y="${headTop + i * HEAD_LH}" font-family="${FF}" font-size="82" font-weight="800" fill="#fff">${esc(l)}</text>`).join('')}
+  ${hl.map((l, i) => `<text x="${LX}" y="${headTop + i * HEAD_LH}" font-family="${FF}" font-size="78" font-weight="800" fill="#fff">${esc(l)}</text>`).join('')}
   <rect x="${LX}" y="${divY}" width="170" height="9" rx="4.5" fill="url(#acc)"/>
-  ${pts.map((p, i) => {
-    const y = ptsTop + i * PT_STEP;
-    return `<circle cx="${LX + 16}" cy="${y - 15}" r="13" fill="#f59e0b"/><text x="${LX + 58}" y="${y}" font-family="${FF}" font-size="48" font-weight="600" fill="#e2e8f0">${esc(p)}</text>`;
-  }).join('')}
+  ${ptsSvg}
   ${footerSvg(H, slide, total)}
 </svg>`);
 }
