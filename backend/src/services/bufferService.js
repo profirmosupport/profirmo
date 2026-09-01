@@ -506,14 +506,81 @@ async function createImagePostOnChannel(
   return res.post.id;
 }
 
+// YouTube default category — "25" is News & Politics, apt for a legal-news
+// slideshow. Override with SOCIAL_YT_CATEGORY_ID.
+const YT_CATEGORY_ID = process.env.SOCIAL_YT_CATEGORY_ID || '25';
+
+// Create a video post on one YouTube channel. YouTube rejects image posts, so
+// the daily deck reaches YouTube only as this slideshow MP4. Requires a title
+// + category. Returns the post id.
+async function createVideoPostOnChannel(
+  { channelId, text, videoUrl, thumbnailUrl, title },
+  { now = true, token }
+) {
+  if (!videoUrl) throw new Error('createVideoPost requires a videoUrl.');
+  const ytTitle = String(title || 'Profirmo — कानूनी व टैक्स अपडेट').slice(0, 100);
+  const input = {
+    channelId,
+    schedulingType: 'automatic',
+    mode: now ? 'shareNow' : 'addToQueue',
+    needsApproval: false,
+    text: String(text || '').slice(0, 4900), // YouTube description
+    assets: [
+      {
+        video: {
+          url: videoUrl,
+          thumbnailUrl: thumbnailUrl || null,
+          metadata: { title: ytTitle },
+        },
+      },
+    ],
+    metadata: {
+      youtube: {
+        title: ytTitle,
+        categoryId: YT_CATEGORY_ID,
+        privacy: 'public',
+        madeForKids: false,
+        notifySubscribers: true,
+      },
+    },
+    source: 'profirmo-social-news',
+    aiAssisted: true,
+  };
+  const data = await gqlRequest(
+    `mutation ($input: CreatePostInput!) {
+       createPost(input: $input) {
+         __typename
+         ... on PostActionSuccess { post { id } }
+         ... on NotFoundError      { message }
+         ... on UnauthorizedError  { message }
+         ... on UnexpectedError    { message }
+         ... on RestProxyError     { message code link }
+         ... on LimitReachedError  { message }
+         ... on InvalidInputError  { message }
+       }
+     }`,
+    { input },
+    token
+  );
+  const res = data && data.createPost;
+  if (!res) throw new Error('createPost returned no payload.');
+  if (res.__typename !== 'PostActionSuccess' || !res.post) {
+    throw new Error(res.message || `createPost rejected (${res.__typename || 'unknown'}).`);
+  }
+  return res.post.id;
+}
+
 /**
- * Post a rendered image deck (carousel) to the social account's channels.
- * Instagram gets a native carousel; YouTube is attempted best-effort (Buffer
- * may reject an image-only post for a YouTube channel — that failure is
- * captured, not thrown). Returns
- *   { posted, results:[{service,channelId,ok,postId|error}], failures:[...] }
+ * Post a rendered deck to the social account's channels. Image-capable
+ * networks (Instagram, …) get a native carousel; YouTube gets the slideshow
+ * MP4 when a `videoUrl` is supplied (otherwise it's skipped with a reason —
+ * Buffer can't post images to YouTube). Per-channel failures are captured, not
+ * thrown. Returns { posted, results, services, postIds, skippedChannels, failures }.
  */
-async function shareImageDeck({ imageUrls, caption, hashtags }, { now = true } = {}) {
+async function shareImageDeck(
+  { imageUrls, caption, hashtags, videoUrl, videoTitle },
+  { now = true } = {}
+) {
   const token = await getSocialAccessToken();
   if (!token) {
     return { skipped: true, reason: 'buffer_access_token_social not configured' };
@@ -530,32 +597,42 @@ async function shareImageDeck({ imageUrls, caption, hashtags }, { now = true } =
     : '';
   const text = [String(caption || '').trim(), tagLine].filter(Boolean).join('\n\n');
 
-  // Partition: image-capable channels get the carousel; the rest (YouTube) are
-  // skipped with a clear reason — Buffer can't post images there.
-  const postable = channels.filter((ch) =>
-    IMAGE_CAROUSEL_SERVICES.has(String(ch.service || '').toLowerCase())
-  );
-  const skippedChannels = channels
-    .filter((ch) => !IMAGE_CAROUSEL_SERVICES.has(String(ch.service || '').toLowerCase()))
-    .map((ch) => ({
-      service: ch.service,
-      channelId: ch.id,
-      reason:
-        String(ch.service || '').toLowerCase() === 'youtube'
-          ? 'YouTube needs a video — an image carousel can’t be posted there via Buffer.'
-          : 'This channel does not accept an image carousel.',
-    }));
+  const results = [];
+  const skippedChannels = [];
 
-  const results = await Promise.all(
-    postable.map(async (ch) => {
+  await Promise.all(
+    channels.map(async (ch) => {
+      const svc = String(ch.service || '').toLowerCase();
       try {
-        const postId = await createImagePostOnChannel(
-          { channelId: ch.id, service: ch.service, text, imageUrls: urls, altText: caption },
-          { now, token }
-        );
-        return { ok: true, service: ch.service, channelId: ch.id, postId };
+        if (IMAGE_CAROUSEL_SERVICES.has(svc)) {
+          const postId = await createImagePostOnChannel(
+            { channelId: ch.id, service: ch.service, text, imageUrls: urls, altText: caption },
+            { now, token }
+          );
+          results.push({ ok: true, service: ch.service, channelId: ch.id, postId });
+        } else if (svc === 'youtube') {
+          if (!videoUrl) {
+            skippedChannels.push({
+              service: ch.service,
+              channelId: ch.id,
+              reason: 'No slideshow video was rendered (ffmpeg unavailable) — YouTube needs a video.',
+            });
+            return;
+          }
+          const postId = await createVideoPostOnChannel(
+            { channelId: ch.id, text, videoUrl, thumbnailUrl: urls[0], title: videoTitle },
+            { now, token }
+          );
+          results.push({ ok: true, service: ch.service, channelId: ch.id, postId });
+        } else {
+          skippedChannels.push({
+            service: ch.service,
+            channelId: ch.id,
+            reason: 'This channel type is not supported by the daily deck.',
+          });
+        }
       } catch (err) {
-        return { ok: false, service: ch.service, channelId: ch.id, error: err.message };
+        results.push({ ok: false, service: ch.service, channelId: ch.id, error: err.message });
       }
     })
   );

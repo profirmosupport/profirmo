@@ -75,16 +75,26 @@ function footerSvg(slide, total, dark = true) {
   <text x="1000" y="1015" text-anchor="end" font-family="${FF}" font-size="30" font-weight="700" fill="#fff">${slide} / ${total} ${slide < total ? '›' : ''}</text>`;
 }
 
-function coverSvg({ eyebrow, titleLines, subtitle, swipe }, total) {
-  const t = titleLines.slice(0, 3);
+// Cover = a daily "highlights" card. `hook` is the day's punchy Hindi headline
+// (wrapped to ≤2 lines); `highlights` are short teasers of the actual stories
+// so the first slide is unique every day, not a fixed template.
+function coverSvg({ eyebrow, hook, highlights, swipe }, total) {
+  const hookLines = wrap(hook || '', 15, 2);
+  const hy = hookLines.length > 1 ? 400 : 445;
+  const hi = (Array.isArray(highlights) ? highlights : []).slice(0, 3);
+  const hiStart = 640;
   return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${DEFS}
   <rect width="${W}" height="${H}" fill="url(#bg)"/>
   <circle cx="980" cy="120" r="220" fill="#f59e0b" opacity="0.10"/>
   <circle cx="120" cy="980" r="240" fill="#14b8a6" opacity="0.08"/>
-  <text x="80" y="330" font-family="${FF}" font-size="36" font-weight="700" fill="#f59e0b">${esc(eyebrow)}</text>
-  ${t.map((l, i) => `<text x="80" y="${470 + i * 100}" font-family="${FF}" font-size="76" font-weight="800" fill="#fff">${esc(l)}</text>`).join('')}
-  <text x="80" y="830" font-family="${FF}" font-size="38" fill="#cbd5e1">${esc(subtitle)}</text>
-  <text x="80" y="895" font-family="${FF}" font-size="38" font-weight="700" fill="#f59e0b">${esc(swipe)}</text>
+  <text x="80" y="300" font-family="${FF}" font-size="34" font-weight="700" fill="#f59e0b">${esc(eyebrow)}</text>
+  ${hookLines.map((l, i) => `<text x="80" y="${hy + i * 84}" font-family="${FF}" font-size="72" font-weight="800" fill="#fff">${esc(l)}</text>`).join('')}
+  <rect x="80" y="${hy + hookLines.length * 84 - 34}" width="130" height="7" rx="3.5" fill="url(#acc)"/>
+  ${hi.map((l, i) => {
+    const y = hiStart + i * 84;
+    return `<text x="80" y="${y}" font-family="${FF}" font-size="40" font-weight="700" fill="#f59e0b">›</text><text x="120" y="${y}" font-family="${FF}" font-size="38" fill="#e2e8f0">${esc(l)}</text>`;
+  }).join('')}
+  <text x="80" y="930" font-family="${FF}" font-size="36" font-weight="700" fill="#f59e0b">${esc(swipe)}</text>
   <text x="1000" y="1015" text-anchor="end" font-family="${FF}" font-size="30" font-weight="700" fill="#fff">1 / ${total} ›</text>
 </svg>`);
 }

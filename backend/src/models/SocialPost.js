@@ -44,6 +44,9 @@ const SocialPost = sequelize.define(
     hashtags: jsonArray('hashtags'),
     // JSON string[] of public S3 image URLs, slide order (cover → cta).
     imageUrls: jsonArray('imageUrls'),
+    // Public S3 URL of the slideshow MP4 built from the cards — posted to
+    // YouTube (which can't take an image carousel). Null until rendered.
+    videoUrl: { type: DataTypes.STRING(500), allowNull: true },
     // JSON of the structured deck we rendered from (cover/cards/cta) — kept so
     // an admin can see exactly what was drawn and we can re-render if needed.
     deck: jsonField('deck'),

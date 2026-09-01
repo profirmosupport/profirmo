@@ -297,6 +297,18 @@ function SocialPostCard({ post, busy, bufferConfigured, onPost, onDelete }) {
           </div>
         )}
 
+        {/* YouTube slideshow video */}
+        {post.videoUrl && (
+          <a
+            href={post.videoUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex w-fit items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
+          >
+            <Youtube size={14} /> Preview YouTube slideshow video
+          </a>
+        )}
+
         {/* Caption + hashtags */}
         {post.caption && (
           <p className="whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm text-slate-700">

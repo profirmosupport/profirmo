@@ -1134,6 +1134,31 @@ async function runMigrations() {
     }
   }
 
+  // `videoUrl` on `social_posts` — the YouTube slideshow-video URL for the
+  // daily carousel module. The table is created by model.sync() (which adds
+  // this column on a FRESH db), so this ALTER only matters for a db where
+  // social_posts already exists without the column. Same RDS-safe probe
+  // pattern (no `ADD COLUMN IF NOT EXISTS`). If the table doesn't exist yet
+  // the ALTER throws "Unknown table" — swallowed; sync() then creates it whole.
+  try {
+    const [cols] = await sequelize.query(
+      'SELECT COUNT(*) AS n FROM information_schema.COLUMNS ' +
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'social_posts' " +
+        "AND COLUMN_NAME = 'videoUrl'"
+    );
+    const present = cols && cols[0] && Number(cols[0].n) > 0;
+    if (present === false) {
+      await sequelize.query(
+        'ALTER TABLE `social_posts` ADD COLUMN `videoUrl` VARCHAR(500) NULL'
+      );
+      console.log('[Migrate] Added social_posts.videoUrl column.');
+    }
+  } catch (err) {
+    if (!/doesn'?t exist|Unknown table/i.test(err.message)) {
+      console.warn(`[Migrate] Could not ensure social_posts.videoUrl: ${err.message}`);
+    }
+  }
+
   console.log('[Migrate] Migrations finished successfully.');
 }
 

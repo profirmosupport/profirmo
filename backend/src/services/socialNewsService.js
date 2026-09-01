@@ -23,6 +23,7 @@ const adminSettings = require('./adminSettingsService');
 const storageService = require('./storageService');
 const bufferService = require('./bufferService');
 const socialCardService = require('./socialCardService');
+const socialVideoService = require('./socialVideoService');
 const aiBlogService = require('./aiBlogService');
 const SocialPost = require('../models/SocialPost');
 
@@ -112,19 +113,42 @@ async function fetchCandidates() {
 
 // --- Claude decks ----------------------------------------------------------
 
-function coverFor(kind, count) {
-  if (kind === 'knowledge') {
-    return {
-      eyebrow: 'भरोसेमंद कानूनी मार्गदर्शन',
-      titleLines: ['हर किसी के लिए', 'ज़रूरी कानूनी', 'जानकारी'],
-      subtitle: 'आसान भाषा में, सत्यापित मार्गदर्शन।',
-      swipe: 'पढ़ने के लिए स्वाइप करें →',
-    };
-  }
+const HI_MONTHS = [
+  'जनवरी', 'फ़रवरी', 'मार्च', 'अप्रैल', 'मई', 'जून',
+  'जुलाई', 'अगस्त', 'सितंबर', 'अक्टूबर', 'नवंबर', 'दिसंबर',
+];
+
+function hindiDate(d = new Date()) {
+  return `${d.getDate()} ${HI_MONTHS[d.getMonth()]}`;
+}
+
+// Build the daily "highlights" cover. Uses Claude's hook + highlights when
+// present; otherwise falls back to the day's card headlines as highlights, so
+// the first slide always reflects THAT day's stories (never a fixed template).
+// The eyebrow carries the date, so no two days look identical.
+function buildCover(kind, cards, claudeCover) {
+  const cc = claudeCover && typeof claudeCover === 'object' ? claudeCover : {};
+  const eyebrowBase = kind === 'knowledge'
+    ? 'भरोसेमंद कानूनी मार्गदर्शन'
+    : 'आज की कानूनी व टैक्स खबरें';
+  const defaultHook = kind === 'knowledge'
+    ? 'ज़रूरी कानूनी जानकारी'
+    : 'आज की अहम कानूनी ख़बरें';
+  const fallbackHighlights = cards
+    .map((c) => String(c.headline || '').trim())
+    .filter(Boolean)
+    .slice(0, 3);
+  const highlights = (Array.isArray(cc.highlights) && cc.highlights.length
+    ? cc.highlights
+    : fallbackHighlights
+  )
+    .map((h) => String(h).replace(/\s+/g, ' ').trim().slice(0, 40))
+    .filter(Boolean)
+    .slice(0, 3);
   return {
-    eyebrow: 'आज की कानूनी व टैक्स खबरें',
-    titleLines: [`${count} ज़रूरी कानूनी व`, 'टैक्स अपडेट जो आपको', 'जाननी चाहिए'],
-    subtitle: 'आसान भाषा में, सत्यापित सारांश।',
+    eyebrow: `${eyebrowBase} · ${hindiDate()}`,
+    hook: String(cc.hook || defaultHook).slice(0, 30),
+    highlights,
     swipe: 'पढ़ने के लिए स्वाइप करें →',
   };
 }
@@ -153,12 +177,18 @@ async function writeNewsDeck(items, count) {
     `For each, write Hindi card copy. Also write one Instagram caption (Hindi, warm, ` +
     `2–4 lines, ending by inviting people to talk to verified professionals on Profirmo) ` +
     `and 8–12 trending, relevant hashtags (mix Hindi + English, no spaces, without a leading #). ` +
+    `Also write a COVER for the first slide that is unique to today — a punchy ` +
+    `Hindi hook (<=30 chars, like a newspaper front-page line for the day, NOT a ` +
+    `generic template) plus ${count} very short highlight teasers (<=40 chars each, ` +
+    `one per story — the gist, not the full headline).\n` +
     `Return JSON exactly:\n` +
     `{"title":"<short english admin label>","selected":[<candidate indices you used>],` +
+    `"cover":{"hook":"<hindi punchy day headline>","highlights":["<hindi teaser>","<...>"]},` +
     `"cards":[{"tag":"<short hindi source/topic tag, e.g. सुप्रीम कोर्ट>","headline":"<hindi, <=64 chars>",` +
     `"points":["<hindi bullet <=42 chars>","<...>"]}],` +
     `"caption":"<hindi caption>","hashtags":["tag1","tag2"]}\n` +
-    `Rules: 2–3 bullets per card; headline crisp; ${count} cards; JSON only.`;
+    `Rules: 2–3 bullets per card; headline crisp; ${count} cards; the cover hook must ` +
+    `reflect today's actual stories; JSON only.`;
   const { text } = await callClaude({ system, userMessage: user, maxTokens: 3000 });
   return aiBlogService.extractJson(text);
 }
@@ -177,8 +207,11 @@ async function writeKnowledgeDeck(count, avoidTopics) {
     `rent agreement basics, cheque bounce, consumer complaint, GST for freelancers, ` +
     `will & succession, FIR filing, tenant rights). Avoid these already-covered topics: ` +
     `${avoid || '(none yet)'}.\n` +
+    `Also write a COVER for the first slide: a punchy Hindi hook (<=30 chars) plus ` +
+    `${count} short highlight teasers (<=40 chars each, one per card topic).\n` +
     `Return JSON exactly:\n` +
     `{"title":"<short english admin label>",` +
+    `"cover":{"hook":"<hindi hook>","highlights":["<hindi teaser>","<...>"]},` +
     `"cards":[{"tag":"<short hindi topic tag>","headline":"<hindi question/topic <=64 chars>",` +
     `"points":["<hindi practical bullet <=42 chars>","<...>"]}],` +
     `"caption":"<hindi caption inviting people to consult verified professionals>",` +
@@ -190,21 +223,25 @@ async function writeKnowledgeDeck(count, avoidTopics) {
 
 // --- Rendering + upload ----------------------------------------------------
 
-async function uploadCards(buffers, slugHint) {
+// Upload one buffer to the public store and return its absolute URL.
+async function uploadPublic(buffer, mimeType, name) {
   const cfg = await storageService.getPublicConfig();
+  const stored = await storageService.uploadFile({
+    buffer,
+    mimeType,
+    originalName: name,
+    type: 'blog_image', // public blog-images/ prefix
+  });
+  return cfg.driver === 's3' && cfg.baseUrl
+    ? `${cfg.baseUrl.replace(/\/$/, '')}/${stored.key}`
+    : `${(process.env.PUBLIC_SITE_URL || '').replace(/\/$/, '')}/uploads/${stored.storedName}`;
+}
+
+async function uploadCards(buffers, slugHint) {
   const urls = [];
   for (let i = 0; i < buffers.length; i += 1) {
-    const stored = await storageService.uploadFile({
-      buffer: buffers[i],
-      mimeType: 'image/png',
-      originalName: `social-${slugHint}-${i + 1}.png`,
-      type: 'blog_image', // public blog-images/ prefix
-    });
-    const url =
-      cfg.driver === 's3' && cfg.baseUrl
-        ? `${cfg.baseUrl.replace(/\/$/, '')}/${stored.key}`
-        : `${(process.env.PUBLIC_SITE_URL || '').replace(/\/$/, '')}/uploads/${stored.storedName}`;
-    urls.push(url);
+    // eslint-disable-next-line no-await-in-loop
+    urls.push(await uploadPublic(buffers[i], 'image/png', `social-${slugHint}-${i + 1}.png`));
   }
   return urls;
 }
@@ -279,7 +316,7 @@ async function generateDailyPost({ autoPost = null, logger = console } = {}) {
 
   if (cards.length < 1) throw { statusCode: 502, message: 'Claude returned no usable cards.' };
 
-  const deck = { cover: coverFor(kind, cards.length), cards, cta: CTA_DECK };
+  const deck = { cover: buildCover(kind, cards, deckJson.cover), cards, cta: CTA_DECK };
 
   logger.log(`[socialNews] step 3: rendering ${cards.length + 2} cards…`);
   const buffers = await socialCardService.renderDeck(deck);
@@ -287,6 +324,22 @@ async function generateDailyPost({ autoPost = null, logger = console } = {}) {
   logger.log('[socialNews] step 4: uploading cards…');
   const slugHint = `${kind}-${new Date().toISOString().slice(0, 10)}`;
   const imageUrls = await uploadCards(buffers, slugHint);
+
+  // Step 4b: render a slideshow MP4 for YouTube (which can't take an image
+  // carousel — no community-post API exists either). Best-effort: needs ffmpeg.
+  let videoUrl = null;
+  try {
+    if (await socialVideoService.isAvailable()) {
+      logger.log('[socialNews] step 4b: rendering slideshow video…');
+      const vid = await socialVideoService.renderSlideshow(buffers);
+      videoUrl = await uploadPublic(vid.buffer, vid.mimeType, `${slugHint}.mp4`);
+      logger.log(`[socialNews] step 4b done — video ${videoUrl}`);
+    } else {
+      logger.warn('[socialNews] ffmpeg unavailable — YouTube video skipped.');
+    }
+  } catch (err) {
+    logger.warn('[socialNews] video render failed (continuing without it):', err.message);
+  }
 
   const hashtags = (Array.isArray(deckJson.hashtags) ? deckJson.hashtags : [])
     .map((h) => String(h).replace(/^#/, '').replace(/\s+/g, ''))
@@ -300,6 +353,7 @@ async function generateDailyPost({ autoPost = null, logger = console } = {}) {
     caption: String(deckJson.caption || '').slice(0, 4000),
     hashtags,
     imageUrls,
+    videoUrl,
     deck,
     fingerprints,
     sources: usedItems.map((it) => ({ title: it.title, link: it.link, source: it.source })),
@@ -324,10 +378,17 @@ async function postDraft(id, { logger = console } = {}) {
   if (!row) throw { statusCode: 404, message: 'Social post not found.' };
   if (row.status === 'posted') return row;
 
+  // YouTube video title (<=100 chars) — Hindi, dated, so each day is distinct.
+  const videoTitle = `${
+    row.kind === 'knowledge' ? 'भरोसेमंद कानूनी मार्गदर्शन' : 'आज की कानूनी व टैक्स अपडेट'
+  } · ${hindiDate()}`;
+
   const result = await bufferService.shareImageDeck({
     imageUrls: row.imageUrls,
     caption: row.caption,
     hashtags: row.hashtags,
+    videoUrl: row.videoUrl || null,
+    videoTitle,
   });
 
   if (result.skipped) {
