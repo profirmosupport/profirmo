@@ -69,8 +69,8 @@ function buildArgs(frameFiles, outPath, music) {
   // Normalise every still to a clean 1080² 30fps stream.
   for (let i = 0; i < n; i += 1) {
     fc.push(
-      `[${i}:v]scale=1080:1080:force_original_aspect_ratio=decrease,` +
-        `pad=1080:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v${i}]`
+      `[${i}:v]scale=1920:1080:force_original_aspect_ratio=decrease,` +
+        `pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v${i}]`
     );
   }
   // Crossfade chain: v0⨯v1⨯…⨯v(n-1).
