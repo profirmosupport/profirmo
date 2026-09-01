@@ -19,7 +19,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const FFMPEG_BIN = process.env.FFMPEG_PATH || 'ffmpeg';
-const SECONDS_PER_CARD = Number(process.env.SOCIAL_VIDEO_SECONDS_PER_CARD) || 6;
+const SECONDS_PER_CARD = Number(process.env.SOCIAL_VIDEO_SECONDS_PER_CARD) || 8;
 const CROSSFADE = Number(process.env.SOCIAL_VIDEO_CROSSFADE) || 0.7;
 const MUSIC_VOLUME = Number(process.env.SOCIAL_VIDEO_MUSIC_VOLUME) || 0.28;
 const ASSETS_DIR = path.join(__dirname, '../assets');

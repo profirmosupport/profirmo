@@ -231,14 +231,13 @@ async function ensureSocialJobQueued() {
     return;
   }
   const queueService = require('./services/queueService');
-  // Next 08:00 IST (02:30 UTC) — a morning post window. Staggered a few hours
-  // after the 03:00 IST blog run so the two AI jobs don't fire together.
+  // Next 06:00 IST (00:30 UTC) — the daily morning post window.
   const now = new Date();
   const next = new Date(Date.UTC(
     now.getUTCFullYear(),
     now.getUTCMonth(),
     now.getUTCDate(),
-    2, // 08:00 IST = 02:30 UTC
+    0, // 06:00 IST = 00:30 UTC
     30,
     0,
     0
@@ -248,7 +247,7 @@ async function ensureSocialJobQueued() {
   }
   await queueService.enqueue('social-news-generate', {}, { runAt: next });
   console.log(
-    `[server] social-news-generate scheduled for ${next.toISOString()} (08:00 IST).`
+    `[server] social-news-generate scheduled for ${next.toISOString()} (06:00 IST).`
   );
 }
 

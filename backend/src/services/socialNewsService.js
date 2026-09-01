@@ -19,6 +19,7 @@
 // postDraft(id) pushes an existing draft to Buffer on admin approval.
 
 const crypto = require('crypto');
+const https = require('https');
 const adminSettings = require('./adminSettingsService');
 const storageService = require('./storageService');
 const bufferService = require('./bufferService');
@@ -98,17 +99,88 @@ async function loadUsedFingerprints() {
 
 // --- Candidates ------------------------------------------------------------
 
-async function fetchCandidates() {
-  // Reuse the blog RSS fetch (LiveLaw legal news). Returns
-  // [{ source, title, link, summary, publishedAt }].
-  let items = [];
-  try {
-    items = await aiBlogService.fetchTrendingTopics();
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn('[socialNews] candidate fetch failed:', err.message);
+// Daily-updates sources — a spread of Indian legal + tax/finance news so the
+// deck reflects the day across the web, not one outlet. Add/remove freely.
+const FEEDS = [
+  { name: 'LiveLaw', url: 'https://www.livelaw.in/google_feeds.xml' },
+  { name: 'Bar & Bench', url: 'https://www.barandbench.com/stories.rss' },
+  { name: 'LiveMint', url: 'https://www.livemint.com/rss/money' },
+];
+
+function httpGet(url, redirects = 3) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(
+      url,
+      { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ProfirmoSocialBot/1.0)' }, timeout: 15000 },
+      (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirects > 0) {
+          res.resume();
+          const next = new URL(res.headers.location, url).toString();
+          return httpGet(next, redirects - 1).then(resolve, reject);
+        }
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+      }
+    );
+    req.on('timeout', () => req.destroy(new Error('timed out')));
+    req.on('error', reject);
+  });
+}
+
+function stripTags(s) {
+  return String(s || '')
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function pickTag(block, tag) {
+  const m = block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, 'i'));
+  return m ? m[1] : '';
+}
+
+function parseRss(xml, source) {
+  const out = [];
+  const re = /<item[\s\S]*?<\/item>/gi;
+  let m;
+  while ((m = re.exec(xml)) !== null) {
+    const b = m[0];
+    const title = stripTags(pickTag(b, 'title'));
+    const link = stripTags(pickTag(b, 'link'));
+    const summary = stripTags(pickTag(b, 'description')).slice(0, 300);
+    const publishedAt = stripTags(pickTag(b, 'pubDate'));
+    if (title) out.push({ source, title, link, summary, publishedAt });
   }
-  return Array.isArray(items) ? items : [];
+  return out;
+}
+
+// Pull the day's legal + tax headlines from every configured feed, newest
+// first, de-duplicated by title.
+async function fetchCandidates() {
+  const perFeed = await Promise.all(
+    FEEDS.map(async (f) => {
+      try {
+        return parseRss(await httpGet(f.url), f.name);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn(`[socialNews] feed failed (${f.name}):`, err.message);
+        return [];
+      }
+    })
+  );
+  const items = perFeed.flat();
+  items.sort((a, b) => (Date.parse(b.publishedAt) || 0) - (Date.parse(a.publishedAt) || 0));
+  const seen = new Set();
+  const uniq = [];
+  for (const it of items) {
+    const k = it.title.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    uniq.push(it);
+  }
+  return uniq.slice(0, 40);
 }
 
 // --- Claude decks ----------------------------------------------------------

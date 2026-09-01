@@ -141,7 +141,7 @@ async function socialNewsGenerateHandler(payload = {}) {
 }
 
 /**
- * Next 08:00 IST instant in UTC (02:30 UTC). Staggered after the blog run.
+ * Next 06:00 IST instant in UTC (00:30 UTC).
  */
 function nextSocialRunAt() {
   const now = new Date();
@@ -149,7 +149,7 @@ function nextSocialRunAt() {
     now.getUTCFullYear(),
     now.getUTCMonth(),
     now.getUTCDate(),
-    2,
+    0,
     30,
     0,
     0
