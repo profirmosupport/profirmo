@@ -142,14 +142,13 @@ function buildCover(kind, cards, claudeCover) {
     ? cc.highlights
     : fallbackHighlights
   )
-    .map((h) => String(h).replace(/\s+/g, ' ').trim().slice(0, 40))
+    .map((h) => String(h).replace(/\s+/g, ' ').trim().slice(0, 28))
     .filter(Boolean)
     .slice(0, 3);
   return {
     eyebrow: `${eyebrowBase} · ${hindiDate()}`,
     hook: String(cc.hook || defaultHook).slice(0, 30),
     highlights,
-    swipe: 'पढ़ने के लिए स्वाइप करें →',
   };
 }
 
@@ -179,7 +178,7 @@ async function writeNewsDeck(items, count) {
     `and 8–12 trending, relevant hashtags (mix Hindi + English, no spaces, without a leading #). ` +
     `Also write a COVER for the first slide that is unique to today — a punchy ` +
     `Hindi hook (<=30 chars, like a newspaper front-page line for the day, NOT a ` +
-    `generic template) plus ${count} very short highlight teasers (<=40 chars each, ` +
+    `generic template) plus ${count} very short highlight teasers (<=26 chars each, ` +
     `one per story — the gist, not the full headline).\n` +
     `Return JSON exactly:\n` +
     `{"title":"<short english admin label>","selected":[<candidate indices you used>],` +
@@ -208,7 +207,7 @@ async function writeKnowledgeDeck(count, avoidTopics) {
     `will & succession, FIR filing, tenant rights). Avoid these already-covered topics: ` +
     `${avoid || '(none yet)'}.\n` +
     `Also write a COVER for the first slide: a punchy Hindi hook (<=30 chars) plus ` +
-    `${count} short highlight teasers (<=40 chars each, one per card topic).\n` +
+    `${count} short highlight teasers (<=26 chars each, one per card topic).\n` +
     `Return JSON exactly:\n` +
     `{"title":"<short english admin label>",` +
     `"cover":{"hook":"<hindi hook>","highlights":["<hindi teaser>","<...>"]},` +

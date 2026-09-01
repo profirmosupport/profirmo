@@ -88,41 +88,32 @@ function footerSvg(H, slide, total, dark = true) {
   <text x="990" y="${ty}" text-anchor="end" font-family="${FF}" font-size="30" font-weight="700" fill="#fff">${slide} / ${total} ${slide < total ? '›' : ''}</text>`;
 }
 
-function coverSvg({ eyebrow, hook, highlights, swipe }, total, H) {
+function coverSvg({ eyebrow, hook, highlights }, total, H) {
   const hookLines = wrap(hook || '', 12, 3);
-  // Each highlight is wrapped to fit the card width (≤2 lines) so long teasers
-  // never run off the right edge.
+  // One-line teasers (truncated to fit the width) keep the cover compact and
+  // prevent the highlights from colliding with the footer.
   const hi = (Array.isArray(highlights) ? highlights : [])
     .slice(0, 3)
-    .map((h) => wrap(h, 24, 2));
-  const HOOK_LH = 108;
-  const HL_LINE = 54;
-  const HL_GAP = 54;
-  const hiBlock = hi.reduce((s, lines) => s + lines.length * HL_LINE + HL_GAP, 0);
-  const blockH = hookLines.length * HOOK_LH + 70 + 56 + hiBlock;
-  const top = centreTop(H, blockH, 340, 240);
+    .map((h) => wrap(h, 26, 1)[0])
+    .filter(Boolean);
+  const HOOK_LH = 104;
+  const HL_STEP = 100;
+  const blockH = hookLines.length * HOOK_LH + 70 + 56 + hi.length * HL_STEP;
+  const top = centreTop(H, blockH, 400, 170);
   const hookTop = top + 80;
   const divY = hookTop + (hookLines.length - 1) * HOOK_LH + 34;
   const hiLabelY = divY + 96;
-  let hy = hiLabelY + 76;
-  const hiSvg = hi
-    .map((lines) => {
-      const parts = [
-        `<text x="${LX}" y="${hy}" font-family="${FF}" font-size="46" font-weight="700" fill="#f59e0b">›</text>`,
-        ...lines.map((ln, li) => `<text x="${LX + 52}" y="${hy + li * HL_LINE}" font-family="${FF}" font-size="42" fill="#e2e8f0">${esc(ln)}</text>`),
-      ].join('');
-      hy += lines.length * HL_LINE + HL_GAP;
-      return parts;
-    })
-    .join('');
+  const hiTop = hiLabelY + 78;
   return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${DEFS}
   <rect width="${W}" height="${H}" fill="url(#bg)"/>${blobs(H)}
-  <text x="${LX}" y="330" font-family="${FF}" font-size="38" font-weight="700" fill="#f59e0b">${esc(eyebrow)}</text>
-  ${hookLines.map((l, i) => `<text x="${LX}" y="${hookTop + i * HOOK_LH}" font-family="${FF}" font-size="94" font-weight="800" fill="#fff">${esc(l)}</text>`).join('')}
+  <text x="${LX}" y="300" font-family="${FF}" font-size="38" font-weight="700" fill="#f59e0b">${esc(eyebrow)}</text>
+  ${hookLines.map((l, i) => `<text x="${LX}" y="${hookTop + i * HOOK_LH}" font-family="${FF}" font-size="90" font-weight="800" fill="#fff">${esc(l)}</text>`).join('')}
   <rect x="${LX}" y="${divY}" width="170" height="9" rx="4.5" fill="url(#acc)"/>
   <text x="${LX}" y="${hiLabelY}" font-family="${FF}" font-size="34" font-weight="700" fill="#f59e0b">आज की सुर्खियाँ</text>
-  ${hiSvg}
-  <text x="${LX}" y="${H - 190}" font-family="${FF}" font-size="42" font-weight="700" fill="#f59e0b">${esc(swipe)}</text>
+  ${hi.map((l, i) => {
+    const y = hiTop + i * HL_STEP;
+    return `<text x="${LX}" y="${y}" font-family="${FF}" font-size="44" font-weight="700" fill="#f59e0b">›</text><text x="${LX + 52}" y="${y}" font-family="${FF}" font-size="42" fill="#e2e8f0">${esc(l)}</text>`;
+  }).join('')}
   <text x="990" y="${H - 66}" text-anchor="end" font-family="${FF}" font-size="30" font-weight="700" fill="#fff">1 / ${total} ›</text>
 </svg>`);
 }

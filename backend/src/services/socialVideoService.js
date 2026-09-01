@@ -22,15 +22,45 @@ const FFMPEG_BIN = process.env.FFMPEG_PATH || 'ffmpeg';
 const SECONDS_PER_CARD = Number(process.env.SOCIAL_VIDEO_SECONDS_PER_CARD) || 6;
 const CROSSFADE = Number(process.env.SOCIAL_VIDEO_CROSSFADE) || 0.7;
 const MUSIC_VOLUME = Number(process.env.SOCIAL_VIDEO_MUSIC_VOLUME) || 0.28;
-const DEFAULT_MUSIC = path.join(__dirname, '../assets/news-bed.m4a');
+const ASSETS_DIR = path.join(__dirname, '../assets');
+const BED_STATE = path.join(ASSETS_DIR, '.bed-state.json');
 
-function musicPath() {
-  const p = process.env.SOCIAL_VIDEO_MUSIC_PATH || DEFAULT_MUSIC;
+// All bundled royalty-free beds (news-bed-1.m4a … news-bed-N.m4a).
+function listBeds() {
   try {
-    return fs.existsSync(p) ? p : null;
+    return fs.readdirSync(ASSETS_DIR)
+      .filter((f) => /^news-bed.*\.m4a$/i.test(f))
+      .sort()
+      .map((f) => path.join(ASSETS_DIR, f));
   } catch {
-    return null;
+    return [];
   }
+}
+
+// Pick a bed for today, rotating so the SAME bed never plays two runs in a
+// row. A tiny JSON state file remembers the last one used. An explicit
+// SOCIAL_VIDEO_MUSIC_PATH always wins (for a custom track).
+function pickMusic() {
+  const override = process.env.SOCIAL_VIDEO_MUSIC_PATH;
+  if (override) return fs.existsSync(override) ? override : null;
+  const beds = listBeds();
+  if (!beds.length) return null;
+  if (beds.length === 1) return beds[0];
+  let last = null;
+  try {
+    last = JSON.parse(fs.readFileSync(BED_STATE, 'utf8')).last || null;
+  } catch { /* no state yet */ }
+  const pool = beds.filter((b) => path.basename(b) !== last);
+  const chosen = pool[Math.floor(Math.random() * pool.length)] || beds[0];
+  try {
+    fs.writeFileSync(BED_STATE, JSON.stringify({ last: path.basename(chosen) }));
+  } catch { /* non-fatal */ }
+  return chosen;
+}
+
+// Back-compat alias.
+function musicPath() {
+  return pickMusic();
 }
 
 function run(bin, args, { cwd } = {}) {
