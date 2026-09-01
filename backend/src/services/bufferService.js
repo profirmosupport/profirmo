@@ -525,11 +525,12 @@ async function createVideoPostOnChannel(
     mode: now ? 'shareNow' : 'addToQueue',
     needsApproval: false,
     text: String(text || '').slice(0, 4900), // YouTube description
+    // NOTE: no thumbnailUrl — Buffer rejects a custom video thumbnail
+    // ("social networks do not accept custom video thumbnail images").
     assets: [
       {
         video: {
           url: videoUrl,
-          thumbnailUrl: thumbnailUrl || null,
           metadata: { title: ytTitle },
         },
       },

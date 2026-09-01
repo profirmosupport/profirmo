@@ -318,20 +318,27 @@ async function generateDailyPost({ autoPost = null, logger = console } = {}) {
 
   const deck = { cover: buildCover(kind, cards, deckJson.cover), cards, cta: CTA_DECK };
 
-  logger.log(`[socialNews] step 3: rendering ${cards.length + 2} cards…`);
-  const buffers = await socialCardService.renderDeck(deck);
+  // Carousel images at 4:5 (1080×1350) so Instagram's feed doesn't crop them.
+  logger.log(`[socialNews] step 3: rendering ${cards.length + 2} carousel cards (4:5)…`);
+  const buffers = await socialCardService.renderDeck(deck, {
+    height: socialCardService.CAROUSEL_H,
+  });
 
   logger.log('[socialNews] step 4: uploading cards…');
   const slugHint = `${kind}-${new Date().toISOString().slice(0, 10)}`;
   const imageUrls = await uploadCards(buffers, slugHint);
 
-  // Step 4b: render a slideshow MP4 for YouTube (which can't take an image
-  // carousel — no community-post API exists either). Best-effort: needs ffmpeg.
+  // Step 4b: render a 9:16 slideshow MP4 for YouTube (Short). Rendered from a
+  // SECOND, taller pass so the video is full 9:16, not padded. Best-effort:
+  // needs ffmpeg.
   let videoUrl = null;
   try {
     if (await socialVideoService.isAvailable()) {
-      logger.log('[socialNews] step 4b: rendering slideshow video…');
-      const vid = await socialVideoService.renderSlideshow(buffers);
+      logger.log('[socialNews] step 4b: rendering 9:16 slideshow video…');
+      const videoFrames = await socialCardService.renderDeck(deck, {
+        height: socialCardService.VIDEO_H,
+      });
+      const vid = await socialVideoService.renderSlideshow(videoFrames);
       videoUrl = await uploadPublic(vid.buffer, vid.mimeType, `${slugHint}.mp4`);
       logger.log(`[socialNews] step 4b done — video ${videoUrl}`);
     } else {
