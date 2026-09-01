@@ -214,7 +214,7 @@ function buildCover(kind, cards, claudeCover) {
     ? cc.highlights
     : fallbackHighlights
   )
-    .map((h) => String(h).replace(/\s+/g, ' ').trim().slice(0, 28))
+    .map((h) => String(h).replace(/\s+/g, ' ').trim().slice(0, 70))
     .filter(Boolean)
     .slice(0, 3);
   return {
@@ -250,13 +250,13 @@ async function writeNewsDeck(items, count) {
     `and 8–12 trending, relevant hashtags (mix Hindi + English, no spaces, without a leading #). ` +
     `Also write a COVER for the first slide that is unique to today — a punchy ` +
     `Hindi hook (<=30 chars, like a newspaper front-page line for the day, NOT a ` +
-    `generic template) plus ${count} very short highlight teasers (<=26 chars each, ` +
+    `generic template) plus ${count} very short complete highlight teasers (<=30 chars each, ` +
     `one per story — the gist, not the full headline).\n` +
     `Return JSON exactly:\n` +
     `{"title":"<short english admin label>","selected":[<candidate indices you used>],` +
     `"cover":{"hook":"<hindi punchy day headline>","highlights":["<hindi teaser>","<...>"]},` +
     `"cards":[{"tag":"<short hindi source/topic tag, e.g. सुप्रीम कोर्ट>","headline":"<hindi, <=40 chars>",` +
-    `"points":["<hindi bullet <=30 chars>","<...>"]}],` +
+    `"points":["<hindi bullet, a complete point <=40 chars>","<...>"]}],` +
     `"caption":"<hindi caption>","hashtags":["tag1","tag2"]}\n` +
     `Rules: 2–3 bullets per card; headline crisp; ${count} cards; the cover hook must ` +
     `reflect today's actual stories; JSON only.`;
@@ -279,12 +279,12 @@ async function writeKnowledgeDeck(count, avoidTopics) {
     `will & succession, FIR filing, tenant rights). Avoid these already-covered topics: ` +
     `${avoid || '(none yet)'}.\n` +
     `Also write a COVER for the first slide: a punchy Hindi hook (<=30 chars) plus ` +
-    `${count} short highlight teasers (<=26 chars each, one per card topic).\n` +
+    `${count} short complete highlight teasers (<=30 chars each, one per card topic).\n` +
     `Return JSON exactly:\n` +
     `{"title":"<short english admin label>",` +
     `"cover":{"hook":"<hindi hook>","highlights":["<hindi teaser>","<...>"]},` +
     `"cards":[{"tag":"<short hindi topic tag>","headline":"<hindi question/topic <=40 chars>",` +
-    `"points":["<hindi practical bullet <=30 chars>","<...>"]}],` +
+    `"points":["<hindi practical complete point <=40 chars>","<...>"]}],` +
     `"caption":"<hindi caption inviting people to consult verified professionals>",` +
     `"hashtags":["tag1","tag2"]}\n` +
     `Rules: 2–3 bullets per card; ${count} cards; JSON only.`;
@@ -380,8 +380,10 @@ async function generateDailyPost({ autoPost = null, logger = console } = {}) {
     .filter((c) => c && c.headline)
     .map((c) => ({
       tag: String(c.tag || (kind === 'knowledge' ? 'कानूनी जानकारी' : 'खबर')).slice(0, 40),
-      headline: String(c.headline).slice(0, 90),
-      points: (Array.isArray(c.points) ? c.points : []).slice(0, 3).map((p) => String(p).slice(0, 60)),
+      // Generous safety caps only — the card renderer auto-fits the full text,
+      // so points/headlines are shown COMPLETE, never mid-sentence truncated.
+      headline: String(c.headline).slice(0, 110),
+      points: (Array.isArray(c.points) ? c.points : []).slice(0, 4).map((p) => String(p).slice(0, 160)),
     }))
     .slice(0, 5);
 

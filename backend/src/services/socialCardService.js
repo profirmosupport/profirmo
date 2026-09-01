@@ -88,57 +88,98 @@ function footerSvg(H, slide, total, dark = true) {
   <text x="990" y="${ty}" text-anchor="end" font-family="${FF}" font-size="30" font-weight="700" fill="#fff">${slide} / ${total} ${slide < total ? '›' : ''}</text>`;
 }
 
+// Fit a list of full text items into an available box by shrinking the font
+// until every item (wrapped to as many lines as needed — NEVER truncated)
+// fits `availHeightPx`. Returns the chosen font + line metrics + wrapped lines.
+// This is how the news text stays COMPLETE and still fits the card.
+function fitItems(items, availWidthPx, availHeightPx, opts = {}) {
+  const maxFont = opts.maxFont || 50;
+  const minFont = opts.minFont || 28;
+  const lhMul = opts.lhMul || 1.16;
+  const gapMul = opts.gapMul || 0.72;
+  const widthFactor = opts.widthFactor || 0.6; // ~avg Devanagari advance / font px
+  let best = null;
+  for (let font = maxFont; font >= minFont; font -= 2) {
+    const cpl = Math.max(10, Math.floor(availWidthPx / (widthFactor * font)));
+    const lineH = Math.round(font * lhMul);
+    const gap = Math.round(font * gapMul);
+    const wrapped = items.map((t) => wrap(t, cpl, 12));
+    const blockH = wrapped.reduce((s, l) => s + l.length * lineH + gap, 0);
+    best = { font, lineH, gap, wrapped, blockH };
+    if (blockH <= availHeightPx) break;
+  }
+  return best;
+}
+
 function coverSvg({ eyebrow, hook, highlights }, total, H) {
   const hookLines = wrap(hook || '', 12, 3);
-  // One-line teasers (truncated to fit the width) keep the cover compact and
-  // prevent the highlights from colliding with the footer.
   const hi = (Array.isArray(highlights) ? highlights : [])
-    .slice(0, 3)
-    .map((h) => wrap(h, 26, 1)[0])
-    .filter(Boolean);
+    .map((h) => String(h).trim())
+    .filter(Boolean)
+    .slice(0, 3);
   const HOOK_LH = 104;
-  const HL_STEP = 100;
-  const blockH = hookLines.length * HOOK_LH + 70 + 56 + hi.length * HL_STEP;
-  const top = centreTop(H, blockH, 400, 170);
+  const hookH = hookLines.length * HOOK_LH;
+  const HEADER_TOP = 380;
+  const FOOTER_TOP = H - 120;
+  // Fit the FULL highlight teasers below the hook — complete, never truncated.
+  const hiAvailH = FOOTER_TOP - HEADER_TOP - hookH - 152;
+  const fit = fitItems(hi, 868, hiAvailH, { maxFont: 46, minFont: 30, gapMul: 0.7 });
+
+  const blockTotal = hookH + 152 + fit.blockH;
+  const top = centreTop(H, blockTotal, HEADER_TOP, 120);
   const hookTop = top + 80;
   const divY = hookTop + (hookLines.length - 1) * HOOK_LH + 34;
   const hiLabelY = divY + 96;
-  const hiTop = hiLabelY + 78;
+  let hy = hiLabelY + 78;
+  const hiSvg = fit.wrapped
+    .map((lines) => {
+      const parts = [
+        `<text x="${LX}" y="${hy}" font-family="${FF}" font-size="${fit.font}" font-weight="700" fill="#f59e0b">›</text>`,
+        ...lines.map((ln, li) => `<text x="${LX + 52}" y="${hy + li * fit.lineH}" font-family="${FF}" font-size="${fit.font}" fill="#e2e8f0">${esc(ln)}</text>`),
+      ].join('');
+      hy += lines.length * fit.lineH + fit.gap;
+      return parts;
+    })
+    .join('');
   return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${DEFS}
   <rect width="${W}" height="${H}" fill="url(#bg)"/>${blobs(H)}
   <text x="${LX}" y="300" font-family="${FF}" font-size="38" font-weight="700" fill="#f59e0b">${esc(eyebrow)}</text>
   ${hookLines.map((l, i) => `<text x="${LX}" y="${hookTop + i * HOOK_LH}" font-family="${FF}" font-size="90" font-weight="800" fill="#fff">${esc(l)}</text>`).join('')}
   <rect x="${LX}" y="${divY}" width="170" height="9" rx="4.5" fill="url(#acc)"/>
   <text x="${LX}" y="${hiLabelY}" font-family="${FF}" font-size="34" font-weight="700" fill="#f59e0b">आज की सुर्खियाँ</text>
-  ${hi.map((l, i) => {
-    const y = hiTop + i * HL_STEP;
-    return `<text x="${LX}" y="${y}" font-family="${FF}" font-size="44" font-weight="700" fill="#f59e0b">›</text><text x="${LX + 52}" y="${y}" font-family="${FF}" font-size="42" fill="#e2e8f0">${esc(l)}</text>`;
-  }).join('')}
+  ${hiSvg}
   <text x="990" y="${H - 66}" text-anchor="end" font-family="${FF}" font-size="30" font-weight="700" fill="#fff">1 / ${total} ›</text>
 </svg>`);
 }
 
 function contentSvg({ tag, headline, points }, slide, total, H) {
-  const hl = wrap(headline, 15, 3);
-  // Wrap each bullet to the card width (≤2 lines) so a long point never runs
-  // off the right edge and gets cut; cap to 3 bullets so it fits the 4:5 card.
-  const pts = (points || []).slice(0, 3).map((p) => wrap(p, 20, 2));
-  const HEAD_LH = 94;
-  const PT_LINE = 52;
-  const PT_GAP = 44;
-  const ptsBlock = pts.reduce((s, lines) => s + lines.length * PT_LINE + PT_GAP, 0);
-  const blockH = hl.length * HEAD_LH + 100 + ptsBlock;
-  const top = centreTop(H, blockH, 360, 210);
-  const headTop = top + 70;
+  const hl = wrap(headline, 16, 3);
+  const rawPts = (points || []).slice(0, 4).map((p) => String(p).trim()).filter(Boolean);
+  const HEAD_LH = 92;
+  const headlineH = hl.length * HEAD_LH;
+  const GAP_AFTER_HEAD = 100;
+
+  // Fit the FULL bullet text into the space left below the headline — shrink
+  // the bullet font (48→28) until every complete point fits. Never truncated.
+  const HEADER_TOP = 400;
+  const FOOTER_TOP = H - 150;
+  const bulletsAvailH = FOOTER_TOP - HEADER_TOP - headlineH - GAP_AFTER_HEAD;
+  const fit = fitItems(rawPts, 862, bulletsAvailH, { maxFont: 48, minFont: 28, gapMul: 0.78 });
+  const dotR = Math.max(9, Math.round(fit.font * 0.26));
+
+  const blockTotal = headlineH + GAP_AFTER_HEAD + fit.blockH;
+  const top = centreTop(H, blockTotal, HEADER_TOP, 150);
+  const headTop = top + 66;
   const divY = headTop + (hl.length - 1) * HEAD_LH + 34;
-  let py = divY + 110;
-  const ptsSvg = pts
+
+  let py = divY + GAP_AFTER_HEAD;
+  const ptsSvg = fit.wrapped
     .map((lines) => {
       const parts = [
-        `<circle cx="${LX + 16}" cy="${py - 16}" r="13" fill="#f59e0b"/>`,
-        ...lines.map((ln, li) => `<text x="${LX + 58}" y="${py + li * PT_LINE}" font-family="${FF}" font-size="48" font-weight="600" fill="#e2e8f0">${esc(ln)}</text>`),
+        `<circle cx="${LX + 16}" cy="${py - Math.round(fit.font * 0.32)}" r="${dotR}" fill="#f59e0b"/>`,
+        ...lines.map((ln, li) => `<text x="${LX + 58}" y="${py + li * fit.lineH}" font-family="${FF}" font-size="${fit.font}" font-weight="600" fill="#e2e8f0">${esc(ln)}</text>`),
       ].join('');
-      py += lines.length * PT_LINE + PT_GAP;
+      py += lines.length * fit.lineH + fit.gap;
       return parts;
     })
     .join('');
