@@ -20,8 +20,8 @@ const LOGO_PATH =
 
 const FF = 'Noto Sans Devanagari, Inter, Arial, sans-serif';
 const W = 1080;
-const CAROUSEL_H = 1350; // 4:5 — Instagram carousel
-const VIDEO_H = 1920; // 9:16 — YouTube Short frames
+const CAROUSEL_H = 1080; // 1:1 — Instagram carousel (square)
+const VIDEO_H = 1920; // 9:16 — YouTube Short frames (only if video enabled)
 const LX = 90; // left margin
 
 const DEFS = `<defs>

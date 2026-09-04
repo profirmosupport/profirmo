@@ -18,6 +18,8 @@ import {
   Trash2,
   Send,
   Download,
+  Copy,
+  Check,
   AlertTriangle,
   CheckCircle2,
   Clock,
@@ -36,6 +38,7 @@ import {
   postSocialPost,
   deleteSocialPost,
 } from '@/services/socialService';
+import { getApiBaseUrl, getAccessToken } from '@/services/api';
 import { formatDate } from '@/utils/formatters';
 import { ROLES } from '@/utils/constants';
 
@@ -46,23 +49,34 @@ const STATUS_VARIANT = {
   archived: 'amber',
 };
 
-// Download an image. Tries a CORS blob fetch for a true one-click save; if the
-// image host blocks cross-origin fetch, falls back to opening it in a new tab.
-async function downloadImage(url, filename) {
-  try {
-    const res = await fetch(url, { mode: 'cors' });
-    if (!res.ok) throw new Error('fetch failed');
-    const blob = await res.blob();
-    const objUrl = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = objUrl;
-    a.download = filename || 'image.png';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(objUrl);
-  } catch {
-    window.open(url, '_blank', 'noopener');
+// Download one slide through the authenticated backend proxy, which streams it
+// with a Content-Disposition attachment header — so it genuinely downloads
+// (with a proper filename) instead of opening in a new tab.
+async function downloadSlide(postId, index) {
+  const res = await fetch(
+    `${getApiBaseUrl()}/api/admin/social/posts/${postId}/image/${index}`,
+    { headers: { Authorization: `Bearer ${getAccessToken()}` } }
+  );
+  if (!res.ok) throw new Error('Download failed');
+  const blob = await res.blob();
+  const objUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = objUrl;
+  a.download = `profirmo-${postId}-slide-${index + 1}.png`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objUrl);
+}
+
+// Download every slide of a post, one click. Sequential with a tiny gap so the
+// browser accepts the multiple saves from the single user gesture.
+async function downloadAllSlides(postId, count) {
+  for (let i = 0; i < count; i += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    await downloadSlide(postId, i);
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((r) => setTimeout(r, 250));
   }
 }
 
@@ -257,6 +271,25 @@ export default function AdminSocialPage() {
 function SocialPostCard({ post, busy, bufferConfigured, onPost, onDelete }) {
   const images = Array.isArray(post.imageUrls) ? post.imageUrls : [];
   const hashtags = Array.isArray(post.hashtags) ? post.hashtags : [];
+  const [copied, setCopied] = useState(false);
+
+  async function copyCaption(p) {
+    const tagLine = (p.hashtags || []).map((h) => `#${String(h).replace(/^#/, '')}`).join(' ');
+    const text = [String(p.caption || '').trim(), tagLine].filter(Boolean).join('\n\n');
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Fallback for older browsers / non-secure contexts.
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch { /* noop */ }
+      ta.remove();
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }
   const canPost = post.status !== 'posted' && images.length > 0;
 
   return (
@@ -310,7 +343,7 @@ function SocialPostCard({ post, busy, bufferConfigured, onPost, onDelete }) {
               </span>
               <button
                 type="button"
-                onClick={() => images.forEach((u, i) => downloadImage(u, `${post.id}-slide-${i + 1}.png`))}
+                onClick={() => downloadAllSlides(post.id, images.length)}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
               >
                 <Download size={13} /> Download all
@@ -327,7 +360,7 @@ function SocialPostCard({ post, busy, bufferConfigured, onPost, onDelete }) {
                   />
                   <button
                     type="button"
-                    onClick={() => downloadImage(src, `${post.id}-slide-${i + 1}.png`)}
+                    onClick={() => downloadSlide(post.id, i)}
                     title="Download image"
                     className="absolute right-1.5 top-1.5 inline-flex items-center gap-1 rounded-md bg-black/60 px-2 py-1 text-[11px] font-medium text-white opacity-0 backdrop-blur transition group-hover:opacity-100"
                   >
@@ -355,22 +388,35 @@ function SocialPostCard({ post, busy, bufferConfigured, onPost, onDelete }) {
         )}
 
         {/* Caption + hashtags */}
-        {post.caption && (
-          <p className="whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
-            {post.caption}
-          </p>
-        )}
-        {hashtags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {hashtags.map((h) => (
-              <span
-                key={h}
-                className="inline-flex items-center gap-0.5 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700"
+        {(post.caption || hashtags.length > 0) && (
+          <div className="space-y-2 rounded-lg bg-slate-50 p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-slate-500">Caption &amp; hashtags</span>
+              <button
+                type="button"
+                onClick={() => copyCaption(post)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
               >
-                <Hash size={11} />
-                {String(h).replace(/^#/, '')}
-              </span>
-            ))}
+                {copied ? <Check size={13} className="text-green-600" /> : <Copy size={13} />}
+                {copied ? 'Copied!' : 'Copy caption + hashtags'}
+              </button>
+            </div>
+            {post.caption && (
+              <p className="whitespace-pre-wrap text-sm text-slate-700">{post.caption}</p>
+            )}
+            {hashtags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {hashtags.map((h) => (
+                  <span
+                    key={h}
+                    className="inline-flex items-center gap-0.5 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700"
+                  >
+                    <Hash size={11} />
+                    {String(h).replace(/^#/, '')}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

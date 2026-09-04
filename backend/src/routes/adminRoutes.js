@@ -248,6 +248,7 @@ router.get('/social/status', social.adminStatus);
 router.get('/social/posts', social.adminListPosts);
 router.post('/social/posts/generate', social.adminGeneratePost);
 router.get('/social/posts/:id', social.adminGetPost);
+router.get('/social/posts/:id/image/:index', social.adminDownloadImage);
 router.post('/social/posts/:id/post', social.adminPostNow);
 router.delete('/social/posts/:id', social.adminDeletePost);
 router.get('/blog/posts/:id', blog.adminGetPost);

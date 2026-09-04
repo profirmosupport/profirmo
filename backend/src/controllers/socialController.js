@@ -7,6 +7,7 @@
 //   POST   /api/admin/social/posts/:id/post   push a draft to Buffer
 //   DELETE /api/admin/social/posts/:id         archive/delete a deck
 
+const https = require('https');
 const asyncHandler = require('../utils/asyncHandler');
 const { successResponse, paginatedResponse } = require('../utils/responseHandler');
 const socialNewsService = require('../services/socialNewsService');
@@ -117,6 +118,39 @@ const adminPostNow = asyncHandler(async (req, res) => {
   }
 });
 
+// GET /api/admin/social/posts/:id/image/:index — stream one slide back with a
+// proper filename + Content-Disposition so the admin UI can force a real
+// download (the raw S3 URL just opens in a tab). Auth-gated by the admin router.
+const adminDownloadImage = asyncHandler(async (req, res) => {
+  const row = await SocialPost.findByPk(req.params.id);
+  if (!row) throw { statusCode: 404, message: 'Social post not found.' };
+  const urls = row.imageUrls || [];
+  const idx = parseInt(req.params.index, 10);
+  const url = urls[idx];
+  if (!url) throw { statusCode: 404, message: 'Image not found.' };
+  const date = new Date(row.createdAt).toISOString().slice(0, 10);
+  const filename = `profirmo-${row.kind || 'news'}-${date}-slide-${idx + 1}.png`;
+  await new Promise((resolve) => {
+    https
+      .get(url, (upstream) => {
+        if (upstream.statusCode !== 200) {
+          upstream.resume();
+          res.status(502).json({ success: false, message: `Upstream ${upstream.statusCode}` });
+          return resolve();
+        }
+        res.setHeader('Content-Type', upstream.headers['content-type'] || 'image/png');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        if (upstream.headers['content-length']) res.setHeader('Content-Length', upstream.headers['content-length']);
+        upstream.pipe(res);
+        upstream.on('end', resolve);
+      })
+      .on('error', (err) => {
+        if (!res.headersSent) res.status(502).json({ success: false, message: err.message });
+        resolve();
+      });
+  });
+});
+
 // DELETE /api/admin/social/posts/:id — hard delete a draft/failed deck.
 const adminDeletePost = asyncHandler(async (req, res) => {
   const row = await SocialPost.findByPk(req.params.id);
@@ -139,5 +173,6 @@ module.exports = {
   adminGetPost,
   adminGeneratePost,
   adminPostNow,
+  adminDownloadImage,
   adminDeletePost,
 };
