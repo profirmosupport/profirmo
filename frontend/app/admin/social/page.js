@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Trash2,
   Send,
+  Download,
   AlertTriangle,
   CheckCircle2,
   Clock,
@@ -44,6 +45,26 @@ const STATUS_VARIANT = {
   failed: 'red',
   archived: 'amber',
 };
+
+// Download an image. Tries a CORS blob fetch for a true one-click save; if the
+// image host blocks cross-origin fetch, falls back to opening it in a new tab.
+async function downloadImage(url, filename) {
+  try {
+    const res = await fetch(url, { mode: 'cors' });
+    if (!res.ok) throw new Error('fetch failed');
+    const blob = await res.blob();
+    const objUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objUrl;
+    a.download = filename || 'image.png';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objUrl);
+  } catch {
+    window.open(url, '_blank', 'noopener');
+  }
+}
 
 export default function AdminSocialPage() {
   const [posts, setPosts] = useState([]);
@@ -266,7 +287,7 @@ function SocialPostCard({ post, busy, bufferConfigured, onPost, onDelete }) {
                   ? 'Add the social Buffer token first'
                   : post.status === 'posted'
                     ? 'Already posted'
-                    : 'Approve & post to Instagram + YouTube'
+                    : 'Approve & post to Instagram'
               }
             >
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
@@ -280,20 +301,44 @@ function SocialPostCard({ post, busy, bufferConfigured, onPost, onDelete }) {
 
         <p className="text-sm font-semibold text-slate-800">{post.title}</p>
 
-        {/* Card strip */}
+        {/* Card grid — full 4:5 slides, each downloadable */}
         {images.length > 0 && (
-          <div className="flex gap-3 overflow-x-auto pb-1">
-            {images.map((src, i) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={src}
-                src={src}
-                alt={`Slide ${i + 1}`}
-                width={160}
-                height={160}
-                className="h-40 w-40 shrink-0 rounded-xl border border-slate-200 object-cover"
-              />
-            ))}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-slate-500">
+                {images.length} slides
+              </span>
+              <button
+                type="button"
+                onClick={() => images.forEach((u, i) => downloadImage(u, `${post.id}-slide-${i + 1}.png`))}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                <Download size={13} /> Download all
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
+              {images.map((src, i) => (
+                <div key={src} className="group relative overflow-hidden rounded-xl border border-slate-200 bg-slate-900">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={src}
+                    alt={`Slide ${i + 1}`}
+                    className="aspect-[4/5] w-full object-contain"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => downloadImage(src, `${post.id}-slide-${i + 1}.png`)}
+                    title="Download image"
+                    className="absolute right-1.5 top-1.5 inline-flex items-center gap-1 rounded-md bg-black/60 px-2 py-1 text-[11px] font-medium text-white opacity-0 backdrop-blur transition group-hover:opacity-100"
+                  >
+                    <Download size={12} /> Save
+                  </button>
+                  <span className="absolute bottom-1.5 left-1.5 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                    {i + 1}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

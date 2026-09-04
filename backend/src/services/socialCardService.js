@@ -111,24 +111,47 @@ function fitItems(items, availWidthPx, availHeightPx, opts = {}) {
   return best;
 }
 
+// Fit a SINGLE text block (headline / hook) — full text, wrapped to as many
+// lines as needed, font shrunk until it fits the height box. Never truncated.
+function fitText(text, availWidthPx, availHeightPx, opts = {}) {
+  const maxFont = opts.maxFont || 84;
+  const minFont = opts.minFont || 50;
+  const lhMul = opts.lhMul || 1.08;
+  const widthFactor = opts.widthFactor || 0.6;
+  let best = null;
+  for (let font = maxFont; font >= minFont; font -= 2) {
+    const cpl = Math.max(6, Math.floor(availWidthPx / (widthFactor * font)));
+    const lineH = Math.round(font * lhMul);
+    const lines = wrap(text, cpl, 8);
+    const blockH = lines.length * lineH;
+    best = { font, lineH, lines, blockH };
+    if (blockH <= availHeightPx) break;
+  }
+  return best;
+}
+
 function coverSvg({ eyebrow, hook, highlights }, total, H) {
-  const hookLines = wrap(hook || '', 12, 3);
   const hi = (Array.isArray(highlights) ? highlights : [])
     .map((h) => String(h).trim())
     .filter(Boolean)
     .slice(0, 3);
-  const HOOK_LH = 104;
-  const hookH = hookLines.length * HOOK_LH;
   const HEADER_TOP = 380;
   const FOOTER_TOP = H - 120;
-  // Fit the FULL highlight teasers below the hook — complete, never truncated.
-  const hiAvailH = FOOTER_TOP - HEADER_TOP - hookH - 152;
+  const areaH = FOOTER_TOP - HEADER_TOP;
+  const LABEL_H = 56;
+  const HI_GAP = 96; // divider + label spacing
+  // Auto-fit the FULL hook (complete, never truncated) into ~half the area…
+  const hookFit = fitText(hook || '', 900, Math.round(areaH * 0.52), {
+    maxFont: 92, minFont: 56, widthFactor: 0.62,
+  });
+  // …then fit the FULL highlight teasers into the space that remains.
+  const hiAvailH = areaH - hookFit.blockH - HI_GAP - LABEL_H - 78;
   const fit = fitItems(hi, 868, hiAvailH, { maxFont: 46, minFont: 30, gapMul: 0.7 });
 
-  const blockTotal = hookH + 152 + fit.blockH;
+  const blockTotal = hookFit.blockH + HI_GAP + LABEL_H + 78 + fit.blockH;
   const top = centreTop(H, blockTotal, HEADER_TOP, 120);
-  const hookTop = top + 80;
-  const divY = hookTop + (hookLines.length - 1) * HOOK_LH + 34;
+  const hookTop = top + Math.round(hookFit.font * 0.82);
+  const divY = hookTop + (hookFit.lines.length - 1) * hookFit.lineH + 40;
   const hiLabelY = divY + 96;
   let hy = hiLabelY + 78;
   const hiSvg = fit.wrapped
@@ -144,7 +167,7 @@ function coverSvg({ eyebrow, hook, highlights }, total, H) {
   return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${DEFS}
   <rect width="${W}" height="${H}" fill="url(#bg)"/>${blobs(H)}
   <text x="${LX}" y="300" font-family="${FF}" font-size="38" font-weight="700" fill="#f59e0b">${esc(eyebrow)}</text>
-  ${hookLines.map((l, i) => `<text x="${LX}" y="${hookTop + i * HOOK_LH}" font-family="${FF}" font-size="90" font-weight="800" fill="#fff">${esc(l)}</text>`).join('')}
+  ${hookFit.lines.map((l, i) => `<text x="${LX}" y="${hookTop + i * hookFit.lineH}" font-family="${FF}" font-size="${hookFit.font}" font-weight="800" fill="#fff">${esc(l)}</text>`).join('')}
   <rect x="${LX}" y="${divY}" width="170" height="9" rx="4.5" fill="url(#acc)"/>
   <text x="${LX}" y="${hiLabelY}" font-family="${FF}" font-size="34" font-weight="700" fill="#f59e0b">आज की सुर्खियाँ</text>
   ${hiSvg}
@@ -153,24 +176,24 @@ function coverSvg({ eyebrow, hook, highlights }, total, H) {
 }
 
 function contentSvg({ tag, headline, points }, slide, total, H) {
-  const hl = wrap(headline, 16, 3);
   const rawPts = (points || []).slice(0, 4).map((p) => String(p).trim()).filter(Boolean);
-  const HEAD_LH = 92;
-  const headlineH = hl.length * HEAD_LH;
   const GAP_AFTER_HEAD = 100;
-
-  // Fit the FULL bullet text into the space left below the headline — shrink
-  // the bullet font (48→28) until every complete point fits. Never truncated.
   const HEADER_TOP = 400;
   const FOOTER_TOP = H - 150;
-  const bulletsAvailH = FOOTER_TOP - HEADER_TOP - headlineH - GAP_AFTER_HEAD;
+  const areaH = FOOTER_TOP - HEADER_TOP;
+  // Auto-fit the FULL headline (complete, never truncated) into ~half the area…
+  const hFit = fitText(headline || '', 900, Math.round(areaH * 0.5), {
+    maxFont: 80, minFont: 50, widthFactor: 0.62,
+  });
+  // …then fit the FULL bullet text into what remains.
+  const bulletsAvailH = areaH - hFit.blockH - GAP_AFTER_HEAD;
   const fit = fitItems(rawPts, 862, bulletsAvailH, { maxFont: 48, minFont: 28, gapMul: 0.78 });
   const dotR = Math.max(9, Math.round(fit.font * 0.26));
 
-  const blockTotal = headlineH + GAP_AFTER_HEAD + fit.blockH;
+  const blockTotal = hFit.blockH + GAP_AFTER_HEAD + fit.blockH;
   const top = centreTop(H, blockTotal, HEADER_TOP, 150);
-  const headTop = top + 66;
-  const divY = headTop + (hl.length - 1) * HEAD_LH + 34;
+  const headTop = top + Math.round(hFit.font * 0.82);
+  const divY = headTop + (hFit.lines.length - 1) * hFit.lineH + 34;
 
   let py = divY + GAP_AFTER_HEAD;
   const ptsSvg = fit.wrapped
@@ -186,7 +209,7 @@ function contentSvg({ tag, headline, points }, slide, total, H) {
   return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${DEFS}
   <rect width="${W}" height="${H}" fill="url(#bg)"/>${blobs(H)}
   <text x="${LX}" y="330" font-family="${FF}" font-size="38" font-weight="700" fill="#f59e0b">${esc(tag)}</text>
-  ${hl.map((l, i) => `<text x="${LX}" y="${headTop + i * HEAD_LH}" font-family="${FF}" font-size="78" font-weight="800" fill="#fff">${esc(l)}</text>`).join('')}
+  ${hFit.lines.map((l, i) => `<text x="${LX}" y="${headTop + i * hFit.lineH}" font-family="${FF}" font-size="${hFit.font}" font-weight="800" fill="#fff">${esc(l)}</text>`).join('')}
   <rect x="${LX}" y="${divY}" width="170" height="9" rx="4.5" fill="url(#acc)"/>
   ${ptsSvg}
   ${footerSvg(H, slide, total)}

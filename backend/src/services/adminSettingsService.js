@@ -626,6 +626,23 @@ const SETTINGS = {
     },
     format: stringCoerce,
   },
+  social_youtube_video: {
+    label: 'Also make + post a YouTube video',
+    description:
+      'When "true", the daily deck is also rendered as a 9:16 slideshow video and posted to YouTube. When "false", NO video is created and only the Instagram carousel is posted.',
+    defaultGetter: () => process.env.SOCIAL_YOUTUBE_VIDEO || 'false',
+    type: 'string',
+    group: 'AI / Anthropic',
+    options: [
+      { value: 'false', label: 'Off — Instagram only' },
+      { value: 'true', label: 'On — also post YouTube video' },
+    ],
+    coerce: (raw) => {
+      const v = stringCoerce(raw).toLowerCase();
+      return v === 'true' ? 'true' : 'false';
+    },
+    format: stringCoerce,
+  },
   social_posts_per_day: {
     label: 'News items per daily carousel',
     description:

@@ -401,12 +401,14 @@ async function generateDailyPost({ autoPost = null, logger = console } = {}) {
   const slugHint = `${kind}-${new Date().toISOString().slice(0, 10)}`;
   const imageUrls = await uploadCards(buffers, slugHint);
 
-  // Step 4b: render a 9:16 slideshow MP4 for YouTube (Short). Rendered from a
-  // SECOND, taller pass so the video is full 9:16, not padded. Best-effort:
-  // needs ffmpeg.
+  // Step 4b: OPTIONALLY render a 9:16 slideshow MP4 for YouTube (Short). Only
+  // when social_youtube_video = true; otherwise no video is made and the post
+  // goes to Instagram only. Best-effort: needs ffmpeg.
+  const youtubeEnabled =
+    String(await adminSettings.getString('social_youtube_video')).toLowerCase() === 'true';
   let videoUrl = null;
   try {
-    if (await socialVideoService.isAvailable()) {
+    if (youtubeEnabled && (await socialVideoService.isAvailable())) {
       logger.log('[socialNews] step 4b: rendering 9:16 slideshow video…');
       const videoFrames = await socialCardService.renderDeck(deck, {
         height: socialCardService.VIDEO_H,
@@ -414,6 +416,8 @@ async function generateDailyPost({ autoPost = null, logger = console } = {}) {
       const vid = await socialVideoService.renderSlideshow(videoFrames);
       videoUrl = await uploadPublic(vid.buffer, vid.mimeType, `${slugHint}.mp4`);
       logger.log(`[socialNews] step 4b done — video ${videoUrl}`);
+    } else if (!youtubeEnabled) {
+      logger.log('[socialNews] step 4b: YouTube video disabled — Instagram only.');
     } else {
       logger.warn('[socialNews] ffmpeg unavailable — YouTube video skipped.');
     }
