@@ -52,6 +52,13 @@ const paymentController = require('./controllers/paymentController');
 
 const app = express();
 
+// Trust the single reverse proxy (nginx) in front of the app. Without this,
+// Express reads req.ip as the proxy's own address, so express-rate-limit keys
+// EVERY visitor to one bucket — the whole site then shares one 600/15min cap
+// and returns "Too many requests" under load. `1` = trust exactly one hop
+// (nginx), which is the safe setting (never `true`, which is too permissive).
+app.set('trust proxy', 1);
+
 // --- Security & global middleware ------------------------------------------
 // Middleware order (Phase 5):
 //   helmet -> cors -> cookie-parser -> json -> sanitizeInput -> csrfGuard
